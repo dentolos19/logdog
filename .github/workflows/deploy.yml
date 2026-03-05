@@ -30,6 +30,8 @@ jobs:
       - name: Build App
         working-directory: src/app
         run: bun opennextjs-cloudflare build
+        env:
+          NEXT_PUBLIC_API_URL: ${{ vars.API_URL }}
 
       - name: Deploy Server to Cloudflare
         uses: cloudflare/wrangler-action@v3
