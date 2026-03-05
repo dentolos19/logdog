@@ -13,7 +13,7 @@ dist/
 !.env*.template
 
 # Project files
-*.db
+/store/
 
 # Miscellaneous files
 .DS_Store

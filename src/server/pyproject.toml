@@ -3,11 +3,11 @@ name = "naisc-server"
 version = "1.0.0"
 requires-python = ">=3.12,<3.14"
 dependencies = [
-  "fastapi[standard]",
-  "python-jose[cryptography]",
   "bcrypt",
-  "sqlalchemy",
+  "boto3",
+  "fastapi[standard]",
   "psycopg2-binary",
   "python-dotenv",
-  "boto3",
+  "python-jose[cryptography]",
+  "sqlalchemy",
 ]

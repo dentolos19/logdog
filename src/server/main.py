@@ -13,7 +13,7 @@ load_dotenv()
 
 from lib.database import create_all_tables
 
-ALLOWED_ORIGIN = os.getenv("ALLOWED_ORIGIN", "http://localhost:3000")
+ALLOWED_ORIGIN = os.getenv("APP_URL", "http://localhost:3000")
 
 
 @asynccontextmanager

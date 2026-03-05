@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 _BUCKET: str = os.getenv("BUCKET_NAME", "")
 _USE_S3: bool = bool(_BUCKET)
-_LOCAL_DIR: Path = Path("./data")
+_LOCAL_DIR: Path = Path("./store")
 
 
 def _s3_client():

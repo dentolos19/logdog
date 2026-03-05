@@ -9,8 +9,8 @@ _raw_url = os.getenv("DATABASE_URL", "")
 if _raw_url.startswith("postgresql://") or _raw_url.startswith("postgres://"):
     DATABASE_URL = _raw_url
 else:
-    os.makedirs("data", exist_ok=True)
-    DATABASE_URL = "sqlite:///./data/database.db"
+    os.makedirs("store", exist_ok=True)
+    DATABASE_URL = "sqlite:///./store/database.db"
 
 # SQLite requires this flag to allow the same connection across multiple threads,
 # which FastAPI uses internally. Other databases do not need this.
