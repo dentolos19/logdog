@@ -23,6 +23,9 @@
       "jinja": true,
       "autoReload": {
         "enable": true
+      },
+      "env": {
+        "PYDEVD_USE_SYS_MONITORING": "FALSE"
       }
     }
   ],
