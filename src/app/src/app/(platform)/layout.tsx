@@ -1,6 +1,8 @@
 "use client";
 
+import { AppSidebar } from "@/app/(platform)/_components/app-sidebar";
 import { useAuth } from "@/components/auth-provider";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
 import { useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
@@ -25,5 +27,10 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
 
   if (!user) return null;
 
-  return <>{children}</>;
+  return (
+    <SidebarProvider>
+      <AppSidebar />
+      <SidebarInset>{children}</SidebarInset>
+    </SidebarProvider>
+  );
 }
