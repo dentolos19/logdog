@@ -3,7 +3,14 @@ import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./naisc.db")
+_raw_url = os.getenv("DATABASE_URL", "")
+
+# Use a local SQLite database unless DATABASE_URL points at a real Postgres instance.
+if _raw_url.startswith("postgresql://") or _raw_url.startswith("postgres://"):
+    DATABASE_URL = _raw_url
+else:
+    os.makedirs("data", exist_ok=True)
+    DATABASE_URL = "sqlite:///./data/database.db"
 
 # SQLite requires this flag to allow the same connection across multiple threads,
 # which FastAPI uses internally. Other databases do not need this.

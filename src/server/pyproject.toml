@@ -8,4 +8,5 @@ dependencies = [
   "bcrypt",
   "sqlalchemy",
   "python-dotenv",
+  "boto3",
 ]
