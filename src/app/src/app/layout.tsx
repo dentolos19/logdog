@@ -1,3 +1,5 @@
+import AppProvider from "@/components/app-provider";
+import { cn } from "@/lib/utils";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
@@ -13,13 +15,15 @@ const fontMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "WhyNYP",
+  title: "NAISC",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang={"en"}>
-      <body className={`${fontSans.variable} ${fontMono.variable} antialiased`}>{children}</body>
+      <body className={cn(fontSans.variable, fontMono.variable, "antialiased")}>
+        <AppProvider>{children}</AppProvider>
+      </body>
     </html>
   );
 }

@@ -1,5 +1,4 @@
 {
   "python.analysis.include": ["${workspaceFolder}/src/server"],
-  "python.analysis.exclude": ["**/.*", "**/node_modules", "**/__pycache__", "${workspaceFolder}/src/app"],
-  "python.analysis.extraPaths": ["${workspaceFolder}/src/server/src"]
+  "python.analysis.exclude": ["**/.*", "**/node_modules", "**/__pycache__"]
 }
