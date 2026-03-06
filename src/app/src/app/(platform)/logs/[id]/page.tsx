@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { DatabaseZapIcon, MoreHorizontalIcon, PencilIcon, Trash2Icon, UploadIcon } from "lucide-react";
+import { DatabaseZapIcon, MoreHorizontalIcon, PencilIcon, Trash2Icon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { use, useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -35,6 +35,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { deleteLog, getLog, updateLog } from "@/lib/api";
 import type { LogGroup } from "@/lib/api/types";
+import { UploadSection } from "./_components/upload-section";
 
 const renameLogGroupSchema = z.object({
   name: z.string().min(1, "Name is required.").max(255),
@@ -158,22 +159,7 @@ export default function LogGroupPage({ params }: { params: Promise<{ id: string 
 
         {logGroup !== null && (
           <>
-            {/* Upload Section */}
-            <section className={"flex flex-col gap-3"}>
-              <h2 className={"text-sm font-semibold"}>Upload Logs</h2>
-              <div className={"flex items-center gap-4 rounded-lg border border-dashed p-6"}>
-                <div className={"flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted"}>
-                  <UploadIcon className={"size-4 text-muted-foreground"} />
-                </div>
-                <div className={"flex flex-col gap-0.5"}>
-                  <p className={"text-sm font-medium"}>Upload your log files</p>
-                  <p className={"text-xs text-muted-foreground"}>Support for plaintext log files. Coming soon.</p>
-                </div>
-                <Badge variant={"outline"} className={"ml-auto shrink-0"}>
-                  Coming soon
-                </Badge>
-              </div>
-            </section>
+            <UploadSection logGroupId={id} onUploadSuccess={fetchLogGroup} />
 
             {/* Tables Section */}
             <section className={"flex flex-col gap-3"}>
