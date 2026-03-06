@@ -11,4 +11,5 @@ dependencies = [
   "python-dotenv",
   "python-jose[cryptography]",
   "sqlalchemy",
+  "uvicorn>=0.41.0",
 ]
