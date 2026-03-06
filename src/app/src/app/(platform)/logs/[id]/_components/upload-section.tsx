@@ -1,17 +1,19 @@
 "use client";
 
-import { AlertCircleIcon, FileTextIcon, InfoIcon, UploadIcon, XIcon } from "lucide-react";
+import { AlertCircleIcon, DatabaseZapIcon, FileTextIcon, InfoIcon, UploadIcon, XIcon } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
 import { uploadLogFiles } from "@/lib/api";
 import type { InferredColumn, PreprocessResult } from "@/lib/api/types";
+import { cn } from "@/lib/utils";
 
 interface UploadSectionProps {
   logGroupId: string;
@@ -40,6 +42,7 @@ export function UploadSection({ logGroupId, onUploadSuccess }: UploadSectionProp
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [result, setResult] = useState<PreprocessResult | null>(null);
+  const [isSchemaDialogOpen, setIsSchemaDialogOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const addFiles = useCallback((newFiles: FileList | File[]) => {
@@ -91,6 +94,7 @@ export function UploadSection({ logGroupId, onUploadSuccess }: UploadSectionProp
       setResult(response.process_result);
       setSelectedFiles([]);
       onUploadSuccess();
+      setIsSchemaDialogOpen(true);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Upload failed. Please try again.";
       setUploadError(message);
@@ -177,21 +181,43 @@ export function UploadSection({ logGroupId, onUploadSuccess }: UploadSectionProp
         </Alert>
       )}
 
-      {/* Preprocessor result panel shown after a successful upload. */}
-      {result !== null && <PreprocessorResultPanel result={result} />}
+      {/* Button to review the schema analysis from the last upload. */}
+      {result !== null && (
+        <div className={"flex justify-end"}>
+          <Button variant={"outline"} size={"sm"} onClick={() => setIsSchemaDialogOpen(true)}>
+            <DatabaseZapIcon />
+            View Schema Analysis
+          </Button>
+        </div>
+      )}
+
+      {/* Schema analysis dialog */}
+      {result !== null && (
+        <Dialog open={isSchemaDialogOpen} onOpenChange={setIsSchemaDialogOpen}>
+          <DialogContent className={"flex max-h-[85vh] flex-col overflow-hidden sm:max-w-2xl"}>
+            <DialogHeader>
+              <DialogTitle>Schema Analysis</DialogTitle>
+            </DialogHeader>
+            <div className={"overflow-y-auto"}>
+              <PreprocessorResultPanel result={result} className={"border-0 p-0"} />
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </section>
   );
 }
 
 interface PreprocessorResultPanelProps {
   result: PreprocessResult;
+  className?: string;
 }
 
-function PreprocessorResultPanel({ result }: PreprocessorResultPanelProps) {
+function PreprocessorResultPanel({ result, className }: PreprocessorResultPanelProps) {
   const confidencePercent = Math.round(result.confidence * 100);
 
   return (
-    <div className={"flex flex-col gap-4 rounded-lg border p-4"}>
+    <div className={cn("flex flex-col gap-4 rounded-lg border p-4", className)}>
       {/* Summary header row */}
       <div className={"flex flex-col gap-1.5"}>
         <div className={"flex items-center justify-between gap-2"}>
