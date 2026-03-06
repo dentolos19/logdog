@@ -1,0 +1,141 @@
+{
+  "ControlJob": {
+    "Keys": {
+      "CtrlJobID": "CJOB_TEST_001",
+      "EquipmentID": "TOOL_FAB3_CH2"
+    },
+    "Attributes": {
+      "FileType": "Trace",
+      "JsonSchemaVersion": "2.0",
+      "Recipe": {
+        "RecipeID": "SiN_DEP_v5.2",
+        "Type": "PROCESS"
+      },
+      "Events": {
+        "ControlStateEvents": [
+          {
+            "Name": "RECIPE_START",
+            "DateTime": "2026-03-06T08:15:30.125000Z"
+          },
+          {
+            "Name": "RECIPE_END",
+            "DateTime": "2026-03-06T08:22:45.890000Z"
+          }
+        ]
+      },
+      "SensorDescriptions": [
+        {
+          "SensorID": "PRESSURE_CH2_A",
+          "SVID(Monitor)": 17377345,
+          "SVID(Setting)": 17377346,
+          "DVID(Substrate)": 34560253,
+          "DVID(PJ)": 51437543,
+          "Unit": "mTorr",
+          "DataType": "Float"
+        },
+        {
+          "SensorID": "RF_POWER_HF",
+          "SVID(Monitor)": 17377355,
+          "SVID(Setting)": 17377356,
+          "DVID(Substrate)": 34560354,
+          "DVID(PJ)": 51437544,
+          "Unit": "W",
+          "DataType": "Float"
+        },
+        {
+          "SensorID": "TEMP_PEDESTAL",
+          "SVID(Monitor)": 17377358,
+          "SVID(Setting)": 17377359,
+          "DVID(Substrate)": 34560529,
+          "DVID(PJ)": 51437745,
+          "Unit": "C",
+          "DataType": "Float"
+        }
+      ]
+    },
+    "ProcessJobs": [
+      {
+        "Keys": {
+          "PRJobID": "PRJOB_20260306_001",
+          "Recipe": {
+            "RecipeID": "SiN_DEP_v5.2",
+            "Type": "PROCESS"
+          }
+        },
+        "Attributes": {
+          "LotID": "LOT_A2603_BATCH5"
+        },
+        "ModuleProcessReports": [
+          {
+            "Keys": {
+              "ModuleID": "CHAMBER_2A",
+              "RecipeStepID": "1.0",
+              "WaferID": "W001_SLOT12"
+            },
+            "Attributes": {
+              "Events": {
+                "ControlStateEvents": [
+                  {
+                    "Name": "STEP_START",
+                    "DateTime": "2026-03-06T08:15:35.000000Z"
+                  },
+                  {
+                    "Name": "STEP_END",
+                    "DateTime": "2026-03-06T08:16:50.000000Z"
+                  }
+                ]
+              },
+              "LPID": "LP_1",
+              "SlotID": "SLOT_12",
+              "FoupID": "FOUP_A2603_05",
+              "Recipe": {
+                "RecipeID": "SiN_DEP_v5.2",
+                "Type": "PROCESS"
+              },
+              "SensorData": [
+                {
+                  "Keys": {
+                    "SensorID": "PRESSURE_CH2_A"
+                  },
+                  "Measurements": [
+                    {
+                      "DateTime": "2026-03-06T08:15:35.100000Z",
+                      "Value": 3.2
+                    },
+                    {
+                      "DateTime": "2026-03-06T08:15:35.200000Z",
+                      "Value": 3.5
+                    },
+                    {
+                      "DateTime": "2026-03-06T08:15:35.300000Z",
+                      "Value": 4.1
+                    }
+                  ]
+                },
+                {
+                  "Keys": {
+                    "SensorID": "RF_POWER_HF"
+                  },
+                  "Measurements": [
+                    {
+                      "DateTime": "2026-03-06T08:15:35.100000Z",
+                      "Value": 1250.5
+                    },
+                    {
+                      "DateTime": "2026-03-06T08:15:35.200000Z",
+                      "Value": 1248.2
+                    },
+                    {
+                      "DateTime": "2026-03-06T08:15:35.300000Z",
+                      "Value": 1251.0
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

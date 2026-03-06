@@ -1,0 +1,60 @@
+{
+  "ControlJob": {
+    "Keys": {
+      "ControlJobId": null,
+      "ToolID": "CMP_TOOL_12A",
+      "DateTime": "2026-03-06T14:25:18.567Z"
+    },
+    "Attributes": {
+      "vendor": "Applied Materials",
+      "file_generator_software_version": "9.2.1_build3456",
+      "ToolID": "CMP_TOOL_12A",
+      "EthernetAddress": "192.168.10.45",
+      "ExpirationDate": "6/30/2027",
+      "EquipmentConstants": [
+        {
+          "Name": "PLATEN_SPEED_SETPOINT",
+          "ConstantID": "31919427",
+          "Units": "RPM",
+          "DataType": "Integer",
+          "Value": "87"
+        },
+        {
+          "Name": "SLURRY_FLOW_RATE",
+          "ConstantID": "31917558",
+          "Units": "ml/min",
+          "DataType": "Float",
+          "Value": "125.5"
+        },
+        {
+          "Name": "PAD_CONDITIONING_PRESSURE",
+          "ConstantID": "31917559",
+          "Units": "PSI",
+          "DataType": "Float",
+          "Value": "4.2"
+        },
+        {
+          "Name": "DOWN_FORCE_ZONE_1",
+          "ConstantID": "31919428",
+          "Units": "N",
+          "DataType": "Float",
+          "Value": "32.8"
+        },
+        {
+          "Name": "BACKPRESSURE_MEMBRANE",
+          "ConstantID": "31918456",
+          "Units": "PSI",
+          "DataType": "Float",
+          "Value": "2.5"
+        },
+        {
+          "Name": "POLISH_TIME_MAIN",
+          "ConstantID": "31918457",
+          "Units": "seconds",
+          "DataType": "Integer",
+          "Value": "45"
+        }
+      ]
+    }
+  }
+}

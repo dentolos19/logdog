@@ -1,0 +1,180 @@
+{
+  "ControlJob": {
+    "Keys": {
+      "CtrlJobID": "CJOB_PROC_20260306",
+      "EquipmentID": "DIFF_FURNACE_8D"
+    },
+    "Attributes": {
+      "FileType": "Process",
+      "JsonSchemaVersion": "4.0",
+      "Recipe": {
+        "RecipeID": "OXIDE_GROWTH_1200C",
+        "Type": "THERMAL"
+      },
+      "Events": {
+        "ControlStateEvents": [
+          {
+            "Name": "FURNACE_RECIPE_START",
+            "DateTime": "2026-03-06T09:00:00.000000Z"
+          },
+          {
+            "Name": "FURNACE_RECIPE_END",
+            "DateTime": "2026-03-06T11:30:00.000000Z"
+          }
+        ],
+        "Alarms": [
+          {
+            "AlarmCode": "TEMP_ZONE3_DEVIATION",
+            "Severity": "WARNING",
+            "DateTime": "2026-03-06T10:15:32.456000Z",
+            "Message": "Temperature zone 3 deviation from setpoint: 3.2C (threshold: 3.0C)"
+          }
+        ],
+        "Errors": []
+      },
+      "SensorDescriptions": [
+        {
+          "SensorID": "TC_ZONE1",
+          "SVID(Monitor)": "17907114",
+          "SVID(Setting)": "17911503",
+          "DVID(Substrate)": "34860518",
+          "DVID(PJ)": "51437558",
+          "Unit": "C",
+          "DataType": "Float"
+        },
+        {
+          "SensorID": "TC_ZONE2",
+          "SVID(Monitor)": "17907115",
+          "SVID(Setting)": "17911504",
+          "DVID(Substrate)": "34860519",
+          "DVID(PJ)": "51437559",
+          "Unit": "C",
+          "DataType": "Float"
+        },
+        {
+          "SensorID": "O2_FLOW",
+          "SVID(Monitor)": "17907120",
+          "SVID(Setting)": "17911510",
+          "DVID(Substrate)": "34860525",
+          "DVID(PJ)": "51437565",
+          "Unit": "SLM",
+          "DataType": "Float"
+        }
+      ]
+    },
+    "ProcessJobs": [
+      {
+        "Keys": {
+          "PRJobID": "PRJOB_DIFF_20260306_001",
+          "Recipe": {
+            "RecipeID": "OXIDE_GROWTH_1200C",
+            "Type": "THERMAL"
+          }
+        },
+        "Attributes": {
+          "LotID": "LOT_OXIDE_8876",
+          "Events": {
+            "ControlStateEvents": [
+              {
+                "Name": "BOAT_LOAD_START",
+                "DateTime": "2026-03-06T08:55:00.000000Z"
+              },
+              {
+                "Name": "BOAT_LOAD_COMPLETE",
+                "DateTime": "2026-03-06T08:58:30.000000Z"
+              }
+            ]
+          }
+        },
+        "ModuleProcessReports": [
+          {
+            "Keys": {
+              "ModuleID": "FURNACE_8D_TUBE1",
+              "RecipeStepID": "1.0",
+              "WaferID": "BOAT_25_WAFERS"
+            },
+            "Attributes": {
+              "Events": {
+                "ControlStateEvents": [
+                  {
+                    "Name": "STEP_RAMPUP_START",
+                    "DateTime": "2026-03-06T09:00:00.000000Z"
+                  },
+                  {
+                    "Name": "STEP_RAMPUP_COMPLETE",
+                    "DateTime": "2026-03-06T09:45:00.000000Z"
+                  }
+                ]
+              },
+              "RecipeStepName": "TEMPERATURE_RAMPUP",
+              "Recipe": {
+                "RecipeID": "OXIDE_GROWTH_1200C",
+                "Type": "THERMAL",
+                "SetPoints": [
+                  {
+                    "SensorID": "TC_ZONE1",
+                    "DataType": "Float",
+                    "Value": 1200.0
+                  },
+                  {
+                    "SensorID": "TC_ZONE2",
+                    "DataType": "Float",
+                    "Value": 1200.0
+                  },
+                  {
+                    "SensorID": "O2_FLOW",
+                    "DataType": "Float",
+                    "Value": 5.0
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "Keys": {
+              "ModuleID": "FURNACE_8D_TUBE1",
+              "RecipeStepID": "2.0",
+              "WaferID": "BOAT_25_WAFERS"
+            },
+            "Attributes": {
+              "Events": {
+                "ControlStateEvents": [
+                  {
+                    "Name": "STEP_OXIDATION_START",
+                    "DateTime": "2026-03-06T09:45:00.000000Z"
+                  },
+                  {
+                    "Name": "STEP_OXIDATION_COMPLETE",
+                    "DateTime": "2026-03-06T11:15:00.000000Z"
+                  }
+                ]
+              },
+              "RecipeStepName": "OXIDATION_MAIN",
+              "Recipe": {
+                "RecipeID": "OXIDE_GROWTH_1200C",
+                "Type": "THERMAL",
+                "SetPoints": [
+                  {
+                    "SensorID": "TC_ZONE1",
+                    "DataType": "Float",
+                    "Value": 1200.0
+                  },
+                  {
+                    "SensorID": "TC_ZONE2",
+                    "DataType": "Float",
+                    "Value": 1200.0
+                  },
+                  {
+                    "SensorID": "O2_FLOW",
+                    "DataType": "Float",
+                    "Value": 8.5
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

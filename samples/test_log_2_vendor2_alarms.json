@@ -1,0 +1,140 @@
+{
+  "ControlJob": {
+    "Keys": {
+      "CtrlJobId": "CJOB_TEST_002",
+      "EquipmentID": "ETCH_TOOL_5C"
+    },
+    "Attributes": {
+      "FileType": "SensorData",
+      "FileGeneratorSoftwareVersion": "T1.1_6",
+      "SensorDescriptions": [
+        {
+          "Name": "GAS_FLOW_N2",
+          "SensorID": "GAS_N2_MFC1",
+          "Description": "Nitrogen Gas Flow Rate",
+          "SVID": "2371002501",
+          "Units": "sccm",
+          "DataType": "integer"
+        },
+        {
+          "Name": "PLASMA_VOLTAGE",
+          "SensorID": "PLASMA_V_MON",
+          "Description": "Plasma Bias Voltage",
+          "SVID": "2371002502",
+          "Units": "V",
+          "DataType": "float"
+        }
+      ]
+    },
+    "ProcessJobs": [
+      {
+        "Keys": {
+          "PRJobID": "PRJOB_ETCH_20260306",
+          "RecipeID": "OXIDE_ETCH_45NM"
+        },
+        "Attributes": {
+          "LotID": "LOT_X7821_W3",
+          "Events": {
+            "ControlStateEvents": [
+              {
+                "EventID": 237,
+                "Text": "Process recipe 'OXIDE_ETCH_45NM' started on Chamber 5C",
+                "DateTime": "2026-03-06T10:30:15.125000Z"
+              },
+              {
+                "EventID": 238,
+                "Text": "Recipe step 1 started",
+                "DateTime": "2026-03-06T10:30:18.456000Z"
+              }
+            ]
+          },
+          "Alarms": [
+            {
+              "EventID": 4032,
+              "Text": "Recipe step 2 ended beyond Step Max Time=15.00 seconds, stepElapsedTime=15.87",
+              "DateTime": "2026-03-06T10:31:05.789000Z"
+            },
+            {
+              "EventID": 100,
+              "Text": "Chamber pressure fluctuation detected: delta=0.5 mTorr, threshold=0.3 mTorr",
+              "DateTime": "2026-03-06T10:31:22.234000Z"
+            }
+          ],
+          "Errors": [
+            {
+              "EventID": 5001,
+              "Text": "RF generator interlock triggered - power delivery suspended",
+              "DateTime": "2026-03-06T10:32:01.456000Z"
+            }
+          ]
+        },
+        "ModuleProcessReports": [
+          {
+            "Keys": {
+              "ModuleID": "CHAMBER_5C",
+              "RecipeStepID": "1",
+              "WaferID": "W_X7821_003"
+            },
+            "Attributes": {
+              "Events": {
+                "ControlStateEvents": [
+                  {
+                    "EventID": 238,
+                    "Text": "Recipe step 1 started",
+                    "DateTime": "2026-03-06T10:30:18.456000Z"
+                  },
+                  {
+                    "EventID": 239,
+                    "Text": "Recipe step 1 completed",
+                    "DateTime": "2026-03-06T10:30:48.234000Z"
+                  }
+                ]
+              },
+              "Alarms": [],
+              "Errors": []
+            },
+            "SlotID": "SLOT_03",
+            "RecipeID": "OXIDE_ETCH_45NM",
+            "RecipeStepName": "BREAKTHROUGH",
+            "SensorData": [
+              {
+                "SensorID": "GAS_N2_MFC1",
+                "Measurements": [
+                  {
+                    "DateTime": "2026-03-06T10:30:18.500000Z",
+                    "Value": 250
+                  },
+                  {
+                    "DateTime": "2026-03-06T10:30:19.500000Z",
+                    "Value": 248
+                  },
+                  {
+                    "DateTime": "2026-03-06T10:30:20.500000Z",
+                    "Value": 252
+                  }
+                ]
+              },
+              {
+                "SensorID": "PLASMA_V_MON",
+                "Measurements": [
+                  {
+                    "DateTime": "2026-03-06T10:30:18.500000Z",
+                    "Value": 125.7
+                  },
+                  {
+                    "DateTime": "2026-03-06T10:30:19.500000Z",
+                    "Value": 126.2
+                  },
+                  {
+                    "DateTime": "2026-03-06T10:30:20.500000Z",
+                    "Value": 125.4
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

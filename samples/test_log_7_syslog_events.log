@@ -1,0 +1,17 @@
+<134>Mar  6 15:20:01 FAB3-TOOL-CVD12 process_controller[5678]: RECIPE_START: recipe_id=SiN_DEP_v5.2 lot_id=LOT_A2603_BATCH5 wafer_id=W001_SLOT12 chamber=CHAMBER_2A
+<134>Mar  6 15:20:05 FAB3-TOOL-CVD12 sensor_manager[5679]: SENSOR_DATA: sensor=TEMP_PEDESTAL value=425.3 unit=C status=OK
+<134>Mar  6 15:20:05 FAB3-TOOL-CVD12 sensor_manager[5679]: SENSOR_DATA: sensor=PRESSURE_CH2_A value=4.5 unit=mTorr status=OK
+<134>Mar  6 15:20:10 FAB3-TOOL-CVD12 gas_delivery[5680]: GAS_FLOW_SETPOINT: gas=NH3 mfc=MFC_1 setpoint=125 actual=124.8 unit=sccm
+<134>Mar  6 15:20:10 FAB3-TOOL-CVD12 gas_delivery[5680]: GAS_FLOW_SETPOINT: gas=SiH4 mfc=MFC_2 setpoint=75 actual=75.2 unit=sccm
+<132>Mar  6 15:20:15 FAB3-TOOL-CVD12 rf_generator[5681]: RF_POWER_MONITOR: generator=HF_GEN_1 power=1250.5 reflected=5.2 unit=W impedance_match=GOOD
+<131>Mar  6 15:20:18 FAB3-TOOL-CVD12 alarm_manager[5682]: ALARM_RAISED: alarm_id=ALM_TEMP_DRIFT severity=WARNING sensor=TEMP_PEDESTAL expected=425.0 actual=427.8 threshold=2.5 message="Temperature drift exceeds tolerance"
+<134>Mar  6 15:20:22 FAB3-TOOL-CVD12 process_controller[5678]: RECIPE_STEP_CHANGE: previous_step=1_STABILIZATION next_step=2_DEPOSITION elapsed_time_ms=21000
+<134>Mar  6 15:20:30 FAB3-TOOL-CVD12 sensor_manager[5679]: SENSOR_DATA: sensor=TEMP_PEDESTAL value=426.1 unit=C status=OK
+<134>Mar  6 15:20:30 FAB3-TOOL-CVD12 sensor_manager[5679]: SENSOR_DATA: sensor=PRESSURE_CH2_A value=4.6 unit=mTorr status=OK
+<130>Mar  6 15:20:45 FAB3-TOOL-CVD12 interlock_monitor[5683]: INTERLOCK_TRIGGERED: interlock_id=ILCK_RF_REFLECTED_HIGH reason="Reflected power >10W" action=POWER_SUSPEND rf_power_before=1250.5 rf_power_after=0.0
+<131>Mar  6 15:20:46 FAB3-TOOL-CVD12 alarm_manager[5682]: ALARM_RAISED: alarm_id=ALM_RF_INTERLOCK severity=CRITICAL sensor=RF_REFLECTED_POWER message="RF interlock triggered - recipe suspended"
+<134>Mar  6 15:20:50 FAB3-TOOL-CVD12 process_controller[5678]: RECIPE_SUSPENDED: reason=INTERLOCK_TRIGGERED interlock_id=ILCK_RF_REFLECTED_HIGH wafer_id=W001_SLOT12
+<134>Mar  6 15:21:02 FAB3-TOOL-CVD12 interlock_monitor[5683]: INTERLOCK_CLEARED: interlock_id=ILCK_RF_REFLECTED_HIGH recovery_action=MANUAL_RESET operator=OPERATOR_007
+<134>Mar  6 15:21:10 FAB3-TOOL-CVD12 process_controller[5678]: RECIPE_RESUMED: wafer_id=W001_SLOT12 step=2_DEPOSITION time_remaining_ms=178000
+<134>Mar  6 15:21:15 FAB3-TOOL-CVD12 sensor_manager[5679]: SENSOR_DATA: sensor=TEMP_PEDESTAL value=425.7 unit=C status=OK
+<134>Mar  6 15:21:15 FAB3-TOOL-CVD12 sensor_manager[5679]: SENSOR_DATA: sensor=PRESSURE_CH2_A value=4.5 unit=mTorr status=OK

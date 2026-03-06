@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ASMLRecipe xmlns:ASML="http://www.asml.com/XMLSchema/MT/Generic/Recipe/v2.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.asml.com/XMLSchema/MT/Generic/Recipe/v2.0 ASMLRecipe.xsd">
+  <Header>
+    <Title>Lithography Exposure Recipe</Title>
+    <MachineID>TWINSCAN_NXT2050i</MachineID>
+    <MachineCustomerName>MICRON_FAB10X</MachineCustomerName>
+    <MachineType>IMMERSION_SCANNER</MachineType>
+    <SoftwareRelease>7.1.2</SoftwareRelease>
+    <CreatedBy>RECIPE_ENGINEER_005</CreatedBy>
+    <CreateTime>2026-03-05T16:45:30.000+08:00</CreateTime>
+    <DocumentID>RCP_LITHO_7NM_v3.5</DocumentID>
+    <DocumentType>ExposureRecipe</DocumentType>
+    <DocumentTypeVersion>v2.0</DocumentTypeVersion>
+  </Header>
+  <RecipeName>7NM_METAL2_CRITICAL</RecipeName>
+  <ApprovedBy>PROCESS_OWNER_METAL</ApprovedBy>
+  <ExpirationTime>2027-12-31T23:59:59+08:00</ExpirationTime>
+  <TargetMachineID>TWINSCAN_NXT2050i</TargetMachineID>
+  <TargetMachineCustomerName>MICRON_FAB10X</TargetMachineCustomerName>
+  <IlluminationSettings>
+    <IlluminationMode>FlexRay</IlluminationMode>
+    <Wavelength unit="nm">193.0</Wavelength>
+    <DoseControl>
+      <NominalDose unit="mJ/cm2">42.5</NominalDose>
+      <DoseTolerance unit="percent">2.0</DoseTolerance>
+    </DoseControl>
+    <PupilSettings>
+      <NA>1.35</NA>
+      <SigmaInner>0.95</SigmaInner>
+      <SigmaOuter>0.98</SigmaOuter>
+      <PolarizationMode>TE</PolarizationMode>
+    </PupilSettings>
+  </IlluminationSettings>
+  <ReticleList>
+    <Reticle>
+      <ReticleID>M2_7NM_REV_C</ReticleID>
+      <ReticleType>BinaryMask</ReticleType>
+      <PellicleMounted>true</PellicleMounted>
+      <Magnification>4</Magnification>
+      <RotationAngle unit="degrees">0.0</RotationAngle>
+    </Reticle>
+  </ReticleList>
+  <FocusSettings>
+    <BestFocusOffset unit="nm">-15.0</BestFocusOffset>
+    <FocusLatitude unit="nm">80.0</FocusLatitude>
+    <DynamicFocusCorrection enabled="true">
+      <ScanningDirection>Y</ScanningDirection>
+      <CorrectionProfile>ADVANCED_LEVELING</CorrectionProfile>
+    </DynamicFocusCorrection>
+  </FocusSettings>
+  <ExposureFieldList>
+    <ExposureField>
+      <FieldID>FIELD_001</FieldID>
+      <Position>
+        <X unit="mm">26.0</X>
+        <Y unit="mm">33.0</Y>
+      </Position>
+      <Size>
+        <Width unit="mm">26.0</Width>
+        <Height unit="mm">33.0</Height>
+      </Size>
+      <ScanSpeed unit="mm/s">650</ScanSpeed>
+      <SlitWidth unit="mm">8.0</SlitWidth>
+    </ExposureField>
+  </ExposureFieldList>
+  <AlignmentStrategy>
+    <AlignmentMarks>ENHANCED_GLOBAL</AlignmentMarks>
+    <WaferGridOptimization enabled="true"/>
+    <MaxResidualError unit="nm">2.5</MaxResidualError>
+  </AlignmentStrategy>
+</ASMLRecipe>

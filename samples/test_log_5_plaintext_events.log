@@ -1,0 +1,49 @@
+03/06/2026 12:00:00.000 Machine:TWINSCAN_NXT2050i (Rel:7.1.2, MODULE [12345], logfile.cpp, 7.7, 456)
+SYSTEM EVENT: ER-4102 DEFAULT
+Log file 'ER/ER_event_log_mTWINSCAN_20260306_120000' is created, 'ER/ER_event_log_mTWINSCAN_20260305_235959' is closed, UTC-offset: +0800
+
+03/06/2026 12:00:01.417 Machine:TWINSCAN_NXT2050i (Rel:7.1.2, MODULE [12345], logfile.cpp, 7.7, 456)
+SYSTEM WARNING: DW-20E2 DEFAULT
+The scan time is too short to perform an OASIS light measurement. Current scan time: 12.00 [ms], required minimum scan time: 25.00 [ms]
+Scan time too short to program oasis light trigger.
+Time specified: 12.00 ms
+Minimal time required: 25.00 ms
+
+03/06/2026 12:00:02.030 Machine:TWINSCAN_NXT2050i (Rel:7.1.2, MODULE [12345], logfile.cpp, 7.7, 456)
+SYSTEM EVENT: ER-0FFF DEFAULT
+DEACTIVATE: DW-20e2
+
+03/06/2026 12:00:03.361 Machine:TWINSCAN_NXT2050i (Rel:7.1.2, MODULE [12345], logfile.cpp, 7.7, 456)
+SYSTEM EVENT: RH-8052 DEFAULT
+IVR complete move
+IVR is now at logical position: RYVUXA_IVR_LOGICAL_POS_RED_2_LO_EXCHANGE
+
+03/06/2026 12:00:04.747 Machine:TWINSCAN_NXT2050i (Rel:7.1.2, MODULE [12345], logfile.cpp, 7.7, 456)
+SYSTEM EVENT: RU-C314 DEFAULT
+The uncovered EIP of |RETICLE_M2_7NM| of pod |POD_FAB10_005| was transferred from RED ARM 2 to IVR
+
+03/06/2026 12:00:06.912 Machine:TWINSCAN_NXT2050i (Rel:7.1.2, MODULE [12345], logfile.cpp, 7.7, 456)
+SYSTEM EVENT: CV-2203 DEFAULT
+Channel SOFTWARE_WORKER1:Software.DIAG.TriggerEvent.Producer_1 did not receive data on time from NODE_CONTROLLER_2
+Occurred 1245678 times: Channel Software_WORKER1, with address 0xF8A3C120, did not receive data from NODE_CONTROLLER_2 Sample delay: -1856234567 (expected: 1)
+
+03/06/2026 12:00:11.590 Machine:TWINSCAN_NXT2050i (Rel:7.1.2, MODULE [12345], logfile.cpp, 7.7, 456)
+SYSTEM WARNING: DW-3411 DEFAULT
+The dose evaluation 0.0245187 [%] exceeds the dose evaluation warning level 0 [%]
+de_err=0.0245187 [%] de_warn_lvl=0 [%] ESET:91503 [bits]
+freq=50000 [hz] n_slit=50 mb_enabled=T action_handle=8234 exposure_handle:7891
+
+03/06/2026 12:00:12.576 Machine:TWINSCAN_NXT2050i (Rel:7.1.2, MODULE [12345], logfile.cpp, 7.7, 456)
+SYSTEM WARNING: KU-4921 DEFAULT
+Height difference (R1R3:2.156432[nm] or R2R4:6.234891[nm]) exceeds warning threshold of 0.000000 [nm] reticle id:RETICLE_M2_7NM.
+Be aware of possible reticle contamination. Will continue production, despite possible overlay and focus problems on product.
+
+03/06/2026 12:00:14.959 Machine:TWINSCAN_NXT2050i (Rel:7.1.2, MODULE [12345], logfile.cpp, 7.7, 456)
+SYSTEM EVENT: ER-4201 DEFAULT
+Error Object not found
+Error Object (KU-4921) not found
+
+03/06/2026 12:00:19.671 Machine:TWINSCAN_NXT2050i (Rel:7.1.2, MODULE [12345], logfile.cpp, 7.7, 456)
+SYSTEM EVENT: DW-3620 DEFAULT
+Sensor matching feedforward: Predicted SLCF Leading 1.50949e-07 in Prediction period
+In Prediction period. Leading SLS_usage count, Predicted SLCF: (62932, 1.50949e-07)

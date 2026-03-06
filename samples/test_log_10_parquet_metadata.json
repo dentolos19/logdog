@@ -1,0 +1,129 @@
+{
+  "file_info": {
+    "file_name": "sensor_trace_20260306_chamber5C.parquet",
+    "format": "Apache Parquet",
+    "parquet_version": "2.6",
+    "created_by": "parquet-cpp-arrow version 15.0.2",
+    "total_rows": 3405,
+    "total_columns": 8,
+    "file_size_mb": 3.87,
+    "compression": "SNAPPY"
+  },
+  "schema": {
+    "columns": [
+      {
+        "name": "ControlJobKeys",
+        "type": "string",
+        "description": "JSON string containing CtrlJobID and EquipmentID"
+      },
+      {
+        "name": "ControlJobAttributes",
+        "type": "string",
+        "description": "JSON string with file metadata and sensor descriptions (row 0 only)"
+      },
+      {
+        "name": "ProcessJobKeys",
+        "type": "string",
+        "description": "JSON string containing PRJobID"
+      },
+      {
+        "name": "ProcessJobAttributes",
+        "type": "string",
+        "description": "JSON string with job config (row 0) or lot/recipe times (rows 1+)"
+      },
+      {
+        "name": "ModuleProcessReportKeys",
+        "type": "string",
+        "description": "JSON string with ModuleID, WaferID, RecipeStepID"
+      },
+      {
+        "name": "ModuleProcessReportAttributes",
+        "type": "string",
+        "description": "JSON string with step timing and name"
+      },
+      {
+        "name": "SensorKey",
+        "type": "string",
+        "description": "JSON string containing SensorID"
+      },
+      {
+        "name": "Measurements",
+        "type": "struct<DateTime:list<int64>,SplitRecord:bool,Type:string,ValueDouble:list<float>,ValueString:null>",
+        "description": "Nested struct with DateTime arrays (Unix epoch ms) and value arrays"
+      }
+    ]
+  },
+  "data_structure": {
+    "row_0": "Header row with complete metadata in ControlJobAttributes and ProcessJobAttributes",
+    "rows_1_plus": "Data rows: each row = 1 sensor x 1 recipe step",
+    "total_sensors": 245,
+    "total_recipe_steps": 13,
+    "data_rows": 3185,
+    "calculation": "245 sensors \u00d7 13 steps = 3,185 data rows + 1 header row = 3,186 total"
+  },
+  "sample_data": {
+    "header_row": {
+      "ControlJobKeys": "{\"CtrlJobID\":\"CJOB_ETCH_20260306\",\"EquipmentID\":\"ETCH_5C\"}",
+      "ControlJobAttributes": "{\"FileType\":\"SensorData\",\"ParquetSchemaVersion\":\"1.0\",\"FileGeneratorSoftwareVersion\":\"8.2.1\",\"CtrlJobStartTime\":\"2026-03-06T10:30:15.125Z\",\"CtrlJobEndTime\":\"2026-03-06T10:37:22.890Z\",\"SensorDescriptions\":[{\"Name\":\"CHAMBER_PRESSURE\",\"SVID\":null,\"Period\":\"100ms\",\"DataCount\":\"4320\",\"Units\":\"mTorr\",\"DataType\":\"Double\",\"Description\":\"Main chamber pressure sensor\"}]}",
+      "ProcessJobKeys": "{\"PRJobID\":\"PRJOB_ETCH_001\"}",
+      "Measurements": "null"
+    },
+    "data_row_1": {
+      "ControlJobKeys": "{\"CtrlJobID\":\"CJOB_ETCH_20260306\",\"EquipmentID\":\"ETCH_5C\"}",
+      "ControlJobAttributes": "",
+      "ProcessJobKeys": "{\"PRJobID\":\"PRJOB_ETCH_001\"}",
+      "ProcessJobAttributes": "{\"LotID\":\"LOT_X7821_W3\",\"RecipeStartTime\":\"2026-03-06T10:30:18.456Z\",\"RecipeEndTime\":\"2026-03-06T10:37:18.234Z\"}",
+      "ModuleProcessReportKeys": "{\"ModuleID\":\"CHAMBER_5C\",\"WaferID\":\"W_X7821_003\",\"ModuleRecipeID\":\"OXIDE_ETCH_45NM\",\"RecipeStepID\":\"BREAKTHROUGH.0\"}",
+      "ModuleProcessReportAttributes": "{\"RecipeStepStartTime\":\"2026-03-06T10:30:18.456Z\",\"RecipeStepEndTime\":\"2026-03-06T10:30:48.234Z\",\"RecipeStepName\":\"BREAKTHROUGH\",\"SlotID\":\"SLOT_03\"}",
+      "SensorKey": "{\"SensorID\":\"PRESSURE_001\"}",
+      "Measurements": {
+        "DateTime": [
+          1709725818500,
+          1709725818600,
+          1709725818700
+        ],
+        "Type": "Double",
+        "ValueDouble": [
+          4.5,
+          4.6,
+          4.4
+        ],
+        "ValueString": null,
+        "SplitRecord": false
+      }
+    }
+  },
+  "recipe_steps": [
+    {
+      "step_id": "BREAKTHROUGH.0",
+      "step_name": "BREAKTHROUGH",
+      "duration_seconds": 29.778
+    },
+    {
+      "step_id": "MAIN_ETCH.0",
+      "step_name": "MAIN_ETCH",
+      "duration_seconds": 185.456
+    },
+    {
+      "step_id": "OVERETCH.0",
+      "step_name": "OVERETCH",
+      "duration_seconds": 45.123
+    },
+    {
+      "step_id": "ENDPOINT.0",
+      "step_name": "ENDPOINT_DETECT",
+      "duration_seconds": 12.567
+    },
+    {
+      "step_id": "PURGE.0",
+      "step_name": "CHAMBER_PURGE",
+      "duration_seconds": 30.234
+    }
+  ],
+  "notes": [
+    "DateTime values are Unix epoch milliseconds (int64)",
+    "Row 0 contains all metadata; data rows have sparse columns",
+    "Measurements.ValueDouble arrays can have varying lengths per step",
+    "Sensor sampling rate is 100ms (10 Hz) as specified in Period field"
+  ]
+}
