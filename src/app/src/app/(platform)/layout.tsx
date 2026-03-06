@@ -1,11 +1,65 @@
 "use client";
 
-import { AppSidebar } from "@/app/(platform)/_components/app-sidebar";
-import { useAuth } from "@/components/auth-provider";
-import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
-import { Spinner } from "@/components/ui/spinner";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, type ReactNode } from "react";
+import { Fragment, useEffect, type ReactNode } from "react";
+
+import { AppSidebar } from "@/app/(platform)/_components/app-sidebar";
+import { PageHeaderProvider, usePageHeaderContext } from "@/app/(platform)/_components/page-header-context";
+import { useAuth } from "@/components/auth-provider";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
+import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
+
+function PlatformInner({ children }: { children: ReactNode }) {
+  const { breadcrumbs, isLoading, setActionsContainer } = usePageHeaderContext();
+
+  return (
+    <SidebarProvider>
+      <AppSidebar />
+      <SidebarInset>
+        <header className={"flex h-14 shrink-0 items-center gap-2 border-b px-4 bg-sidebar"}>
+          <SidebarTrigger className={"-ml-1"} />
+          {isLoading ? (
+            <Skeleton className={"h-4 w-48"} />
+          ) : breadcrumbs.length > 0 ? (
+            <Breadcrumb>
+              <BreadcrumbList>
+                {breadcrumbs.map((item, index) => {
+                  const isLast = index === breadcrumbs.length - 1;
+                  return (
+                    <Fragment key={`${item.label}-${index}`}>
+                      {index > 0 && <BreadcrumbSeparator />}
+                      <BreadcrumbItem>
+                        {isLast || !item.href ? (
+                          <BreadcrumbPage>{item.label}</BreadcrumbPage>
+                        ) : (
+                          <BreadcrumbLink asChild={true}>
+                            <Link href={item.href}>{item.label}</Link>
+                          </BreadcrumbLink>
+                        )}
+                      </BreadcrumbItem>
+                    </Fragment>
+                  );
+                })}
+              </BreadcrumbList>
+            </Breadcrumb>
+          ) : null}
+          <div ref={setActionsContainer} className={"ml-auto flex items-center gap-2"} />
+        </header>
+        {children}
+      </SidebarInset>
+    </SidebarProvider>
+  );
+}
 
 export default function PlatformLayout({ children }: { children: ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -28,9 +82,8 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
   if (!user) return null;
 
   return (
-    <SidebarProvider>
-      <AppSidebar />
-      <SidebarInset>{children}</SidebarInset>
-    </SidebarProvider>
+    <PageHeaderProvider>
+      <PlatformInner>{children}</PlatformInner>
+    </PageHeaderProvider>
   );
 }
