@@ -6,7 +6,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from lib.auth import get_current_user
 from lib.database import get_db
-from lib.log_swarm import LogDatabaseError, LogDatabaseSwarm, ReadOnlyQueryError
+from lib.database_swarm import LogDatabaseError, LogDatabaseSwarm, ReadOnlyQueryError
 from lib.models import LogGroup, LogGroupFile, LogGroupProcess, LogGroupTable, User
 from lib.preprocessor import (
     FileInput,

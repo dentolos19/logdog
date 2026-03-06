@@ -6,12 +6,14 @@ from enum import Enum
 from typing import Any
 
 from langchain_openrouter import ChatOpenRouter
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SecretStr
 
 logger = logging.getLogger(__name__)
 
+APP_NAME = os.getenv("APP_NAME", "NAISC")
+APP_URL = os.getenv("APP_URL")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "inception/mercury-coder-small-2503")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "inception/mercury-2")
 
 # Limits for the sample lines sent to the LLM.
 MAX_SAMPLE_LINES = 30
@@ -960,9 +962,11 @@ class LogPreprocessorService:
 
         model = ChatOpenRouter(
             model=OPENROUTER_MODEL,
-            openrouter_api_key=OPENROUTER_API_KEY,
+            api_key=SecretStr(OPENROUTER_API_KEY),
             temperature=0.0,
             max_tokens=4096,
+            app_title=APP_NAME,
+            app_url=APP_URL,
         )
 
         structured_model = model.with_structured_output(LlmSchemaResponse, method="json_schema", strict=True)
