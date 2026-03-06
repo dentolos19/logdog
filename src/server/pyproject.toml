@@ -6,10 +6,14 @@ dependencies = [
   "bcrypt",
   "boto3",
   "fastapi[standard]",
+  "langchain-openrouter",
   "pydantic>=2.0.0,<2.12",
   "psycopg2-binary",
   "python-dotenv",
   "python-jose[cryptography]",
   "sqlalchemy",
-  "uvicorn>=0.41.0",
+  "uvicorn",
 ]
+
+[dependency-groups]
+dev = ["pytest", "httpx"]

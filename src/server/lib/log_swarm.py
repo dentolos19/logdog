@@ -44,6 +44,18 @@ class LogDatabaseSwarm:
         except (OSError, sqlite3.DatabaseError) as exc:
             raise LogDatabaseError(str(exc)) from exc
 
+    def apply_schema(self, log_group_id: str, ddl: str) -> None:
+        """Execute a CREATE TABLE DDL statement against the log group's swarm database."""
+
+        database_path = self.ensure_database(log_group_id)
+
+        try:
+            with self._connect(database_path) as connection:
+                connection.execute(ddl)
+                connection.commit()
+        except sqlite3.DatabaseError as exc:
+            raise LogDatabaseError(str(exc)) from exc
+
     def delete_database(self, log_group_id: str) -> None:
         database_path = self.database_path(log_group_id)
 

@@ -1,15 +1,27 @@
 import json
+import logging
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from lib.auth import get_current_user
 from lib.database import get_db
 from lib.log_swarm import LogDatabaseError, LogDatabaseSwarm, ReadOnlyQueryError
-from lib.models import LogGroup, LogGroupTable, User
+from lib.models import LogGroup, LogGroupFile, LogGroupProcess, LogGroupTable, User
+from lib.preprocessor import (
+    FileInput,
+    LogPreprocessorService,
+    PreprocessorResult,
+)
+from lib.storage import upload_file as store_asset
 from pydantic import BaseModel, Field
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
+
+logger = logging.getLogger(__name__)
+
+MAX_FILES_PER_UPLOAD = 20
+MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB
 
 router = APIRouter(prefix="/logs", tags=["logs"])
 swarm = LogDatabaseSwarm()
@@ -239,12 +251,207 @@ def delete_log_group(
         ) from exc
 
 
-@router.post("/{id}", status_code=status.HTTP_501_NOT_IMPLEMENTED)
-def upload_log_files(id: str, database: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    _get_owned_log_group(database, str(current_user.id), id)
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Log file upload is not implemented yet.",
+# ---------------------------------------------------------------------------
+# Upload + Preprocess Response Models
+# ---------------------------------------------------------------------------
+
+
+class InferredColumnResponse(BaseModel):
+    name: str
+    sql_type: str
+    description: str
+    nullable: bool
+    kind: str
+    example_values: list[str]
+
+
+class SegmentationResultResponse(BaseModel):
+    strategy: str
+    confidence: float
+    rationale: str
+
+
+class FileObservationResponse(BaseModel):
+    filename: str
+    line_count: int
+    detected_format: str
+    format_confidence: float
+    segmentation_hint: str
+    sample_size: int
+    warnings: list[str]
+
+
+class SampleRecordResponse(BaseModel):
+    source_file: str
+    line_start: int
+    line_end: int
+    fields: dict[str, Any]
+
+
+class PreprocessResultResponse(BaseModel):
+    id: str
+    log_id: str
+    schema_summary: str
+    schema_version: str
+    table_name: str
+    sqlite_ddl: str
+    columns: list[InferredColumnResponse]
+    segmentation: SegmentationResultResponse
+    sample_records: list[SampleRecordResponse]
+    file_observations: list[FileObservationResponse]
+    warnings: list[str]
+    assumptions: list[str]
+    confidence: float
+    created_at: datetime
+
+
+class UploadLogFilesResponse(BaseModel):
+    uploaded_files: int
+    process_result: PreprocessResultResponse
+
+
+def _serialize_preprocess_result(process: LogGroupProcess) -> PreprocessResultResponse:
+    """Deserialize the stored JSON result into the response model."""
+
+    result = json.loads(str(process.result))
+
+    return PreprocessResultResponse(
+        id=str(process.id),
+        log_id=str(process.log_id),
+        schema_summary=result["schema_summary"],
+        schema_version=result["schema_version"],
+        table_name=result["table_name"],
+        sqlite_ddl=result["sqlite_ddl"],
+        columns=[InferredColumnResponse(**column) for column in result["columns"]],
+        segmentation=SegmentationResultResponse(**result["segmentation"]),
+        sample_records=[SampleRecordResponse(**record) for record in result["sample_records"]],
+        file_observations=[FileObservationResponse(**observation) for observation in result["file_observations"]],
+        warnings=result["warnings"],
+        assumptions=result["assumptions"],
+        confidence=result["confidence"],
+        created_at=process.created_at,
+    )
+
+
+@router.post("/{id}", response_model=UploadLogFilesResponse, status_code=status.HTTP_201_CREATED)
+def upload_log_files(
+    id: str,
+    files: list[UploadFile] = File(...),
+    database: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    log_group = _get_owned_log_group(database, str(current_user.id), id)
+
+    if len(files) > MAX_FILES_PER_UPLOAD:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Too many files. Maximum is {MAX_FILES_PER_UPLOAD} per upload.",
+        )
+
+    if not files:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="At least one file is required.",
+        )
+
+    # Phase 1: Read, validate, and store each file.
+    file_inputs: list[FileInput] = []
+
+    for upload in files:
+        raw_data = upload.file.read()
+
+        if len(raw_data) > MAX_FILE_SIZE_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"File '{upload.filename}' exceeds the {MAX_FILE_SIZE_BYTES // (1024 * 1024)} MB limit.",
+            )
+
+        filename = upload.filename or "unnamed.log"
+        mime_type = upload.content_type or "application/octet-stream"
+
+        # Persist the asset and link it to this log group.
+        asset = store_asset(raw_data=raw_data, name=filename, size=len(raw_data), mime_type=mime_type, db=database)
+        database.add(
+            LogGroupFile(
+                user_id=str(current_user.id),
+                log_id=str(log_group.id),
+                asset_id=str(asset.id),
+            )
+        )
+
+        # Decode content for the preprocessor (best-effort UTF-8).
+        try:
+            content = raw_data.decode("utf-8")
+        except UnicodeDecodeError:
+            content = raw_data.decode("utf-8", errors="replace")
+
+        file_inputs.append(FileInput(filename=filename, content=content))
+
+    try:
+        database.flush()
+    except SQLAlchemyError as exc:
+        database.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to store uploaded files.",
+        ) from exc
+
+    # Phase 2: Run the preprocessor.
+    process_record = LogGroupProcess(
+        log_id=str(log_group.id),
+        user_id=str(current_user.id),
+        status="processing",
+    )
+    database.add(process_record)
+
+    try:
+        database.flush()
+    except SQLAlchemyError as exc:
+        database.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create process record.",
+        ) from exc
+
+    try:
+        service = LogPreprocessorService(table_name="log_entries")
+        result: PreprocessorResult = service.preprocess(file_inputs)
+
+        process_record.status = "completed"
+        process_record.result = result.model_dump_json()
+        process_record.schema_version = result.schema_version
+    except Exception as exc:
+        logger.exception("Preprocessor failed for log group %s", id)
+        process_record.status = "failed"
+        process_record.error = str(exc)
+        database.commit()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Preprocessing failed: {exc}",
+        ) from exc
+
+    # Phase 3: Apply the schema to the swarm database.
+    try:
+        swarm.apply_schema(str(log_group.id), result.sqlite_ddl)
+    except LogDatabaseError as exc:
+        logger.warning("Failed to apply schema DDL to swarm: %s", exc)
+        result.warnings.append(f"Schema DDL could not be applied: {exc}")
+        process_record.result = result.model_dump_json()
+
+    try:
+        database.commit()
+    except SQLAlchemyError as exc:
+        database.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to persist preprocessing result.",
+        ) from exc
+
+    _sync_metadata(database, str(log_group.id))
+
+    return UploadLogFilesResponse(
+        uploaded_files=len(file_inputs),
+        process_result=_serialize_preprocess_result(process_record),
     )
 
 
@@ -291,3 +498,25 @@ def query_logs(
         ) from exc
 
     return QueryLogsResponse.model_validate(query_result)
+
+
+@router.get("/{id}/processes", response_model=list[PreprocessResultResponse])
+def get_log_processes(
+    id: str,
+    database: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    log_group = _get_owned_log_group(database, str(current_user.id), id)
+
+    processes = (
+        database.query(LogGroupProcess)
+        .filter(
+            LogGroupProcess.log_id == str(log_group.id),
+            LogGroupProcess.user_id == str(current_user.id),
+            LogGroupProcess.status == "completed",
+        )
+        .order_by(LogGroupProcess.created_at.desc())
+        .all()
+    )
+
+    return [_serialize_preprocess_result(process) for process in processes]

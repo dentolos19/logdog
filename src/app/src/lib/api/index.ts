@@ -30,6 +30,60 @@ const logGroupSchema = logGroupListItemSchema.extend({
   tables: z.array(logGroupTableSchema),
 });
 
+const inferredColumnSchema = z.object({
+  name: z.string(),
+  sql_type: z.string(),
+  description: z.string(),
+  nullable: z.boolean(),
+  kind: z.string(),
+  example_values: z.array(z.string()),
+});
+
+const segmentationResultSchema = z.object({
+  strategy: z.string(),
+  confidence: z.number(),
+  rationale: z.string(),
+});
+
+const fileObservationSchema = z.object({
+  filename: z.string(),
+  line_count: z.number(),
+  detected_format: z.string(),
+  format_confidence: z.number(),
+  segmentation_hint: z.string(),
+  sample_size: z.number(),
+  warnings: z.array(z.string()),
+});
+
+const sampleRecordSchema = z.object({
+  source_file: z.string(),
+  line_start: z.number(),
+  line_end: z.number(),
+  fields: z.record(z.string(), z.unknown()),
+});
+
+const preprocessResultSchema = z.object({
+  id: z.string(),
+  log_id: z.string(),
+  schema_summary: z.string(),
+  schema_version: z.string(),
+  table_name: z.string(),
+  sqlite_ddl: z.string(),
+  columns: z.array(inferredColumnSchema),
+  segmentation: segmentationResultSchema,
+  sample_records: z.array(sampleRecordSchema),
+  file_observations: z.array(fileObservationSchema),
+  warnings: z.array(z.string()),
+  assumptions: z.array(z.string()),
+  confidence: z.number(),
+  created_at: z.string(),
+});
+
+const uploadLogFilesResponseSchema = z.object({
+  uploaded_files: z.number(),
+  process_result: preprocessResultSchema,
+});
+
 export const schema = createSchema({
   "/auth/login": {
     method: "post",
@@ -87,6 +141,10 @@ export const schema = createSchema({
   "@delete/logs/:id": {
     method: "delete",
   },
+  "@get/logs/:id/processes": {
+    method: "get",
+    output: z.array(preprocessResultSchema),
+  },
 });
 
 export const errorSchema = z.object({
@@ -127,4 +185,32 @@ export const updateLog = async (id: string, name: string) => {
 export const deleteLog = async (id: string) => {
   const { data, error } = await $fetch("@delete/logs/:id", { params: { id } });
   if (error) throw new Error(error.message ?? "Request failed.");
+};
+
+export const uploadLogFiles = async (id: string, files: File[]) => {
+  const formData = new FormData();
+  for (const file of files) {
+    formData.append("files", file);
+  }
+
+  const response = await fetch(`${API_URL}/logs/${encodeURIComponent(id)}`, {
+    method: "POST",
+    credentials: "include",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({ message: "Upload failed." }))) as {
+      message?: string;
+    };
+    throw new Error(body.message ?? "Upload failed.");
+  }
+
+  return uploadLogFilesResponseSchema.parse(await response.json());
+};
+
+export const getLogProcesses = async (id: string) => {
+  const { data, error } = await $fetch("@get/logs/:id/processes", { params: { id } });
+  if (error) throw new Error(error.message ?? "Request failed.");
+  return data!;
 };
