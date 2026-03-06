@@ -45,8 +45,10 @@ app.add_middleware(
 )
 
 from routes.auth import router as auth_router
+from routes.logs import router as logs_router
 
 app.include_router(auth_router)
+app.include_router(logs_router)
 
 
 @app.get("/")
