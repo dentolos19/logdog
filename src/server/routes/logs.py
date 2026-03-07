@@ -1,18 +1,21 @@
+import io
 import json
 import logging
 from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi.responses import StreamingResponse
 from lib.auth import get_current_user
 from lib.database import get_db
 from lib.database_swarm import LogDatabaseError, LogDatabaseSwarm, ReadOnlyQueryError
-from lib.models import LogGroup, LogGroupFile, LogGroupProcess, LogGroupTable, User
+from lib.models import Asset, LogGroup, LogGroupFile, LogGroupProcess, LogGroupTable, User
 from lib.preprocessor import (
     FileInput,
     LogPreprocessorService,
     PreprocessorResult,
 )
+from lib.storage import get_file as retrieve_asset
 from lib.storage import upload_file as store_asset
 from pydantic import BaseModel, Field
 from sqlalchemy.exc import SQLAlchemyError
@@ -33,6 +36,7 @@ QueryParameters = dict[str, JsonScalar] | list[JsonScalar] | None
 class LogTableColumnResponse(BaseModel):
     name: str
     type: str
+    description: str
     not_null: bool
     default_value: str | None
     primary_key: bool
@@ -42,6 +46,7 @@ class LogGroupTableResponse(BaseModel):
     id: str
     name: str
     columns: list[LogTableColumnResponse]
+    row_count: int
     is_normalized: bool
     created_at: datetime
     updated_at: datetime
@@ -68,9 +73,17 @@ class UpdateLogGroupRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
 
 
+class ExploreColumnResponse(BaseModel):
+    name: str
+    type: str
+    not_null: bool
+    default_value: str | None
+    primary_key: bool
+
+
 class ExploreTableResponse(BaseModel):
     name: str
-    columns: list[LogTableColumnResponse]
+    columns: list[ExploreColumnResponse]
     row_count: int
     preview_rows: list[dict[str, Any]]
 
@@ -106,7 +119,10 @@ def _get_owned_log_group(database: Session, user_id: str, log_group_id: str) -> 
     return log_group
 
 
-def _parse_columns(raw_columns: str) -> list[LogTableColumnResponse]:
+def _parse_columns(
+    raw_columns: str,
+    descriptions: dict[str, str] | None = None,
+) -> list[LogTableColumnResponse]:
     try:
         columns = json.loads(raw_columns)
     except json.JSONDecodeError as exc:
@@ -115,29 +131,96 @@ def _parse_columns(raw_columns: str) -> list[LogTableColumnResponse]:
             detail="Log table metadata is invalid.",
         ) from exc
 
-    return [LogTableColumnResponse.model_validate(column) for column in columns]
+    result: list[LogTableColumnResponse] = []
+    for column in columns:
+        description = ""
+        if descriptions is not None:
+            description = descriptions.get(column["name"], "")
+        result.append(
+            LogTableColumnResponse(
+                name=column["name"],
+                type=column["type"],
+                description=description,
+                not_null=column["not_null"],
+                default_value=column["default_value"],
+                primary_key=column["primary_key"],
+            )
+        )
+    return result
 
 
-def _serialize_log_group_table(table: LogGroupTable) -> LogGroupTableResponse:
+def _build_column_description_map(
+    database: Session,
+    log_group_id: str,
+    table_name: str,
+) -> dict[str, str]:
+    """Find the most recent completed process and extract column descriptions for the given table."""
+
+    latest_process = (
+        database.query(LogGroupProcess)
+        .filter(
+            LogGroupProcess.log_id == log_group_id,
+            LogGroupProcess.status == "completed",
+            LogGroupProcess.result.isnot(None),
+        )
+        .order_by(LogGroupProcess.created_at.desc())
+        .first()
+    )
+
+    if latest_process is None or latest_process.result is None:
+        return {}
+
+    try:
+        result_data = json.loads(str(latest_process.result))
+    except json.JSONDecodeError:
+        return {}
+
+    # Only use the description map when the result targets the same table name.
+    if result_data.get("table_name") != table_name:
+        return {}
+
+    return {
+        column["name"]: column.get("description", "")
+        for column in result_data.get("columns", [])
+    }
+
+
+def _serialize_log_group_table(
+    table: LogGroupTable,
+    row_count: int = 0,
+    descriptions: dict[str, str] | None = None,
+) -> LogGroupTableResponse:
     return LogGroupTableResponse(
         id=str(table.id),
         name=str(table.name),
-        columns=_parse_columns(str(table.columns)),
+        columns=_parse_columns(str(table.columns), descriptions),
+        row_count=row_count,
         is_normalized=bool(table.is_normalized),
         created_at=table.created_at,
         updated_at=table.updated_at,
     )
 
 
-def _serialize_log_group(log_group: LogGroup) -> LogGroupResponse:
+def _serialize_log_group(
+    log_group: LogGroup,
+    database: Session,
+    table_row_counts: dict[str, int] | None = None,
+) -> LogGroupResponse:
     sorted_tables = sorted(log_group.tables, key=lambda table: str(table.name).lower())
+    counts = table_row_counts or {}
+
+    serialized_tables: list[LogGroupTableResponse] = []
+    for table in sorted_tables:
+        descriptions = _build_column_description_map(database, str(log_group.id), str(table.name))
+        row_count = counts.get(str(table.name), 0)
+        serialized_tables.append(_serialize_log_group_table(table, row_count, descriptions))
 
     return LogGroupResponse(
         id=str(log_group.id),
         name=str(log_group.name),
         created_at=log_group.created_at,
         updated_at=log_group.updated_at,
-        tables=[_serialize_log_group_table(table) for table in sorted_tables],
+        tables=serialized_tables,
     )
 
 
@@ -157,6 +240,17 @@ def _sync_metadata(database: Session, log_group_id: str) -> None:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to access the log database: {exc}",
         ) from exc
+
+
+def _get_table_row_counts(log_group_id: str) -> dict[str, int]:
+    """Return a mapping of table name to row count from the swarm database."""
+
+    try:
+        summaries = swarm.summarize_tables(log_group_id)
+        return {summary["name"]: summary["row_count"] for summary in summaries}
+    except LogDatabaseError:
+        # Row counts are informational; a swarm failure should not block the response.
+        return {}
 
 
 @router.get("/", response_model=list[LogGroupListResponse])
@@ -193,14 +287,17 @@ def create_log_group(
         ) from exc
 
     _sync_metadata(database, str(log_group.id))
-    return _serialize_log_group(_get_owned_log_group(database, str(current_user.id), str(log_group.id)))
+    refreshed = _get_owned_log_group(database, str(current_user.id), str(log_group.id))
+    return _serialize_log_group(refreshed, database)
 
 
 @router.get("/{id}", response_model=LogGroupResponse)
 def get_log_group(id: str, database: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     log_group = _get_owned_log_group(database, str(current_user.id), id)
     _sync_metadata(database, str(log_group.id))
-    return _serialize_log_group(_get_owned_log_group(database, str(current_user.id), id))
+    row_counts = _get_table_row_counts(str(log_group.id))
+    refreshed = _get_owned_log_group(database, str(current_user.id), id)
+    return _serialize_log_group(refreshed, database, row_counts)
 
 
 @router.put("/{id}", response_model=LogGroupResponse)
@@ -223,7 +320,9 @@ def update_log_group(
         ) from exc
 
     _sync_metadata(database, str(log_group.id))
-    return _serialize_log_group(_get_owned_log_group(database, str(current_user.id), id))
+    row_counts = _get_table_row_counts(str(log_group.id))
+    refreshed = _get_owned_log_group(database, str(current_user.id), id)
+    return _serialize_log_group(refreshed, database, row_counts)
 
 
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -288,6 +387,35 @@ class SampleRecordResponse(BaseModel):
     fields: dict[str, Any]
 
 
+class ProcessResultDetails(BaseModel):
+    """Full details for a completed preprocess run, embedded in ProcessResponse."""
+
+    schema_summary: str
+    schema_version: str
+    table_name: str
+    sqlite_ddl: str
+    columns: list[InferredColumnResponse]
+    segmentation: SegmentationResultResponse
+    sample_records: list[SampleRecordResponse]
+    file_observations: list[FileObservationResponse]
+    warnings: list[str]
+    assumptions: list[str]
+    confidence: float
+
+
+class ProcessResponse(BaseModel):
+    """Status-oriented process record that covers processing, completed, and failed states."""
+
+    id: str
+    log_id: str
+    status: str
+    error: str | None
+    result: ProcessResultDetails | None
+    created_at: datetime
+    updated_at: datetime
+
+
+# Keep the old response model for the upload endpoint so its contract is unchanged.
 class PreprocessResultResponse(BaseModel):
     id: str
     log_id: str
@@ -310,8 +438,27 @@ class UploadLogFilesResponse(BaseModel):
     process_result: PreprocessResultResponse
 
 
-def _serialize_preprocess_result(process: LogGroupProcess) -> PreprocessResultResponse:
-    """Deserialize the stored JSON result into the response model."""
+# ---------------------------------------------------------------------------
+# File Response Models
+# ---------------------------------------------------------------------------
+
+
+class LogGroupFileResponse(BaseModel):
+    id: str
+    asset_id: str
+    name: str
+    size: int
+    mime_type: str
+    created_at: datetime
+
+
+# ---------------------------------------------------------------------------
+# Serialization helpers
+# ---------------------------------------------------------------------------
+
+
+def _serialize_process_record(process: LogGroupProcess) -> PreprocessResultResponse:
+    """Serialize a completed LogGroupProcess into the upload-response shape."""
 
     result = json.loads(str(process.result))
 
@@ -330,6 +477,56 @@ def _serialize_preprocess_result(process: LogGroupProcess) -> PreprocessResultRe
         assumptions=result["assumptions"],
         confidence=result["confidence"],
         created_at=process.created_at,
+    )
+
+
+def _serialize_process_status(process: LogGroupProcess) -> ProcessResponse:
+    """Serialize a LogGroupProcess into the status-oriented response used by the processes tab."""
+
+    details: ProcessResultDetails | None = None
+
+    if process.status == "completed" and process.result is not None:
+        try:
+            result_data = json.loads(str(process.result))
+            details = ProcessResultDetails(
+                schema_summary=result_data["schema_summary"],
+                schema_version=result_data["schema_version"],
+                table_name=result_data["table_name"],
+                sqlite_ddl=result_data["sqlite_ddl"],
+                columns=[InferredColumnResponse(**column) for column in result_data["columns"]],
+                segmentation=SegmentationResultResponse(**result_data["segmentation"]),
+                sample_records=[SampleRecordResponse(**record) for record in result_data["sample_records"]],
+                file_observations=[
+                    FileObservationResponse(**observation) for observation in result_data["file_observations"]
+                ],
+                warnings=result_data["warnings"],
+                assumptions=result_data["assumptions"],
+                confidence=result_data["confidence"],
+            )
+        except (json.JSONDecodeError, KeyError):
+            # If the stored JSON is malformed, surface the process without crashing.
+            pass
+
+    return ProcessResponse(
+        id=str(process.id),
+        log_id=str(process.log_id),
+        status=str(process.status),
+        error=str(process.error) if process.error is not None else None,
+        result=details,
+        created_at=process.created_at,
+        updated_at=process.updated_at,
+    )
+
+
+def _serialize_log_group_file(log_file: LogGroupFile) -> LogGroupFileResponse:
+    asset: Asset = log_file.asset
+    return LogGroupFileResponse(
+        id=str(log_file.id),
+        asset_id=str(asset.id),
+        name=str(asset.name),
+        size=int(asset.size),
+        mime_type=str(asset.type),
+        created_at=log_file.created_at,
     )
 
 
@@ -451,7 +648,7 @@ def upload_log_files(
 
     return UploadLogFilesResponse(
         uploaded_files=len(file_inputs),
-        process_result=_serialize_preprocess_result(process_record),
+        process_result=_serialize_process_record(process_record),
     )
 
 
@@ -500,7 +697,7 @@ def query_logs(
     return QueryLogsResponse.model_validate(query_result)
 
 
-@router.get("/{id}/processes", response_model=list[PreprocessResultResponse])
+@router.get("/{id}/processes", response_model=list[ProcessResponse])
 def get_log_processes(
     id: str,
     database: Session = Depends(get_db),
@@ -513,10 +710,67 @@ def get_log_processes(
         .filter(
             LogGroupProcess.log_id == str(log_group.id),
             LogGroupProcess.user_id == str(current_user.id),
-            LogGroupProcess.status == "completed",
         )
         .order_by(LogGroupProcess.created_at.desc())
         .all()
     )
 
-    return [_serialize_preprocess_result(process) for process in processes]
+    return [_serialize_process_status(process) for process in processes]
+
+
+@router.get("/{id}/files", response_model=list[LogGroupFileResponse])
+def get_log_files(
+    id: str,
+    database: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    log_group = _get_owned_log_group(database, str(current_user.id), id)
+
+    log_files = (
+        database.query(LogGroupFile)
+        .filter(
+            LogGroupFile.log_id == str(log_group.id),
+            LogGroupFile.user_id == str(current_user.id),
+        )
+        .options(selectinload(LogGroupFile.asset))
+        .order_by(LogGroupFile.created_at.desc())
+        .all()
+    )
+
+    return [_serialize_log_group_file(log_file) for log_file in log_files]
+
+
+@router.get("/{id}/files/{file_id}/download")
+def download_log_file(
+    id: str,
+    file_id: str,
+    database: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    log_group = _get_owned_log_group(database, str(current_user.id), id)
+
+    log_file = (
+        database.query(LogGroupFile)
+        .filter(
+            LogGroupFile.id == file_id,
+            LogGroupFile.log_id == str(log_group.id),
+            LogGroupFile.user_id == str(current_user.id),
+        )
+        .options(selectinload(LogGroupFile.asset))
+        .first()
+    )
+
+    if log_file is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found.")
+
+    asset: Asset = log_file.asset
+    raw_data = retrieve_asset(file_id=str(asset.id), db=database)
+
+    return StreamingResponse(
+        content=io.BytesIO(raw_data),
+        media_type=str(asset.type),
+        headers={
+            "Content-Disposition": f'attachment; filename="{asset.name}"',
+            "Content-Length": str(asset.size),
+        },
+    )

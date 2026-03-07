@@ -5,6 +5,7 @@ import z from "zod";
 const logTableColumnSchema = z.object({
   name: z.string(),
   type: z.string(),
+  description: z.string(),
   not_null: z.boolean(),
   default_value: z.string().nullable(),
   primary_key: z.boolean(),
@@ -14,6 +15,7 @@ const logGroupTableSchema = z.object({
   id: z.string(),
   name: z.string(),
   columns: z.array(logTableColumnSchema),
+  row_count: z.number(),
   is_normalized: z.boolean(),
   created_at: z.string(),
   updated_at: z.string(),
@@ -84,6 +86,39 @@ const uploadLogFilesResponseSchema = z.object({
   process_result: preprocessResultSchema,
 });
 
+const processResultDetailsSchema = z.object({
+  schema_summary: z.string(),
+  schema_version: z.string(),
+  table_name: z.string(),
+  sqlite_ddl: z.string(),
+  columns: z.array(inferredColumnSchema),
+  segmentation: segmentationResultSchema,
+  sample_records: z.array(sampleRecordSchema),
+  file_observations: z.array(fileObservationSchema),
+  warnings: z.array(z.string()),
+  assumptions: z.array(z.string()),
+  confidence: z.number(),
+});
+
+const processResponseSchema = z.object({
+  id: z.string(),
+  log_id: z.string(),
+  status: z.string(),
+  error: z.string().nullable(),
+  result: processResultDetailsSchema.nullable(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+
+const logGroupFileSchema = z.object({
+  id: z.string(),
+  asset_id: z.string(),
+  name: z.string(),
+  size: z.number(),
+  mime_type: z.string(),
+  created_at: z.string(),
+});
+
 export const schema = createSchema({
   "/auth/login": {
     method: "post",
@@ -143,7 +178,11 @@ export const schema = createSchema({
   },
   "@get/logs/:id/processes": {
     method: "get",
-    output: z.array(preprocessResultSchema),
+    output: z.array(processResponseSchema),
+  },
+  "@get/logs/:id/files": {
+    method: "get",
+    output: z.array(logGroupFileSchema),
   },
 });
 
@@ -213,4 +252,29 @@ export const getLogProcesses = async (id: string) => {
   const { data, error } = await $fetch("@get/logs/:id/processes", { params: { id } });
   if (error) throw new Error(error.message ?? "Request failed.");
   return data!;
+};
+
+export const getLogFiles = async (id: string) => {
+  const { data, error } = await $fetch("@get/logs/:id/files", { params: { id } });
+  if (error) throw new Error(error.message ?? "Request failed.");
+  return data!;
+};
+
+export const downloadLogFile = async (logGroupId: string, fileId: string): Promise<Blob> => {
+  const response = await fetch(
+    `${API_URL}/logs/${encodeURIComponent(logGroupId)}/files/${encodeURIComponent(fileId)}/download`,
+    {
+      method: "GET",
+      credentials: "include",
+    },
+  );
+
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({ message: "Download failed." }))) as {
+      message?: string;
+    };
+    throw new Error(body.message ?? "Download failed.");
+  }
+
+  return response.blob();
 };

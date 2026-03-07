@@ -6,6 +6,7 @@ export type User = z.infer<(typeof schema.schema)["/auth/me"]["output"]>;
 export interface LogTableColumn {
   name: string;
   type: string;
+  description: string;
   not_null: boolean;
   default_value: string | null;
   primary_key: boolean;
@@ -15,6 +16,7 @@ export interface LogGroupTable {
   id: string;
   name: string;
   columns: LogTableColumn[];
+  row_count: number;
   is_normalized: boolean;
   created_at: string;
   updated_at: string;
@@ -83,4 +85,37 @@ export interface PreprocessResult {
 export interface UploadLogFilesResponse {
   uploaded_files: number;
   process_result: PreprocessResult;
+}
+
+export interface ProcessResultDetails {
+  schema_summary: string;
+  schema_version: string;
+  table_name: string;
+  sqlite_ddl: string;
+  columns: InferredColumn[];
+  segmentation: SegmentationResult;
+  sample_records: SampleRecord[];
+  file_observations: FileObservation[];
+  warnings: string[];
+  assumptions: string[];
+  confidence: number;
+}
+
+export interface LogProcess {
+  id: string;
+  log_id: string;
+  status: string;
+  error: string | null;
+  result: ProcessResultDetails | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LogGroupFile {
+  id: string;
+  asset_id: string;
+  name: string;
+  size: number;
+  mime_type: string;
+  created_at: string;
 }

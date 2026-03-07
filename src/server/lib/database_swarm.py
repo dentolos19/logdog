@@ -131,6 +131,33 @@ class LogDatabaseSwarm:
         except sqlite3.DatabaseError as exc:
             raise LogDatabaseError(str(exc)) from exc
 
+    def summarize_tables(self, log_group_id: str) -> list[dict[str, Any]]:
+        """Return each table's name, columns, and row count without loading preview rows."""
+
+        database_path = self.ensure_database(log_group_id)
+
+        try:
+            with self._connect(database_path) as connection:
+                tables = self.list_tables(log_group_id)
+                summaries: list[dict[str, Any]] = []
+
+                for table in tables:
+                    safe_table_name = self._quote_identifier(table["name"])
+                    row_count_row = connection.execute(
+                        f"SELECT COUNT(*) AS row_count FROM {safe_table_name}"
+                    ).fetchone()
+                    summaries.append(
+                        {
+                            "name": table["name"],
+                            "columns": table["columns"],
+                            "row_count": int(row_count_row["row_count"] if row_count_row is not None else 0),
+                        }
+                    )
+
+                return summaries
+        except sqlite3.DatabaseError as exc:
+            raise LogDatabaseError(str(exc)) from exc
+
     def explore_database(self, log_group_id: str, preview_limit: int = PREVIEW_ROW_LIMIT) -> list[dict[str, Any]]:
         database_path = self.ensure_database(log_group_id)
 

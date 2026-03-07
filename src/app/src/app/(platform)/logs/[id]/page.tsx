@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { DatabaseZapIcon, MoreHorizontalIcon, PencilIcon, Trash2Icon } from "lucide-react";
+import { MoreHorizontalIcon, PencilIcon, Trash2Icon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { use, useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -18,7 +18,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
@@ -28,13 +27,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import { deleteLog, getLog, updateLog } from "@/lib/api";
-import type { LogGroup } from "@/lib/api/types";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { deleteLog, getLog, getLogFiles, getLogProcesses, updateLog } from "@/lib/api";
+import type { LogGroup, LogGroupFile, LogProcess } from "@/lib/api/types";
+import { FilesTab } from "./_components/files-tab";
+import { ProcessesTab } from "./_components/processes-tab";
+import { TablesTab } from "./_components/tables-tab";
 import { UploadSection } from "./_components/upload-section";
 
 const renameLogGroupSchema = z.object({
@@ -46,8 +48,18 @@ type RenameLogGroupValues = z.infer<typeof renameLogGroupSchema>;
 export default function LogGroupPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
+
   const [logGroup, setLogGroup] = useState<LogGroup | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
+
+  const [processes, setProcesses] = useState<LogProcess[]>([]);
+  const [processesLoading, setProcessesLoading] = useState(false);
+  const [processesError, setProcessesError] = useState<string | null>(null);
+
+  const [files, setFiles] = useState<LogGroupFile[]>([]);
+  const [filesLoading, setFilesLoading] = useState(false);
+  const [filesError, setFilesError] = useState<string | null>(null);
+
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -73,9 +85,42 @@ export default function LogGroupPage({ params }: { params: Promise<{ id: string 
     }
   }, [id, router]);
 
+  const fetchProcesses = useCallback(async () => {
+    setProcessesLoading(true);
+    setProcessesError(null);
+    try {
+      const data = await getLogProcesses(id);
+      setProcesses(data);
+    } catch (err) {
+      setProcessesError(err instanceof Error ? err.message : "Failed to load processes.");
+    } finally {
+      setProcessesLoading(false);
+    }
+  }, [id]);
+
+  const fetchFiles = useCallback(async () => {
+    setFilesLoading(true);
+    setFilesError(null);
+    try {
+      const data = await getLogFiles(id);
+      setFiles(data);
+    } catch (err) {
+      setFilesError(err instanceof Error ? err.message : "Failed to load files.");
+    } finally {
+      setFilesLoading(false);
+    }
+  }, [id]);
+
+  // Refresh all tab data after a successful upload.
+  const onUploadSuccess = useCallback(async () => {
+    await Promise.all([fetchLogGroup(), fetchProcesses(), fetchFiles()]);
+  }, [fetchLogGroup, fetchProcesses, fetchFiles]);
+
   useEffect(() => {
     fetchLogGroup();
-  }, [fetchLogGroup]);
+    fetchProcesses();
+    fetchFiles();
+  }, [fetchLogGroup, fetchProcesses, fetchFiles]);
 
   const openRenameDialog = () => {
     renameForm.reset({ name: logGroup?.name ?? "" });
@@ -158,60 +203,41 @@ export default function LogGroupPage({ params }: { params: Promise<{ id: string 
         )}
 
         {logGroup !== null && (
-          <>
-            <UploadSection logGroupId={id} onUploadSuccess={fetchLogGroup} />
+          <Tabs defaultValue={"data"} className={"flex flex-col gap-4"}>
+            <TabsList className={"w-fit"}>
+              <TabsTrigger value={"data"}>Data</TabsTrigger>
+              <TabsTrigger value={"processes"}>Processes</TabsTrigger>
+              <TabsTrigger value={"files"}>Files</TabsTrigger>
+            </TabsList>
 
-            {/* Tables Section */}
-            <section className={"flex flex-col gap-3"}>
-              <div className={"flex items-center gap-2"}>
-                <h2 className={"text-sm font-semibold"}>Tables</h2>
-                {logGroup.tables.length > 0 && <Badge variant={"secondary"}>{logGroup.tables.length}</Badge>}
-              </div>
+            {/* Tab 1: Upload + Tables */}
+            <TabsContent value={"data"} className={"flex flex-col gap-6"}>
+              <UploadSection logGroupId={id} onUploadSuccess={onUploadSuccess} />
 
-              {logGroup.tables.length === 0 ? (
-                <Empty className={"border"}>
-                  <EmptyHeader>
-                    <EmptyMedia variant={"icon"}>
-                      <DatabaseZapIcon />
-                    </EmptyMedia>
-                    <EmptyTitle>No tables yet</EmptyTitle>
-                    <EmptyDescription>Upload log files to automatically generate queryable tables.</EmptyDescription>
-                  </EmptyHeader>
-                </Empty>
-              ) : (
-                <div className={"flex flex-col gap-2"}>
-                  {logGroup.tables.map((table) => (
-                    <div key={table.id} className={"flex flex-col gap-3 rounded-md border p-4"}>
-                      <div className={"flex items-center gap-2"}>
-                        <span className={"font-mono text-sm font-medium"}>{table.name}</span>
-                        <div className={"ml-auto flex items-center gap-1.5"}>
-                          {table.is_normalized && <Badge variant={"outline"}>Normalized</Badge>}
-                          <Badge variant={"secondary"}>
-                            {table.columns.length} {table.columns.length === 1 ? "column" : "columns"}
-                          </Badge>
-                        </div>
-                      </div>
-                      {table.columns.length > 0 && (
-                        <div className={"flex flex-wrap gap-1.5"}>
-                          {table.columns.map((column) => (
-                            <span
-                              key={column.name}
-                              className={
-                                "inline-flex items-baseline gap-1 rounded-sm bg-muted px-2 py-0.5 font-mono text-xs text-muted-foreground"
-                              }
-                            >
-                              <span className={"font-medium text-foreground"}>{column.name}</span>
-                              <span>{column.type}</span>
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ))}
+              <section className={"flex flex-col gap-3"}>
+                <div className={"flex items-center gap-2"}>
+                  <h2 className={"text-sm font-semibold"}>Tables</h2>
                 </div>
-              )}
-            </section>
-          </>
+                <TablesTab tables={logGroup.tables} />
+              </section>
+            </TabsContent>
+
+            {/* Tab 2: Processes */}
+            <TabsContent value={"processes"} className={"flex flex-col gap-3"}>
+              <div className={"flex items-center gap-2"}>
+                <h2 className={"text-sm font-semibold"}>Processes</h2>
+              </div>
+              <ProcessesTab processes={processes} isLoading={processesLoading} error={processesError} />
+            </TabsContent>
+
+            {/* Tab 3: Files */}
+            <TabsContent value={"files"} className={"flex flex-col gap-3"}>
+              <div className={"flex items-center gap-2"}>
+                <h2 className={"text-sm font-semibold"}>Files</h2>
+              </div>
+              <FilesTab logGroupId={id} files={files} isLoading={filesLoading} error={filesError} />
+            </TabsContent>
+          </Tabs>
         )}
       </main>
 
