@@ -8,6 +8,16 @@ from typing import Any
 from langchain_openrouter import ChatOpenRouter
 from pydantic import BaseModel, Field, SecretStr
 
+# Lazy import to avoid circular dependency at module level.
+_unstructured_parser = None
+
+def _get_unstructured_parser():
+    global _unstructured_parser
+    if _unstructured_parser is None:
+        from lib import unstructured_parser as _up
+        _unstructured_parser = _up
+    return _unstructured_parser
+
 logger = logging.getLogger(__name__)
 
 APP_NAME = os.getenv("APP_NAME", "NAISC")
@@ -244,7 +254,25 @@ class LogPreprocessorService:
 
             detected_format, format_confidence = self._detect_format(lines)
             segmentation = self._detect_segmentation(lines, detected_format)
-            heuristic_columns = self._extract_heuristic_columns(lines, detected_format)
+            heuristic_columns = self._extract_heuristic_columns(lines, detected_format, format_confidence)
+
+            # When the unstructured parser was used for a KV-classified file,
+            # the domain-aware extraction is more reliable than the raw KV
+            # score suggests.  Boost format_confidence based on how many
+            # domain columns were discovered.
+            if (
+                detected_format == DetectedFormat.KEY_VALUE
+                and format_confidence < 0.6
+            ):
+                domain_col_count = sum(
+                    1 for col in heuristic_columns
+                    if col.name in (
+                        "wafer_id", "tool_id", "recipe_id", "process_step",
+                        "template", "template_cluster_id",
+                    )
+                )
+                if domain_col_count >= 2:
+                    format_confidence = max(format_confidence, 0.65)
 
             file_warnings: list[str] = []
             if format_confidence < 0.5:
@@ -465,7 +493,9 @@ class LogPreprocessorService:
     # Heuristic Column Extraction
     # ------------------------------------------------------------------
 
-    def _extract_heuristic_columns(self, lines: list[str], detected_format: DetectedFormat) -> list[InferredColumn]:
+    def _extract_heuristic_columns(
+        self, lines: list[str], detected_format: DetectedFormat, format_confidence: float = 1.0,
+    ) -> list[InferredColumn]:
         """Derive columns from the detected format."""
 
         if detected_format == DetectedFormat.JSON_LINES:
@@ -477,7 +507,18 @@ class LogPreprocessorService:
         if detected_format in (DetectedFormat.APACHE_ACCESS, DetectedFormat.NGINX_ACCESS):
             return self._columns_from_clf()
         if detected_format in (DetectedFormat.LOGFMT, DetectedFormat.KEY_VALUE):
+            # Low-confidence KV often means mixed prose with embedded key=value
+            # pairs (e.g., semiconductor fab logs). Run the unstructured parser
+            # which has domain-aware extraction and compare results.
+            if format_confidence < 0.6:
+                kv_columns = self._columns_from_logfmt(lines)
+                unstructured_columns = _get_unstructured_parser().extract_unstructured_columns(lines)
+                if len(unstructured_columns) >= len(kv_columns):
+                    return unstructured_columns
+                return kv_columns
             return self._columns_from_logfmt(lines)
+        if detected_format in (DetectedFormat.PLAIN_TEXT, DetectedFormat.UNKNOWN):
+            return _get_unstructured_parser().extract_unstructured_columns(lines)
         return []
 
     def _columns_from_json(self, lines: list[str]) -> list[InferredColumn]:
@@ -950,6 +991,13 @@ class LogPreprocessorService:
                             fields["additional_data"] = json.dumps(additional)
             except (json.JSONDecodeError, ValueError):
                 pass
+        else:
+            # For non-JSON text, use unstructured field extraction.
+            up = _get_unstructured_parser()
+            extra = up.extract_fields_heuristic(raw_text)
+            for key, value in extra.items():
+                if key in column_names and key not in fields:
+                    fields[key] = value
 
         # If we could not extract a message, use the full text (trimmed).
         if "message" not in fields:

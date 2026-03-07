@@ -9,7 +9,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
 import { uploadLogFiles } from "@/lib/api";
 import type { InferredColumn, PreprocessResult } from "@/lib/api/types";
@@ -194,11 +193,11 @@ export function UploadSection({ logGroupId, onUploadSuccess }: UploadSectionProp
       {/* Schema analysis dialog */}
       {result !== null && (
         <Dialog open={isSchemaDialogOpen} onOpenChange={setIsSchemaDialogOpen}>
-          <DialogContent className={"flex max-h-[85vh] flex-col overflow-hidden sm:max-w-2xl"}>
-            <DialogHeader>
+          <DialogContent className={"flex max-h-[90vh] flex-col overflow-hidden sm:max-w-3xl"}>
+            <DialogHeader className={"shrink-0"}>
               <DialogTitle>Schema Analysis</DialogTitle>
             </DialogHeader>
-            <div className={"overflow-y-auto"}>
+            <div className={"min-h-0 flex-1 overflow-y-auto pr-1"}>
               <PreprocessorResultPanel result={result} className={"border-0 p-0"} />
             </div>
           </DialogContent>
@@ -273,13 +272,11 @@ function PreprocessorResultPanel({ result, className }: PreprocessorResultPanelP
               View {result.columns.length} inferred columns
             </AccordionTrigger>
             <AccordionContent>
-              <ScrollArea className={"max-h-72"}>
-                <div className={"flex flex-col divide-y"}>
-                  {result.columns.map((column) => (
-                    <ColumnRow key={column.name} column={column} />
-                  ))}
-                </div>
-              </ScrollArea>
+              <div className={"flex flex-col divide-y"}>
+                {result.columns.map((column) => (
+                  <ColumnRow key={column.name} column={column} />
+                ))}
+              </div>
             </AccordionContent>
           </AccordionItem>
         </Accordion>
@@ -297,24 +294,22 @@ function PreprocessorResultPanel({ result, className }: PreprocessorResultPanelP
                 Preview {result.sample_records.length} records
               </AccordionTrigger>
               <AccordionContent>
-                <ScrollArea className={"max-h-64"}>
-                  <div className={"flex flex-col divide-y"}>
-                    {result.sample_records.map((record, index) => (
-                      <div key={index} className={"flex flex-col gap-1 p-3"}>
-                        <span className={"font-mono text-[10px] text-muted-foreground"}>
-                          {record.source_file}:{record.line_start}
-                        </span>
-                        <pre
-                          className={
-                            "overflow-x-auto whitespace-pre-wrap break-all font-mono text-[10px] text-foreground"
-                          }
-                        >
-                          {JSON.stringify(record.fields, null, 2)}
-                        </pre>
-                      </div>
-                    ))}
-                  </div>
-                </ScrollArea>
+                <div className={"flex flex-col divide-y"}>
+                  {result.sample_records.map((record, index) => (
+                    <div key={index} className={"flex flex-col gap-1 p-3"}>
+                      <span className={"font-mono text-[10px] text-muted-foreground"}>
+                        {record.source_file}:{record.line_start}
+                      </span>
+                      <pre
+                        className={
+                          "overflow-x-auto whitespace-pre-wrap break-all font-mono text-[10px] text-foreground"
+                        }
+                      >
+                        {JSON.stringify(record.fields, null, 2)}
+                      </pre>
+                    </div>
+                  ))}
+                </div>
               </AccordionContent>
             </AccordionItem>
           </Accordion>

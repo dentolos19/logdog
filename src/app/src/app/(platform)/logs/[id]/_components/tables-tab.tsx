@@ -7,7 +7,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import type { LogGroupFile, LogGroupTable, LogTableColumn } from "@/lib/api/types";
 
 interface TablesTabProps {
@@ -86,8 +85,8 @@ function TableDetailsDialog({ table, files, onClose }: TableDetailsDialogProps) 
         if (!open) onClose();
       }}
     >
-      <DialogContent className={"flex max-h-[80vh] flex-col overflow-hidden sm:max-w-xl"}>
-        <DialogHeader>
+      <DialogContent className={"flex max-h-[90vh] flex-col overflow-hidden sm:max-w-2xl"}>
+        <DialogHeader className={"shrink-0"}>
           <DialogTitle>{presentation.displayName}</DialogTitle>
           <DialogDescription>
             {table.name}
@@ -98,13 +97,13 @@ function TableDetailsDialog({ table, files, onClose }: TableDetailsDialogProps) 
           </DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className={"flex-1"}>
+        <div className={"min-h-0 flex-1 overflow-y-auto"}>
           <div className={"flex flex-col divide-y rounded-md border"}>
             {table.columns.map((column) => (
               <ColumnDetailRow key={column.name} column={column} />
             ))}
           </div>
-        </ScrollArea>
+        </div>
       </DialogContent>
     </Dialog>
   );

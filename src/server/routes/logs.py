@@ -627,11 +627,11 @@ def upload_log_files(
         )
         database.add(log_group_file)
 
-        # Decode content for the preprocessor (best-effort UTF-8).
-        try:
-            content = raw_data.decode("utf-8")
-        except UnicodeDecodeError:
-            content = raw_data.decode("utf-8", errors="replace")
+        # Decode content for the preprocessor.
+        # For binary files, run through our decoder pipeline first.
+        from lib.unstructured_parser import preprocess_binary_input
+        decoded_lines = preprocess_binary_input(raw_data)
+        content = "\n".join(decoded_lines)
 
         staged_file_inputs.append((log_group_file, filename, content))
 
