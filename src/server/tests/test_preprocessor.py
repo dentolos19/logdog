@@ -204,6 +204,30 @@ class TestDdlGeneration:
         finally:
             connection.close()
 
+    def test_all_generated_table_ddls_are_valid(self, service: LogPreprocessorService) -> None:
+        file_a = FileInput(file_id="file-a", filename="a.log", content="\n".join(SYSLOG_SAMPLE))
+        file_b = FileInput(file_id="file-b", filename="b.log", content="\n".join(CSV_SAMPLE))
+
+        result = service.preprocess([file_a, file_b])
+
+        connection = sqlite3.connect(":memory:")
+        try:
+            for table in result.generated_tables:
+                connection.execute(table.sqlite_ddl)
+
+            created_tables = {
+                row[0]
+                for row in connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
+                ).fetchall()
+            }
+
+            assert service.table_name in created_tables
+            assert f"{service.table_name}_file-a" in created_tables
+            assert f"{service.table_name}_file-b" in created_tables
+        finally:
+            connection.close()
+
     def test_ddl_contains_id_primary_key(self, service: LogPreprocessorService) -> None:
         columns = [
             InferredColumn(name="id", sql_type=SqlType.INTEGER, nullable=False, kind=ColumnKind.BASELINE),
@@ -244,6 +268,41 @@ class TestSchemaeMerge:
         file_input = FileInput(filename="test.log", content="\n".join(APACHE_ACCESS_LOG))
         result = service.preprocess([file_input])
         assert len(result.sample_records) > 0
+
+    def test_generated_tables_include_normalized_and_per_file_tables(self, service: LogPreprocessorService) -> None:
+        file_a = FileInput(file_id="file-a", filename="a.log", content="\n".join(JSON_LINES_SAMPLE))
+        file_b = FileInput(file_id="file-b", filename="b.log", content="\n".join(CSV_SAMPLE))
+
+        result = service.preprocess([file_a, file_b])
+
+        generated_names = {table.table_name for table in result.generated_tables}
+
+        assert service.table_name in generated_names
+        assert f"{service.table_name}_file-a" in generated_names
+        assert f"{service.table_name}_file-b" in generated_names
+
+    def test_per_file_tables_use_file_specific_columns(self, service: LogPreprocessorService) -> None:
+        file_a = FileInput(
+            file_id="json-file",
+            filename="a.log",
+            content='{"host": "web1", "status": 200}\n{"host": "web2", "status": 404}',
+        )
+        file_b = FileInput(
+            file_id="csv-file",
+            filename="b.csv",
+            content="timestamp,level,latency\n2025-01-01T00:00:00Z,INFO,120",
+        )
+
+        result = service.preprocess([file_a, file_b])
+
+        per_file_tables = {table.file_id: table for table in result.generated_tables if table.file_id is not None}
+        json_table_columns = {column.name for column in per_file_tables["json-file"].columns}
+        csv_table_columns = {column.name for column in per_file_tables["csv-file"].columns}
+
+        assert "status" in json_table_columns
+        assert "latency" not in json_table_columns
+        assert "latency" in csv_table_columns
+        assert "status" not in csv_table_columns
 
 
 # ---------------------------------------------------------------------------

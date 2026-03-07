@@ -82,6 +82,7 @@ interface ProcessRowProps {
 
 function ProcessRow({ process, onViewDetails }: ProcessRowProps) {
   const formattedDate = format(new Date(process.created_at), "MMM d, yyyy 'at' h:mm a");
+  const generatedTableCount = process.result?.generated_tables.length ?? 0;
 
   return (
     <div className={"flex flex-col gap-1.5 rounded-md border p-4"}>
@@ -90,7 +91,7 @@ function ProcessRow({ process, onViewDetails }: ProcessRowProps) {
         <div className={"flex flex-1 flex-col gap-0.5"}>
           <span className={"text-sm font-medium"}>
             {process.status === "completed"
-              ? `Processed into ${process.result?.table_name ?? "table"}`
+              ? `Created ${generatedTableCount} ${generatedTableCount === 1 ? "table" : "tables"}`
               : process.status === "failed"
                 ? "Preprocessing failed"
                 : "Processing…"}
@@ -108,7 +109,7 @@ function ProcessRow({ process, onViewDetails }: ProcessRowProps) {
 
       {process.status === "completed" && process.result !== null && (
         <div className={"flex items-center gap-2 text-xs text-muted-foreground"}>
-          <span>{process.result.columns.length} columns inferred</span>
+          <span>{process.result.generated_tables.length} table(s) generated</span>
           <span>&middot;</span>
           <span>{Math.round(process.result.confidence * 100)}% confidence</span>
           <span>&middot;</span>
@@ -214,6 +215,30 @@ function ProcessDetailsDialog({ process, onClose }: ProcessDetailsDialogProps) {
             )}
 
             <div className={"flex flex-col gap-1.5"}>
+              <span className={"text-xs font-medium text-muted-foreground"}>
+                Generated Tables ({details.generated_tables.length})
+              </span>
+              <div className={"flex flex-col divide-y rounded-md border"}>
+                {details.generated_tables.map((table) => (
+                  <div key={table.table_name} className={"flex items-center gap-3 px-3 py-2"}>
+                    <span className={"flex-1 text-xs font-medium"}>{getGeneratedTableLabel(table)}</span>
+                    {table.is_normalized ? (
+                      <Badge variant={"outline"} className={"shrink-0 text-xs"}>
+                        Normalized
+                      </Badge>
+                    ) : (
+                      table.file_name !== null && (
+                        <Badge variant={"outline"} className={"max-w-40 shrink-0 truncate text-xs"}>
+                          {table.file_name}
+                        </Badge>
+                      )
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className={"flex flex-col gap-1.5"}>
               <span className={"text-xs font-medium text-muted-foreground"}>Columns ({details.columns.length})</span>
               <Accordion type={"single"} collapsible={true}>
                 <AccordionItem value={"columns"} className={"rounded-md border"}>
@@ -274,4 +299,16 @@ function ProcessDetailsDialog({ process, onClose }: ProcessDetailsDialogProps) {
       </DialogContent>
     </Dialog>
   );
+}
+
+function getGeneratedTableLabel(table: ProcessResultDetails["generated_tables"][number]): string {
+  if (table.is_normalized) {
+    return "Normalized Logs";
+  }
+
+  if (table.file_name !== null) {
+    return `Logs for ${table.file_name}`;
+  }
+
+  return table.table_name;
 }

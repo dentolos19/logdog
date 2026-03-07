@@ -42,6 +42,15 @@ export interface InferredColumn {
   example_values: string[];
 }
 
+export interface GeneratedTable {
+  table_name: string;
+  sqlite_ddl: string;
+  columns: InferredColumn[];
+  is_normalized: boolean;
+  file_id: string | null;
+  file_name: string | null;
+}
+
 export interface SegmentationResult {
   strategy: string;
   confidence: number;
@@ -73,6 +82,7 @@ export interface PreprocessResult {
   table_name: string;
   sqlite_ddl: string;
   columns: InferredColumn[];
+  generated_tables: GeneratedTable[];
   segmentation: SegmentationResult;
   sample_records: SampleRecord[];
   file_observations: FileObservation[];
@@ -93,6 +103,7 @@ export interface ProcessResultDetails {
   table_name: string;
   sqlite_ddl: string;
   columns: InferredColumn[];
+  generated_tables: GeneratedTable[];
   segmentation: SegmentationResult;
   sample_records: SampleRecord[];
   file_observations: FileObservation[];

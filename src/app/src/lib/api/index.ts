@@ -41,6 +41,15 @@ const inferredColumnSchema = z.object({
   example_values: z.array(z.string()),
 });
 
+const generatedTableSchema = z.object({
+  table_name: z.string(),
+  sqlite_ddl: z.string(),
+  columns: z.array(inferredColumnSchema),
+  is_normalized: z.boolean(),
+  file_id: z.string().nullable(),
+  file_name: z.string().nullable(),
+});
+
 const segmentationResultSchema = z.object({
   strategy: z.string(),
   confidence: z.number(),
@@ -72,6 +81,7 @@ const preprocessResultSchema = z.object({
   table_name: z.string(),
   sqlite_ddl: z.string(),
   columns: z.array(inferredColumnSchema),
+  generated_tables: z.array(generatedTableSchema),
   segmentation: segmentationResultSchema,
   sample_records: z.array(sampleRecordSchema),
   file_observations: z.array(fileObservationSchema),
@@ -92,6 +102,7 @@ const processResultDetailsSchema = z.object({
   table_name: z.string(),
   sqlite_ddl: z.string(),
   columns: z.array(inferredColumnSchema),
+  generated_tables: z.array(generatedTableSchema),
   segmentation: segmentationResultSchema,
   sample_records: z.array(sampleRecordSchema),
   file_observations: z.array(fileObservationSchema),

@@ -175,14 +175,51 @@ def _build_column_description_map(
     except json.JSONDecodeError:
         return {}
 
-    # Only use the description map when the result targets the same table name.
-    if result_data.get("table_name") != table_name:
-        return {}
+    for generated_table in _extract_generated_tables(result_data):
+        if generated_table.get("table_name") != table_name:
+            continue
 
-    return {
-        column["name"]: column.get("description", "")
-        for column in result_data.get("columns", [])
-    }
+        return {
+            column["name"]: column.get("description", "")
+            for column in generated_table.get("columns", [])
+        }
+
+    return {}
+
+
+def _extract_generated_tables(result_data: dict[str, Any]) -> list[dict[str, Any]]:
+    generated_tables = result_data.get("generated_tables")
+    if isinstance(generated_tables, list):
+        return [table for table in generated_tables if isinstance(table, dict)]
+
+    table_name = result_data.get("table_name")
+    sqlite_ddl = result_data.get("sqlite_ddl")
+    columns = result_data.get("columns")
+
+    if isinstance(table_name, str) and isinstance(sqlite_ddl, str) and isinstance(columns, list):
+        return [
+            {
+                "table_name": table_name,
+                "sqlite_ddl": sqlite_ddl,
+                "columns": columns,
+                "is_normalized": table_name == "logs",
+                "file_id": None,
+                "file_name": None,
+            }
+        ]
+
+    return []
+
+
+def _serialize_generated_table(generated_table: dict[str, Any]) -> "GeneratedTableResponse":
+    return GeneratedTableResponse(
+        table_name=str(generated_table["table_name"]),
+        sqlite_ddl=str(generated_table["sqlite_ddl"]),
+        columns=[InferredColumnResponse(**column) for column in generated_table.get("columns", [])],
+        is_normalized=bool(generated_table.get("is_normalized")),
+        file_id=str(generated_table["file_id"]) if generated_table.get("file_id") is not None else None,
+        file_name=str(generated_table["file_name"]) if generated_table.get("file_name") is not None else None,
+    )
 
 
 def _serialize_log_group_table(
@@ -364,6 +401,15 @@ class InferredColumnResponse(BaseModel):
     example_values: list[str]
 
 
+class GeneratedTableResponse(BaseModel):
+    table_name: str
+    sqlite_ddl: str
+    columns: list[InferredColumnResponse]
+    is_normalized: bool
+    file_id: str | None
+    file_name: str | None
+
+
 class SegmentationResultResponse(BaseModel):
     strategy: str
     confidence: float
@@ -395,6 +441,7 @@ class ProcessResultDetails(BaseModel):
     table_name: str
     sqlite_ddl: str
     columns: list[InferredColumnResponse]
+    generated_tables: list[GeneratedTableResponse]
     segmentation: SegmentationResultResponse
     sample_records: list[SampleRecordResponse]
     file_observations: list[FileObservationResponse]
@@ -424,6 +471,7 @@ class PreprocessResultResponse(BaseModel):
     table_name: str
     sqlite_ddl: str
     columns: list[InferredColumnResponse]
+    generated_tables: list[GeneratedTableResponse]
     segmentation: SegmentationResultResponse
     sample_records: list[SampleRecordResponse]
     file_observations: list[FileObservationResponse]
@@ -461,6 +509,7 @@ def _serialize_process_record(process: LogGroupProcess) -> PreprocessResultRespo
     """Serialize a completed LogGroupProcess into the upload-response shape."""
 
     result = json.loads(str(process.result))
+    generated_tables = _extract_generated_tables(result)
 
     return PreprocessResultResponse(
         id=str(process.id),
@@ -470,6 +519,7 @@ def _serialize_process_record(process: LogGroupProcess) -> PreprocessResultRespo
         table_name=result["table_name"],
         sqlite_ddl=result["sqlite_ddl"],
         columns=[InferredColumnResponse(**column) for column in result["columns"]],
+        generated_tables=[_serialize_generated_table(table) for table in generated_tables],
         segmentation=SegmentationResultResponse(**result["segmentation"]),
         sample_records=[SampleRecordResponse(**record) for record in result["sample_records"]],
         file_observations=[FileObservationResponse(**observation) for observation in result["file_observations"]],
@@ -488,12 +538,14 @@ def _serialize_process_status(process: LogGroupProcess) -> ProcessResponse:
     if process.status == "completed" and process.result is not None:
         try:
             result_data = json.loads(str(process.result))
+            generated_tables = _extract_generated_tables(result_data)
             details = ProcessResultDetails(
                 schema_summary=result_data["schema_summary"],
                 schema_version=result_data["schema_version"],
                 table_name=result_data["table_name"],
                 sqlite_ddl=result_data["sqlite_ddl"],
                 columns=[InferredColumnResponse(**column) for column in result_data["columns"]],
+                generated_tables=[_serialize_generated_table(table) for table in generated_tables],
                 segmentation=SegmentationResultResponse(**result_data["segmentation"]),
                 sample_records=[SampleRecordResponse(**record) for record in result_data["sample_records"]],
                 file_observations=[
@@ -552,7 +604,7 @@ def upload_log_files(
         )
 
     # Phase 1: Read, validate, and store each file.
-    file_inputs: list[FileInput] = []
+    staged_file_inputs: list[tuple[LogGroupFile, str, str]] = []
 
     for upload in files:
         raw_data = upload.file.read()
@@ -568,13 +620,12 @@ def upload_log_files(
 
         # Persist the asset and link it to this log group.
         asset = store_asset(raw_data=raw_data, name=filename, size=len(raw_data), mime_type=mime_type, db=database)
-        database.add(
-            LogGroupFile(
-                user_id=str(current_user.id),
-                log_id=str(log_group.id),
-                asset_id=str(asset.id),
-            )
+        log_group_file = LogGroupFile(
+            user_id=str(current_user.id),
+            log_id=str(log_group.id),
+            asset_id=str(asset.id),
         )
+        database.add(log_group_file)
 
         # Decode content for the preprocessor (best-effort UTF-8).
         try:
@@ -582,7 +633,7 @@ def upload_log_files(
         except UnicodeDecodeError:
             content = raw_data.decode("utf-8", errors="replace")
 
-        file_inputs.append(FileInput(filename=filename, content=content))
+        staged_file_inputs.append((log_group_file, filename, content))
 
     try:
         database.flush()
@@ -592,6 +643,11 @@ def upload_log_files(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to store uploaded files.",
         ) from exc
+
+    file_inputs = [
+        FileInput(file_id=str(log_group_file.id), filename=filename, content=content)
+        for log_group_file, filename, content in staged_file_inputs
+    ]
 
     # Phase 2: Run the preprocessor.
     process_record = LogGroupProcess(
@@ -611,7 +667,7 @@ def upload_log_files(
         ) from exc
 
     try:
-        service = LogPreprocessorService(table_name="log_entries")
+        service = LogPreprocessorService(table_name="logs")
         result: PreprocessorResult = service.preprocess(file_inputs)
 
         process_record.status = "completed"
@@ -628,12 +684,14 @@ def upload_log_files(
         ) from exc
 
     # Phase 3: Apply the schema to the swarm database.
-    try:
-        swarm.apply_schema(str(log_group.id), result.sqlite_ddl)
-    except LogDatabaseError as exc:
-        logger.warning("Failed to apply schema DDL to swarm: %s", exc)
-        result.warnings.append(f"Schema DDL could not be applied: {exc}")
-        process_record.result = result.model_dump_json()
+    for generated_table in result.generated_tables:
+        try:
+            swarm.apply_schema(str(log_group.id), generated_table.sqlite_ddl)
+        except LogDatabaseError as exc:
+            logger.warning("Failed to apply schema DDL for %s to swarm: %s", generated_table.table_name, exc)
+            result.warnings.append(f"Schema DDL for {generated_table.table_name} could not be applied: {exc}")
+
+    process_record.result = result.model_dump_json()
 
     try:
         database.commit()

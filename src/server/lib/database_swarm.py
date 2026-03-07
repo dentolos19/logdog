@@ -89,6 +89,7 @@ class LogDatabaseSwarm:
         for table in tables:
             serialized_columns = json.dumps(table["columns"])
             table_record = existing_tables.get(table["name"])
+            is_normalized = 1 if table["name"] == "logs" else 0
 
             if table_record is None:
                 database.add(
@@ -96,12 +97,13 @@ class LogDatabaseSwarm:
                         log_id=log_group_id,
                         name=table["name"],
                         columns=serialized_columns,
-                        is_normalized=0,
+                        is_normalized=is_normalized,
                     )
                 )
                 continue
 
             table_record.columns = serialized_columns
+            table_record.is_normalized = is_normalized
 
         database.flush()
         return tables

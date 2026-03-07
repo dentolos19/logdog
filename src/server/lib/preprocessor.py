@@ -97,8 +97,18 @@ class SampleRecord(BaseModel):
 
 
 class FileInput(BaseModel):
+    file_id: str | None = None
     filename: str
     content: str
+
+
+class GeneratedTable(BaseModel):
+    table_name: str
+    sqlite_ddl: str
+    columns: list[InferredColumn]
+    is_normalized: bool = False
+    file_id: str | None = None
+    file_name: str | None = None
 
 
 class PreprocessorResult(BaseModel):
@@ -107,6 +117,7 @@ class PreprocessorResult(BaseModel):
     table_name: str
     sqlite_ddl: str
     columns: list[InferredColumn]
+    generated_tables: list[GeneratedTable] = Field(default_factory=list)
     segmentation: SegmentationResult
     sample_records: list[SampleRecord]
     file_observations: list[FileObservation]
@@ -195,7 +206,7 @@ class LogPreprocessorService:
     OpenRouter to enrich column descriptions and discover semantic fields.
     """
 
-    def __init__(self, table_name: str = "log_entries") -> None:
+    def __init__(self, table_name: str = "logs") -> None:
         self.table_name = table_name
         self._llm_available = bool(OPENROUTER_API_KEY)
 
@@ -209,7 +220,7 @@ class LogPreprocessorService:
         warnings: list[str] = []
         assumptions: list[str] = []
         all_observations: list[FileObservation] = []
-        per_file_columns: list[list[InferredColumn]] = []
+        per_file_columns: list[tuple[FileInput, list[InferredColumn]]] = []
         all_sample_lines: list[str] = []
 
         # Phase 1: Per-file heuristic analysis.
@@ -228,6 +239,7 @@ class LogPreprocessorService:
                         warnings=["File is empty."],
                     )
                 )
+                per_file_columns.append((file_input, []))
                 continue
 
             detected_format, format_confidence = self._detect_format(lines)
@@ -249,7 +261,7 @@ class LogPreprocessorService:
                     warnings=file_warnings,
                 )
             )
-            per_file_columns.append(heuristic_columns)
+            per_file_columns.append((file_input, heuristic_columns))
 
             # Collect sample lines for LLM (first N non-empty lines, truncated).
             for line in lines[:MAX_SAMPLE_LINES]:
@@ -260,11 +272,11 @@ class LogPreprocessorService:
         if not per_file_columns:
             # All files were empty.
             assumptions.append("All input files were empty; returning baseline schema only.")
-            per_file_columns.append([])
+            per_file_columns.append((FileInput(filename="unknown", content=""), []))
 
         # Phase 2: Merge columns across files + add baseline.
         baseline_columns = self._build_baseline_columns()
-        merged_heuristic = self._merge_columns(per_file_columns)
+        merged_heuristic = self._merge_columns([columns for _, columns in per_file_columns])
 
         # Phase 3: LLM enrichment (optional).
         dominant_format = self._dominant_format(all_observations)
@@ -294,6 +306,31 @@ class LogPreprocessorService:
         # Phase 5: Generate DDL, samples, and summary.
         sqlite_ddl = self._generate_ddl(self.table_name, final_columns)
 
+        generated_tables = [
+            GeneratedTable(
+                table_name=self.table_name,
+                sqlite_ddl=sqlite_ddl,
+                columns=final_columns,
+                is_normalized=True,
+            )
+        ]
+
+        for file_input, heuristic_columns in per_file_columns:
+            file_llm_columns = [
+                column for column in llm_columns if column.name in {item.name for item in heuristic_columns}
+            ]
+            file_columns = self._reconcile_columns(baseline_columns, heuristic_columns, file_llm_columns)
+            file_table_name = self._build_file_table_name(file_input)
+            generated_tables.append(
+                GeneratedTable(
+                    table_name=file_table_name,
+                    sqlite_ddl=self._generate_ddl(file_table_name, file_columns),
+                    columns=file_columns,
+                    file_id=file_input.file_id,
+                    file_name=file_input.filename,
+                )
+            )
+
         overall_segmentation = self._overall_segmentation(all_observations)
 
         sample_records = self._extract_samples(
@@ -313,6 +350,7 @@ class LogPreprocessorService:
             table_name=self.table_name,
             sqlite_ddl=sqlite_ddl,
             columns=final_columns,
+            generated_tables=generated_tables,
             segmentation=overall_segmentation,
             sample_records=sample_records,
             file_observations=all_observations,
@@ -804,6 +842,13 @@ class LogPreprocessorService:
 
         columns_sql = ",\n".join(column_defs)
         return f"CREATE TABLE IF NOT EXISTS {safe_table} (\n{columns_sql}\n);"
+
+    def _build_file_table_name(self, file_input: FileInput) -> str:
+        if file_input.file_id is not None and file_input.file_id != "":
+            return f"{self.table_name}_{file_input.file_id}"
+
+        fallback_suffix = self._sanitize_column_name(file_input.filename) or "file"
+        return f"{self.table_name}_{fallback_suffix}"
 
     # ------------------------------------------------------------------
     # Sample Record Extraction

@@ -8,13 +8,14 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import type { LogGroupTable, LogTableColumn } from "@/lib/api/types";
+import type { LogGroupFile, LogGroupTable, LogTableColumn } from "@/lib/api/types";
 
 interface TablesTabProps {
   tables: LogGroupTable[];
+  files: LogGroupFile[];
 }
 
-export function TablesTab({ tables }: TablesTabProps) {
+export function TablesTab({ tables, files }: TablesTabProps) {
   const [selectedTable, setSelectedTable] = useState<LogGroupTable | null>(null);
 
   return (
@@ -31,43 +32,53 @@ export function TablesTab({ tables }: TablesTabProps) {
         </Empty>
       ) : (
         <div className={"flex flex-col gap-2"}>
-          {tables.map((table) => (
-            <div key={table.id} className={"flex items-center gap-3 rounded-md border p-4"}>
-              <span className={"font-mono text-sm font-medium"}>{table.name}</span>
-              <div className={"ml-auto flex items-center gap-1.5"}>
-                {table.is_normalized && <Badge variant={"outline"}>Normalized</Badge>}
-                <Badge variant={"secondary"}>
-                  {table.columns.length} {table.columns.length === 1 ? "column" : "columns"}
-                </Badge>
-                <Badge variant={"secondary"}>
-                  {table.row_count.toLocaleString()} {table.row_count === 1 ? "row" : "rows"}
-                </Badge>
-                <Button
-                  variant={"ghost"}
-                  size={"icon"}
-                  onClick={() => setSelectedTable(table)}
-                  aria-label={`View details for ${table.name}`}
-                  className={"size-7"}
-                >
-                  <InfoIcon className={"size-3.5"} />
-                </Button>
+          {tables.map((table) => {
+            const presentation = getTablePresentation(table, files);
+
+            return (
+              <div key={table.id} className={"flex items-center gap-3 rounded-md border p-4"}>
+                <span className={"text-sm font-medium"}>{presentation.displayName}</span>
+                <div className={"ml-auto flex items-center gap-1.5"}>
+                  {table.is_normalized && <Badge variant={"outline"}>Normalized</Badge>}
+                  {presentation.fileBadge !== null && <Badge variant={"outline"}>{presentation.fileBadge}</Badge>}
+                  <Badge variant={"secondary"}>
+                    {table.columns.length} {table.columns.length === 1 ? "column" : "columns"}
+                  </Badge>
+                  <Badge variant={"secondary"}>
+                    {table.row_count.toLocaleString()} {table.row_count === 1 ? "row" : "rows"}
+                  </Badge>
+                  <Button
+                    variant={"ghost"}
+                    size={"icon"}
+                    onClick={() => setSelectedTable(table)}
+                    aria-label={`View details for ${presentation.displayName}`}
+                    className={"size-7"}
+                  >
+                    <InfoIcon className={"size-3.5"} />
+                  </Button>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
-      {selectedTable !== null && <TableDetailsDialog table={selectedTable} onClose={() => setSelectedTable(null)} />}
+      {selectedTable !== null && (
+        <TableDetailsDialog table={selectedTable} files={files} onClose={() => setSelectedTable(null)} />
+      )}
     </>
   );
 }
 
 interface TableDetailsDialogProps {
   table: LogGroupTable;
+  files: LogGroupFile[];
   onClose: () => void;
 }
 
-function TableDetailsDialog({ table, onClose }: TableDetailsDialogProps) {
+function TableDetailsDialog({ table, files, onClose }: TableDetailsDialogProps) {
+  const presentation = getTablePresentation(table, files);
+
   return (
     <Dialog
       open={true}
@@ -77,8 +88,10 @@ function TableDetailsDialog({ table, onClose }: TableDetailsDialogProps) {
     >
       <DialogContent className={"flex max-h-[80vh] flex-col overflow-hidden sm:max-w-xl"}>
         <DialogHeader>
-          <DialogTitle className={"font-mono"}>{table.name}</DialogTitle>
+          <DialogTitle>{presentation.displayName}</DialogTitle>
           <DialogDescription>
+            {table.name}
+            {" · "}
             {table.columns.length} {table.columns.length === 1 ? "column" : "columns"} &middot;{" "}
             {table.row_count.toLocaleString()} {table.row_count === 1 ? "row" : "rows"}
             {table.is_normalized && " · Normalized"}
@@ -126,4 +139,34 @@ function ColumnDetailRow({ column }: ColumnDetailRowProps) {
       )}
     </div>
   );
+}
+
+interface TablePresentation {
+  displayName: string;
+  fileBadge: string | null;
+}
+
+function getTablePresentation(table: LogGroupTable, files: LogGroupFile[]): TablePresentation {
+  if (table.name === "logs") {
+    return {
+      displayName: "Normalized Logs",
+      fileBadge: null,
+    };
+  }
+
+  if (table.name.startsWith("logs_")) {
+    const fileId = table.name.slice("logs_".length);
+    const file = files.find((item) => item.id === fileId);
+    if (file !== undefined) {
+      return {
+        displayName: `Logs for ${file.name}`,
+        fileBadge: file.name,
+      };
+    }
+  }
+
+  return {
+    displayName: table.name,
+    fileBadge: null,
+  };
 }
