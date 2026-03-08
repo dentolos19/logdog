@@ -102,7 +102,7 @@ def test_pipeline_key_value():
     assert result.log_row.lot_id == "LOT_1234"
     assert result.log_row.wafer_id == "WFR_0042"
     assert result.log_row.recipe_id == "RCP_0007"
-    assert result.log_row.level == "INFO"
+    assert result.log_row.log_level == "INFO"
     assert result.log_row.timestamp == "2024-01-15T08:30:00Z"
     assert result.format_detected in ("KEY_VALUE", "GROK_MATCH", None)
     assert "grok_engine" in result.stages_executed
@@ -136,7 +136,7 @@ def test_pipeline_json():
     assert result.log_row is not None
     assert result.log_row.equipment_id == "EQP_0001"
     assert result.log_row.lot_id == "LOT_1234"
-    assert result.log_row.level == "INFO"
+    assert result.log_row.log_level == "INFO"
     assert result.confidence >= 0.5
     print(f"  [json] confidence={result.confidence:.2f}, format={result.format_detected}")
 
@@ -155,7 +155,7 @@ def test_pipeline_empty_input():
     result = pipe.process(LOG_EMPTY)
 
     assert result.log_row is not None
-    assert result.log_row.level == "INFO"  # default
+    assert result.log_row.log_level == "INFO"  # default
     print(f"  [empty] confidence={result.confidence:.2f}")
 
 
@@ -225,10 +225,10 @@ def test_log_row_to_dict():
 
     assert "id" in d
     assert "timestamp" in d
-    assert "level" in d
-    assert "metadata" in d
-    assert isinstance(d["metadata"], str)  # JSON-serialized string
-    json.loads(d["metadata"])              # must be valid JSON
+    assert "log_level" in d
+    assert "additional_data" in d
+    assert isinstance(d["additional_data"], str)  # JSON-serialized string
+    json.loads(d["additional_data"])               # must be valid JSON
 
 
 def test_log_row_to_json():
@@ -456,8 +456,8 @@ def test_normalizer_from_dict():
 
     assert row.equipment_id == "EQP_0001"
     assert row.log_group_id == "grp"
-    assert row.level == "ERROR"
-    assert "_format_type" not in row.metadata
+    assert row.log_level == "ERROR"
+    assert "_format_type" not in row.additional_data
 
 
 # ---------------------------------------------------------------------------

@@ -188,7 +188,7 @@ function ParseResultCard({ result }: { result: FileParseResult }) {
   const pct = Math.round(result.confidence * 100);
   const row = result.log_row;
 
-  const semFields: { label: string; value: string | null | undefined }[] = [
+  const semFields = [
     { label: "Equipment", value: row.equipment_id },
     { label: "Lot", value: row.lot_id },
     { label: "Wafer", value: row.wafer_id },
@@ -199,26 +199,27 @@ function ParseResultCard({ result }: { result: FileParseResult }) {
 
   return (
     <div className={"flex flex-col gap-3 rounded-lg border p-4"}>
-      {/* Header */}
+      {/* Header row */}
       <div className={"flex items-start justify-between gap-2"}>
         <div className={"flex items-center gap-2"}>
           <FileTextIcon className={"size-4 shrink-0 text-muted-foreground"} />
           <span className={"font-mono text-sm font-medium"}>{result.filename}</span>
         </div>
-        <div className={"flex shrink-0 items-center gap-1.5"}>
+        <div className={"flex shrink-0 flex-wrap items-center justify-end gap-1.5"}>
           {result.ai_fallback_used && (
             <Badge variant={"outline"} className={"text-[10px]"}>AI fallback</Badge>
           )}
           {result.format_detected && (
             <Badge variant={"secondary"} className={"text-[10px]"}>{result.format_detected}</Badge>
           )}
+          <Badge variant={"outline"} className={"text-[10px]"}>{row.event_type}</Badge>
         </div>
       </div>
 
-      {/* Confidence */}
+      {/* Confidence + parse_confidence */}
       <div className={"flex flex-col gap-1"}>
         <div className={"flex items-center justify-between"}>
-          <span className={"text-xs text-muted-foreground"}>Confidence</span>
+          <span className={"text-xs text-muted-foreground"}>Parse confidence</span>
           <span className={"text-xs font-medium"}>{pct}%</span>
         </div>
         <Progress value={pct} className={"h-1.5"} />
@@ -236,16 +237,19 @@ function ParseResultCard({ result }: { result: FileParseResult }) {
         </div>
       </div>
 
-      {/* Core log row fields */}
-      <div className={"grid grid-cols-2 gap-x-4 gap-y-1 rounded-md bg-muted/50 p-3"}>
+      {/* Baseline fields grid */}
+      <div className={"grid grid-cols-2 gap-x-4 gap-y-2 rounded-md bg-muted/50 p-3"}>
         {[
-          { label: "Level", value: row.level },
-          { label: "Timestamp", value: row.timestamp },
-          { label: "Source", value: row.source || null },
+          { label: "log_level", value: row.log_level },
+          { label: "source_type", value: row.source_type },
+          { label: "timestamp", value: row.timestamp },
+          { label: "timestamp_raw", value: row.timestamp_raw },
+          { label: "source", value: row.source || null },
+          { label: "schema_version", value: row.schema_version },
         ].map(({ label, value }) =>
           value ? (
-            <div key={label} className={"flex flex-col"}>
-              <span className={"text-[10px] text-muted-foreground"}>{label}</span>
+            <div key={label} className={"flex flex-col gap-0.5"}>
+              <span className={"font-mono text-[10px] text-muted-foreground"}>{label}</span>
               <span className={"truncate font-mono text-xs"}>{value}</span>
             </div>
           ) : null,
@@ -269,16 +273,16 @@ function ParseResultCard({ result }: { result: FileParseResult }) {
         </div>
       )}
 
-      {/* Metadata (collapsible) */}
-      {Object.keys(row.metadata).length > 0 && (
+      {/* additional_data (collapsible) */}
+      {Object.keys(row.additional_data).length > 0 && (
         <Collapsible>
           <CollapsibleTrigger className={"flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"}>
             <ChevronDownIcon className={"size-3 transition-transform [[data-state=open]_&]:rotate-180"} />
-            Metadata ({Object.keys(row.metadata).length} fields)
+            additional_data ({Object.keys(row.additional_data).length} fields)
           </CollapsibleTrigger>
           <CollapsibleContent>
             <pre className={"mt-2 overflow-x-auto rounded-md bg-muted p-3 font-mono text-[10px] text-foreground"}>
-              {JSON.stringify(row.metadata, null, 2)}
+              {JSON.stringify(row.additional_data, null, 2)}
             </pre>
           </CollapsibleContent>
         </Collapsible>

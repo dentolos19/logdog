@@ -16,14 +16,27 @@ router = APIRouter(prefix="/parser", tags=["parser"])
 
 
 class ParsedLogRow(BaseModel):
+    """Mirrors the LogRow baseline columns from normalizer.py / preprocessor._build_baseline_columns."""
+    # Baseline columns
     id: str
     timestamp: Optional[str]
-    level: str
+    timestamp_raw: Optional[str]
     source: str
+    source_type: str
+    log_level: str
+    event_type: str
     message: str
-    metadata: dict[str, Any]
+    raw_text: str
+    record_group_id: Optional[str]
+    line_start: Optional[int]
+    line_end: Optional[int]
+    parse_confidence: float
+    schema_version: str
+    additional_data: dict[str, Any]
+    # Pipeline-only
     raw_hash: str
     template_id: Optional[str]
+    # Semiconductor-extended
     equipment_id: Optional[str]
     lot_id: Optional[str]
     wafer_id: Optional[str]
@@ -81,10 +94,19 @@ async def test_parser(
                 log_row=ParsedLogRow(
                     id=row.id,
                     timestamp=row.timestamp,
-                    level=row.level,
+                    timestamp_raw=row.timestamp_raw,
                     source=row.source,
+                    source_type=row.source_type,
+                    log_level=row.log_level,
+                    event_type=row.event_type,
                     message=row.message,
-                    metadata=row.metadata,
+                    raw_text=row.raw_text,
+                    record_group_id=row.record_group_id,
+                    line_start=row.line_start,
+                    line_end=row.line_end,
+                    parse_confidence=row.parse_confidence,
+                    schema_version=row.schema_version,
+                    additional_data=row.additional_data,
                     raw_hash=row.raw_hash,
                     template_id=row.template_id,
                     equipment_id=row.equipment_id,

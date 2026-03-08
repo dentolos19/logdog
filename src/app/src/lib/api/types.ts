@@ -123,14 +123,26 @@ export interface LogProcess {
 }
 
 export interface ParsedLogRow {
+  // Baseline columns — mirrors preprocessor._build_baseline_columns()
   id: string;
   timestamp: string | null;
-  level: string;
+  timestamp_raw: string | null;
   source: string;
+  source_type: string;
+  log_level: string;
+  event_type: string;
   message: string;
-  metadata: Record<string, unknown>;
+  raw_text: string;
+  record_group_id: string | null;
+  line_start: number | null;
+  line_end: number | null;
+  parse_confidence: number;
+  schema_version: string;
+  additional_data: Record<string, unknown>;
+  // Pipeline-only
   raw_hash: string;
   template_id: string | null;
+  // Semiconductor-extended
   equipment_id: string | null;
   lot_id: string | null;
   wafer_id: string | null;

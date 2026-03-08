@@ -176,6 +176,7 @@ class SemiStructuredPipeline:
                 extraction=extraction,
                 raw_text=raw_text,
                 log_group_id=self.config.log_group_id,
+                parse_confidence=result.confidence,
             )
         elif self.config.ai_fallback_enabled:
             # Low confidence — invoke AI fallback
@@ -191,6 +192,7 @@ class SemiStructuredPipeline:
                     raw_text=raw_text,
                     template_id=ai_result.template_id,
                     log_group_id=self.config.log_group_id,
+                    parse_confidence=result.confidence,
                 )
                 logger.info(
                     f"AI fallback: success, cached={ai_result.cached}, "
@@ -202,6 +204,7 @@ class SemiStructuredPipeline:
                     extraction=extraction,
                     raw_text=raw_text,
                     log_group_id=self.config.log_group_id,
+                    parse_confidence=result.confidence,
                 )
                 logger.warning(f"AI fallback failed: {ai_result.error}")
         else:
@@ -210,6 +213,7 @@ class SemiStructuredPipeline:
                 extraction=extraction,
                 raw_text=raw_text,
                 log_group_id=self.config.log_group_id,
+                parse_confidence=result.confidence,
             )
 
         result.total_latency_ms = (time.time() - start) * 1000

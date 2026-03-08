@@ -2,45 +2,78 @@
 Normalizer
 ==========
 Converts extracted fields from any parsing path into the unified
-LogRow schema that feeds into the downstream Log Mapper / storage layer.
+LogRow schema that aligns with the preprocessor baseline columns.
 
-LogRow schema:
-  - id:            Unique row identifier (hash-based)
-  - timestamp:     ISO 8601 datetime
-  - level:         Log level (INFO, WARN, ERROR, etc.)
-  - source:        Source identifier (equipment ID, module, etc.)
-  - message:       Human-readable summary
-  - metadata:      JSON blob of all extracted fields
-  - raw_hash:      SHA-256 of the original raw text
+Baseline columns (always present — mirrors preprocessor._build_baseline_columns):
+  - id:               Unique row identifier (MD5 hash-based)
+  - timestamp:        Normalized ISO-8601 timestamp
+  - timestamp_raw:    Original timestamp string as found in the log
+  - source:           Source identifier (equipment ID, hostname, etc.)
+  - source_type:      Category of source ('file', 'stream', 'api')
+  - log_level:        Severity level (INFO, WARN, ERROR, etc.)
+  - event_type:       Classified event type ('equipment_event', 'syslog', etc.)
+  - message:          Human-readable summary
+  - raw_text:         Complete original log text, preserved for traceability
+  - record_group_id:  Links related records from the same multiline cluster
+  - line_start:       1-based line number where this record starts
+  - line_end:         1-based line number where this record ends
+  - parse_confidence: Confidence score (0.0-1.0) for this record
+  - schema_version:   Version of the schema used to parse this record
+  - additional_data:  JSON blob of all extra extracted fields
+
+Pipeline-only fields (routing / caching, not in baseline table):
+  - raw_hash:      SHA-256 of raw_text (deduplication)
   - template_id:   Template cache ID (if AI fallback was used)
-  - log_group_id:  Routing key for Log Mapper
+  - log_group_id:  Routing key for the Log Mapper
+
+Semiconductor-extended fields:
+  - equipment_id, lot_id, wafer_id, recipe_id, step_id, module_id
 """
 
 import hashlib
 import json
 import uuid
 from dataclasses import dataclass, field, asdict
-from datetime import datetime
 from typing import Any, Optional
 
-from .field_extractor import ExtractionResult, ExtractedField
+from .field_extractor import ExtractionResult
 from .fuzzy_matcher import FuzzyMatcher
+
+SCHEMA_VERSION = "1.0.0"
 
 
 @dataclass
 class LogRow:
-    """Unified log row schema — the output of all three pipelines."""
+    """
+    Unified log row schema.
+    Baseline columns mirror preprocessor._build_baseline_columns() so that
+    output from the SemiStructured pipeline is directly compatible with the
+    schema produced by the preprocessor.
+    """
+
+    # ── Baseline columns ─────────────────────────────────────────────────────
     id: str = ""
     timestamp: Optional[str] = None
-    level: str = "INFO"
+    timestamp_raw: Optional[str] = None
     source: str = ""
+    source_type: str = "file"
+    log_level: str = "INFO"
+    event_type: str = "log"
     message: str = ""
-    metadata: dict[str, Any] = field(default_factory=dict)
+    raw_text: str = ""
+    record_group_id: Optional[str] = None
+    line_start: Optional[int] = None
+    line_end: Optional[int] = None
+    parse_confidence: float = 0.0
+    schema_version: str = SCHEMA_VERSION
+    additional_data: dict[str, Any] = field(default_factory=dict)
+
+    # ── Pipeline-only fields (not stored in baseline table) ──────────────────
     raw_hash: str = ""
     template_id: Optional[str] = None
     log_group_id: str = "default"
 
-    # Extended fields for semiconductor logs
+    # ── Semiconductor-extended fields ─────────────────────────────────────────
     equipment_id: Optional[str] = None
     lot_id: Optional[str] = None
     wafer_id: Optional[str] = None
@@ -50,21 +83,19 @@ class LogRow:
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
-        d["metadata"] = json.dumps(d["metadata"])
+        d["additional_data"] = json.dumps(d["additional_data"])
         return d
 
     def to_json(self) -> str:
-        d = asdict(self)
-        return json.dumps(d, indent=2, default=str)
+        return json.dumps(asdict(self), indent=2, default=str)
 
 
 class Normalizer:
-    """Normalize extracted fields into unified LogRow schema."""
+    """Normalize extracted fields into the unified LogRow baseline schema."""
 
     def __init__(self, fuzzy_matcher: Optional[FuzzyMatcher] = None):
         self.matcher = fuzzy_matcher or FuzzyMatcher()
 
-        # Priority lists for finding key fields
         self._timestamp_keys = [
             "timestamp", "start_time", "end_time",
             "CtrlJobStartTime", "WaferStartTime", "RecipeStartTime",
@@ -75,7 +106,7 @@ class Normalizer:
             "equipment_id", "EquipmentID", "MachineID",
             "source", "host", "hostname", "program",
         ]
-        self._level_keys = [
+        self._log_level_keys = [
             "level", "log_level", "severity", "loglevel",
         ]
         self._message_keys = [
@@ -89,28 +120,41 @@ class Normalizer:
         raw_text: str = "",
         template_id: Optional[str] = None,
         log_group_id: str = "default",
+        parse_confidence: float = 0.0,
+        source_type: str = "file",
+        line_start: Optional[int] = None,
+        line_end: Optional[int] = None,
+        record_group_id: Optional[str] = None,
     ) -> LogRow:
-        """Convert an ExtractionResult into a LogRow."""
+        """Convert an ExtractionResult into a LogRow aligned with baseline columns."""
 
-        # Build flat dict of all fields
         flat = extraction.to_flat_dict()
-
-        # Remap keys through fuzzy matcher
         remapped = self.matcher.remap_dict(flat)
 
-        # Extract canonical fields
-        row = LogRow(
+        ts = self._find_field(remapped, self._timestamp_keys)
+
+        return LogRow(
+            # Baseline
             id=self._generate_id(raw_text),
-            timestamp=self._find_field(remapped, self._timestamp_keys),
-            level=self._find_field(remapped, self._level_keys) or "INFO",
+            timestamp=ts,
+            timestamp_raw=ts,
             source=self._find_field(remapped, self._source_keys) or "",
+            source_type=source_type,
+            log_level=self._find_field(remapped, self._log_level_keys) or "INFO",
+            event_type=self._infer_event_type(extraction.format_detected, remapped),
             message=self._build_message(remapped, extraction),
-            metadata=remapped,
+            raw_text=raw_text,
+            record_group_id=record_group_id,
+            line_start=line_start,
+            line_end=line_end,
+            parse_confidence=round(parse_confidence, 4),
+            schema_version=SCHEMA_VERSION,
+            additional_data=remapped,
+            # Pipeline-only
             raw_hash=hashlib.sha256(raw_text.encode()).hexdigest() if raw_text else "",
             template_id=template_id,
             log_group_id=log_group_id,
-
-            # Semiconductor-specific fields
+            # Semiconductor-extended
             equipment_id=self._find_field(remapped, ["equipment_id", "EquipmentID"]),
             lot_id=self._find_field(remapped, ["lot_id", "LotID"]),
             wafer_id=self._find_field(remapped, ["wafer_id", "WaferID"]),
@@ -119,32 +163,48 @@ class Normalizer:
             module_id=self._find_field(remapped, ["module_id", "ModuleID"]),
         )
 
-        return row
-
     def normalize_from_dict(
         self,
         fields: dict[str, Any],
         raw_text: str = "",
         template_id: Optional[str] = None,
         log_group_id: str = "default",
+        parse_confidence: float = 0.0,
+        source_type: str = "file",
+        line_start: Optional[int] = None,
+        line_end: Optional[int] = None,
+        record_group_id: Optional[str] = None,
     ) -> LogRow:
         """Normalize from a plain dict (e.g., AI fallback output)."""
         remapped = self.matcher.remap_dict(fields)
 
-        # Remove internal fields
         format_type = remapped.pop("_format_type", "unknown")
-        section_map = remapped.pop("_section_map", {})
+        remapped.pop("_section_map", {})
 
-        row = LogRow(
+        ts = self._find_field(remapped, self._timestamp_keys)
+
+        return LogRow(
+            # Baseline
             id=self._generate_id(raw_text),
-            timestamp=self._find_field(remapped, self._timestamp_keys),
-            level=self._find_field(remapped, self._level_keys) or "INFO",
+            timestamp=ts,
+            timestamp_raw=ts,
             source=self._find_field(remapped, self._source_keys) or "",
+            source_type=source_type,
+            log_level=self._find_field(remapped, self._log_level_keys) or "INFO",
+            event_type=format_type if format_type != "unknown" else "log",
             message=f"[{format_type}] Parsed via AI fallback",
-            metadata=remapped,
+            raw_text=raw_text,
+            record_group_id=record_group_id,
+            line_start=line_start,
+            line_end=line_end,
+            parse_confidence=round(parse_confidence, 4),
+            schema_version=SCHEMA_VERSION,
+            additional_data=remapped,
+            # Pipeline-only
             raw_hash=hashlib.sha256(raw_text.encode()).hexdigest() if raw_text else "",
             template_id=template_id,
             log_group_id=log_group_id,
+            # Semiconductor-extended
             equipment_id=self._find_field(remapped, ["equipment_id", "EquipmentID"]),
             lot_id=self._find_field(remapped, ["lot_id", "LotID"]),
             wafer_id=self._find_field(remapped, ["wafer_id", "WaferID"]),
@@ -152,9 +212,8 @@ class Normalizer:
             step_id=self._find_field(remapped, ["recipe_step_id", "RecipeStepID"]),
             module_id=self._find_field(remapped, ["module_id", "ModuleID"]),
         )
-        return row
 
-    # ---- Helpers ----------------------------------------------------------
+    # ── Helpers ───────────────────────────────────────────────────────────────
 
     @staticmethod
     def _generate_id(raw_text: str) -> str:
@@ -165,50 +224,65 @@ class Normalizer:
     @staticmethod
     def _find_field(data: dict, candidates: list[str]) -> Optional[str]:
         """Find the first matching field from a priority list.
-        Searches by exact key, then by leaf key (after last dot)."""
-        # 1. Exact key match
+        Searches by exact key, case-insensitive key, then by leaf key."""
         for key in candidates:
             if key in data and data[key] is not None:
                 return str(data[key])
 
-        # 2. Case-insensitive exact match
-        lower_data = {k.lower(): (k, v) for k, v in data.items()}
+        lower_data = {k.lower(): v for k, v in data.items()}
         for key in candidates:
-            if key.lower() in lower_data:
-                _, v = lower_data[key.lower()]
-                if v is not None:
-                    return str(v)
+            v = lower_data.get(key.lower())
+            if v is not None:
+                return str(v)
 
-        # 3. Match by leaf key (e.g., "Keys.CtrlJobID" matches "CtrlJobID")
         leaf_map: dict[str, Any] = {}
         for k, v in data.items():
             leaf = k.rsplit(".", 1)[-1] if "." in k else k
-            # Don't overwrite — first occurrence wins (usually most specific)
             if leaf.lower() not in leaf_map:
                 leaf_map[leaf.lower()] = v
 
         for key in candidates:
-            if key.lower() in leaf_map and leaf_map[key.lower()] is not None:
-                return str(leaf_map[key.lower()])
+            v = leaf_map.get(key.lower())
+            if v is not None:
+                return str(v)
 
         return None
+
+    @staticmethod
+    def _infer_event_type(format_detected: Optional[str], data: dict) -> str:
+        """Derive event_type from the detected format or field presence."""
+        if format_detected:
+            fmt = format_detected.upper()
+            if fmt == "SYSLOG":
+                return "syslog"
+            if fmt in ("JSON", "JSON_LINES"):
+                return "json_log"
+            if fmt in ("KEY_VALUE", "LOGFMT"):
+                return "key_value_log"
+            if fmt in ("SECTION_DELIMITED", "LAM_PARQUET"):
+                return "equipment_event"
+            if fmt == "CSV":
+                return "csv_record"
+
+        sem_keys = {"equipment_id", "EquipmentID", "lot_id", "LotID", "wafer_id", "WaferID"}
+        if any(k in data for k in sem_keys):
+            return "equipment_event"
+
+        return "log"
 
     @staticmethod
     def _build_message(data: dict, extraction: ExtractionResult) -> str:
         """Build a human-readable message summary."""
         parts: list[str] = []
+        parts.append(f"[{extraction.format_detected or 'unknown'}]")
 
-        fmt = extraction.format_detected or "unknown"
-        parts.append(f"[{fmt}]")
-
-        # Add key identifiers
         for key in ["equipment_id", "lot_id", "recipe_step_id", "recipe_name"]:
             if key in data and data[key]:
                 parts.append(f"{key}={data[key]}")
 
         if not parts[1:]:
-            field_count = len(extraction.fields)
-            section_count = len(extraction.sections)
-            parts.append(f"{field_count} fields extracted from {section_count} sections")
+            parts.append(
+                f"{len(extraction.fields)} fields extracted from {len(extraction.sections)} sections"
+            )
 
         return " | ".join(parts)
