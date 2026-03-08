@@ -122,6 +122,33 @@ export interface LogProcess {
   updated_at: string;
 }
 
+export interface ParsedLogRow {
+  id: string;
+  timestamp: string | null;
+  level: string;
+  source: string;
+  message: string;
+  metadata: Record<string, unknown>;
+  raw_hash: string;
+  template_id: string | null;
+  equipment_id: string | null;
+  lot_id: string | null;
+  wafer_id: string | null;
+  recipe_id: string | null;
+  step_id: string | null;
+  module_id: string | null;
+}
+
+export interface FileParseResult {
+  filename: string;
+  stages_executed: string[];
+  confidence: number;
+  format_detected: string | null;
+  total_latency_ms: number;
+  ai_fallback_used: boolean;
+  log_row: ParsedLogRow;
+}
+
 export interface LogGroupFile {
   id: string;
   asset_id: string;
