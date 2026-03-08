@@ -1,4 +1,5 @@
 # Environment files
+.wrangler/
 node_modules/
 *.d*
 

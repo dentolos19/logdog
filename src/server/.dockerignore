@@ -1,0 +1,22 @@
+# Editor configurations
+.vs/
+.idea/
+
+# Environment files
+.venv/
+__pycache__/
+build/
+dist/
+
+# User files
+.env*
+!.env*.template
+
+# Project files
+/store/
+
+# Miscellaneous files
+.DS_Store
+Desktop.ini
+Thumbs.db
+!.gitkeep
