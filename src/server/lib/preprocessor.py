@@ -20,8 +20,6 @@ def _get_unstructured_parser():
 
 logger = logging.getLogger(__name__)
 
-APP_NAME = os.getenv("APP_NAME", "NAISC")
-APP_URL = os.getenv("APP_URL")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "inception/mercury-2")
 
@@ -1058,8 +1056,8 @@ class LogPreprocessorService:
             api_key=SecretStr(OPENROUTER_API_KEY),
             temperature=0.0,
             max_tokens=4096,
-            app_title=APP_NAME,
-            app_url=APP_URL,
+            app_title="NAISC",
+            app_url="https://naisc.dennise.me",
         )
 
         structured_model = model.with_structured_output(LlmSchemaResponse, method="json_schema", strict=True)

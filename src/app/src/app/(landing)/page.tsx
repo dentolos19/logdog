@@ -10,13 +10,11 @@ import {
   RefreshCw,
   Search,
   Shield,
-  Sparkles,
   Terminal,
   Zap,
 } from "lucide-react";
 import Link from "next/link";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -201,16 +199,6 @@ export default function LandingPage() {
 
       {/* ─── Hero ──────────────────────────────────────────────────── */}
       <section className={"relative z-10 px-6 pt-20 pb-28 max-w-7xl mx-auto text-center"}>
-        <div className={"animate-fade-up stagger-1"}>
-          <Badge
-            variant={"outline"}
-            className={"border-amber-400/30 text-amber-400 bg-amber-400/5 gap-1.5 mb-8 cursor-default"}
-          >
-            <Sparkles className={"size-3"} />
-            Now in public beta
-          </Badge>
-        </div>
-
         <h1
           className={
             "animate-fade-up stagger-2 text-5xl md:text-[4.5rem] lg:text-[5.5rem] font-extrabold tracking-tight leading-[1.04] mb-6"

@@ -15,6 +15,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
@@ -25,8 +26,8 @@ function PlatformInner({ children }: { children: ReactNode }) {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset>
-        <header className={"flex h-14 shrink-0 items-center gap-2 border-b px-4 bg-sidebar"}>
+      <SidebarInset className={"h-svh overflow-hidden"}>
+        <header className={"sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 border-b bg-sidebar px-4"}>
           <SidebarTrigger className={"-ml-1"} />
           {isLoading ? (
             <Skeleton className={"h-4 w-48"} />
@@ -55,7 +56,9 @@ function PlatformInner({ children }: { children: ReactNode }) {
           ) : null}
           <div ref={setActionsContainer} className={"ml-auto flex items-center gap-2"} />
         </header>
-        {children}
+        <ScrollArea className={"min-h-0 flex-1"}>
+          <div className={"min-h-full"}>{children}</div>
+        </ScrollArea>
       </SidebarInset>
     </SidebarProvider>
   );

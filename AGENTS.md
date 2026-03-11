@@ -7,17 +7,13 @@ This repository is composed of a Node.js project and a Python project.
 - App (Frontend) @ `src/app`: Next.js 16 w/ OpenNext.js Adapters
 - Server (Backend) @ `src/server`: Python FastAPI backend
 
-## Conventions
+## Coding Conventions
 
 - Use existing components under `src/app/src/components/ui/*` instead of introducing new UI primitives.
 - Follow shadcn/ui's best practices when designing pages.
 - FastAPI endpoints should raise explicit `HTTPException` on validation or upstream failures, mirroring `src/server/main.py`.
 - Update the frontend API endpoints in `src/app/src/lib/api/index.ts` (with Better Fetch) accordingly to the server endpoints.
 - Keep Zod input and output schemas in sync with the actual server input and responses.
-
-## Pitfalls
-
-- Keep package managers scoped by area: Bun for `src/app`, uv for `src/server`.
 
 ## When Making Changes
 
