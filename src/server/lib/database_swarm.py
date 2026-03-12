@@ -56,6 +56,107 @@ class LogDatabaseSwarm:
         except sqlite3.DatabaseError as exc:
             raise LogDatabaseError(str(exc)) from exc
 
+    def insert_rows(
+        self,
+        log_group_id: str,
+        table_name: str,
+        rows: list[dict[str, Any]],
+    ) -> int:
+        """Insert rows into a table and return the number inserted.
+
+        The ``id`` column is excluded from the insert so that SQLite's
+        AUTOINCREMENT fills it in. Any non-scalar values (dicts / lists)
+        are JSON-encoded before insertion.  Returns the count of rows
+        actually inserted.
+        """
+        if not rows:
+            return 0
+
+        database_path = self.ensure_database(log_group_id)
+        safe_table = self._quote_identifier(table_name)
+
+        # Collect unique column names across all rows (excluding PK).
+        all_keys: set[str] = set()
+        for row in rows:
+            all_keys.update(k for k in row if k != "id")
+
+        columns = sorted(all_keys)
+        if not columns:
+            return 0
+
+        safe_cols = [self._quote_identifier(c) for c in columns]
+        col_list = ", ".join(safe_cols)
+        placeholders = ", ".join("?" for _ in columns)
+        sql = f"INSERT INTO {safe_table} ({col_list}) VALUES ({placeholders})"
+
+        def _coerce(value: Any) -> JsonScalar:
+            if isinstance(value, (dict, list)):
+                return json.dumps(value)
+            return value  # type: ignore[return-value]
+
+        try:
+            with self._connect(database_path) as connection:
+                inserted = 0
+                for row in rows:
+                    values = [_coerce(row.get(col)) for col in columns]
+                    connection.execute(sql, values)
+                    inserted += 1
+                connection.commit()
+                return inserted
+        except sqlite3.DatabaseError as exc:
+            raise LogDatabaseError(str(exc)) from exc
+
+    def apply_schema_and_insert(
+        self,
+        log_group_id: str,
+        ddl: str,
+        table_name: str,
+        rows: list[dict[str, Any]],
+    ) -> int:
+        """Apply a DDL statement and insert rows in a single connection.
+
+        Returns the number of rows inserted.  The DDL is applied first
+        (idempotent via ``CREATE TABLE IF NOT EXISTS``), then all rows are
+        inserted in a single transaction.
+        """
+        if not rows:
+            self.apply_schema(log_group_id, ddl)
+            return 0
+
+        database_path = self.ensure_database(log_group_id)
+        safe_table = self._quote_identifier(table_name)
+
+        all_keys: set[str] = set()
+        for row in rows:
+            all_keys.update(k for k in row if k != "id")
+
+        columns = sorted(all_keys)
+        if not columns:
+            return 0
+
+        safe_cols = [self._quote_identifier(c) for c in columns]
+        col_list = ", ".join(safe_cols)
+        placeholders = ", ".join("?" for _ in columns)
+        insert_sql = f"INSERT INTO {safe_table} ({col_list}) VALUES ({placeholders})"
+
+        def _coerce(value: Any) -> JsonScalar:
+            if isinstance(value, (dict, list)):
+                return json.dumps(value)
+            return value  # type: ignore[return-value]
+
+        try:
+            with self._connect(database_path) as connection:
+                connection.execute(ddl)
+                inserted = 0
+                for row in rows:
+                    values = [_coerce(row.get(col)) for col in columns]
+                    connection.execute(insert_sql, values)
+                    inserted += 1
+                connection.commit()
+                return inserted
+        except sqlite3.DatabaseError as exc:
+            raise LogDatabaseError(str(exc)) from exc
+
     def delete_database(self, log_group_id: str) -> None:
         database_path = self.database_path(log_group_id)
 

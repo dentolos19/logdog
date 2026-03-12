@@ -82,24 +82,32 @@ interface ProcessRowProps {
 
 function ProcessRow({ process, onViewDetails }: ProcessRowProps) {
   const formattedDate = format(new Date(process.created_at), "MMM d, yyyy 'at' h:mm a");
-  const generatedTableCount = process.result?.generated_tables.length ?? 0;
+  const generatedTableCount = process.result?.generated_tables?.length ?? 0;
+  const isInProgress =
+    process.status === "queued" || process.status === "classified" || process.status === "processing";
+
+  function getStatusLabel(): string {
+    if (process.status === "completed") {
+      return generatedTableCount > 0
+        ? `Created ${generatedTableCount} ${generatedTableCount === 1 ? "table" : "tables"}`
+        : "Ingestion complete";
+    }
+    if (process.status === "failed") return "Ingestion failed";
+    if (process.status === "classified") return "Classified — ingestion starting…";
+    if (process.status === "processing") return "Parsing and loading…";
+    return "Queued for processing…";
+  }
 
   return (
     <div className={"flex flex-col gap-1.5 rounded-md border p-4"}>
       <div className={"flex items-center gap-3"}>
         <ProcessStatusIcon status={process.status} />
         <div className={"flex flex-1 flex-col gap-0.5"}>
-          <span className={"text-sm font-medium"}>
-            {process.status === "completed"
-              ? `Created ${generatedTableCount} ${generatedTableCount === 1 ? "table" : "tables"}`
-              : process.status === "failed"
-                ? "Preprocessing failed"
-                : "Processing…"}
-          </span>
+          <span className={"text-sm font-medium"}>{getStatusLabel()}</span>
           <span className={"text-xs text-muted-foreground"}>{formattedDate}</span>
         </div>
         <ProcessStatusBadge status={process.status} />
-        {onViewDetails !== undefined && (
+        {!isInProgress && onViewDetails !== undefined && (
           <Button variant={"ghost"} size={"sm"} onClick={onViewDetails} className={"shrink-0"}>
             <InfoIcon />
             Details
@@ -107,7 +115,7 @@ function ProcessRow({ process, onViewDetails }: ProcessRowProps) {
         )}
       </div>
 
-      {process.status === "completed" && process.result !== null && (
+      {process.status === "completed" && process.result !== null && process.result.generated_tables !== undefined && (
         <div className={"flex items-center gap-2 text-xs text-muted-foreground"}>
           <span>{process.result.generated_tables.length} table(s) generated</span>
           <span>&middot;</span>
@@ -149,7 +157,13 @@ function ProcessStatusBadge({ status }: ProcessStatusBadgeProps) {
   if (status === "failed") {
     return <Badge variant={"destructive"}>Failed</Badge>;
   }
-  return <Badge variant={"outline"}>Processing</Badge>;
+  if (status === "classified") {
+    return <Badge variant={"outline"}>Classified</Badge>;
+  }
+  if (status === "processing") {
+    return <Badge variant={"outline"}>Processing</Badge>;
+  }
+  return <Badge variant={"outline"}>Queued</Badge>;
 }
 
 interface ProcessDetailsDialogProps {

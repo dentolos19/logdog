@@ -79,8 +79,9 @@ class LogGroupProcess(Base):
     id = Column(String(36), primary_key=True, index=True, nullable=False, default=lambda: str(uuid.uuid4()))
     log_id = Column(String(36), ForeignKey("logs.id", ondelete="CASCADE"), nullable=False)
     user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    status = Column(String, nullable=False, default="processing")  # processing | completed | failed
-    result = Column(String, nullable=True)  # JSON string of PreprocessorResult
+    status = Column(String, nullable=False, default="queued")  # queued | classified | processing | completed | failed
+    classification = Column(String, nullable=True)  # JSON of ClassificationResult (set after classify())
+    result = Column(String, nullable=True)  # JSON of ParserPipelineResult (set after ingestion)
     error = Column(String, nullable=True)
     schema_version = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())

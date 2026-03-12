@@ -91,9 +91,30 @@ const preprocessResultSchema = z.object({
   created_at: z.string(),
 });
 
+const fileClassificationSchema = z.object({
+  file_id: z.string().nullable(),
+  filename: z.string(),
+  detected_format: z.string(),
+  structural_class: z.string(),
+  format_confidence: z.number(),
+  line_count: z.number(),
+  warnings: z.array(z.string()),
+});
+
+const classificationResponseSchema = z.object({
+  schema_version: z.string(),
+  dominant_format: z.string(),
+  structural_class: z.string(),
+  selected_parser_key: z.string(),
+  file_classifications: z.array(fileClassificationSchema),
+  warnings: z.array(z.string()),
+  confidence: z.number(),
+});
+
 const uploadLogFilesResponseSchema = z.object({
   uploaded_files: z.number(),
-  process_result: preprocessResultSchema,
+  process_id: z.string(),
+  classification: classificationResponseSchema,
 });
 
 const processResultDetailsSchema = z.object({
@@ -196,6 +217,11 @@ export const schema = createSchema({
     output: z.array(logGroupFileSchema),
   },
 });
+
+export type UploadLogFilesResponse = z.infer<typeof uploadLogFilesResponseSchema>;
+export type ClassificationResponse = z.infer<typeof classificationResponseSchema>;
+export type FileClassification = z.infer<typeof fileClassificationSchema>;
+export type ProcessResponse = z.infer<typeof processResponseSchema>;
 
 export const errorSchema = z.object({
   message: z.string(),

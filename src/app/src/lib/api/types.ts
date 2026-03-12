@@ -97,6 +97,32 @@ export interface UploadLogFilesResponse {
   process_result: PreprocessResult;
 }
 
+export interface FileClassification {
+  file_id: string | null;
+  filename: string;
+  detected_format: string;
+  structural_class: string;
+  format_confidence: number;
+  line_count: number;
+  warnings: string[];
+}
+
+export interface ClassificationResult {
+  schema_version: string;
+  dominant_format: string;
+  structural_class: string;
+  selected_parser_key: string;
+  file_classifications: FileClassification[];
+  warnings: string[];
+  confidence: number;
+}
+
+export interface UploadLogFilesV2Response {
+  uploaded_files: number;
+  process_id: string;
+  classification: ClassificationResult;
+}
+
 export interface ProcessResultDetails {
   schema_summary: string;
   schema_version: string;

@@ -4,16 +4,17 @@ import logging
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
 from lib.auth import get_current_user
 from lib.database import get_db
 from lib.database_swarm import LogDatabaseError, LogDatabaseSwarm, ReadOnlyQueryError
 from lib.models import Asset, LogGroup, LogGroupFile, LogGroupProcess, LogGroupTable, User
+from lib.parsers.contracts import ClassificationResult as _ClassificationResult  # noqa: F401
+from lib.parsers.orchestrator import run_ingestion_job
 from lib.parsers.preprocessor import (
     FileInput,
     LogPreprocessorService,
-    PreprocessorResult,
 )
 from lib.storage import get_file as retrieve_asset
 from lib.storage import upload_file as store_asset
@@ -484,6 +485,37 @@ class UploadLogFilesResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# New async-upload response models (v2)
+# ---------------------------------------------------------------------------
+
+
+class FileClassificationResponse(BaseModel):
+    file_id: str | None
+    filename: str
+    detected_format: str
+    structural_class: str
+    format_confidence: float
+    line_count: int
+    warnings: list[str]
+
+
+class ClassificationResponse(BaseModel):
+    schema_version: str
+    dominant_format: str
+    structural_class: str
+    selected_parser_key: str
+    file_classifications: list[FileClassificationResponse]
+    warnings: list[str]
+    confidence: float
+
+
+class UploadLogFilesV2Response(BaseModel):
+    uploaded_files: int
+    process_id: str
+    classification: ClassificationResponse
+
+
+# ---------------------------------------------------------------------------
 # File Response Models
 # ---------------------------------------------------------------------------
 
@@ -535,6 +567,11 @@ def _serialize_process_status(process: LogGroupProcess) -> ProcessResponse:
     if process.status == "completed" and process.result is not None:
         try:
             result_data = json.loads(str(process.result))
+            # New async pipeline results have 'table_definitions'; old results have 'schema_summary'.
+            # Skip building ProcessResultDetails for new-format results.
+            if "schema_summary" not in result_data:
+                result_data = {}
+                raise KeyError("new-format result")
             generated_tables = _extract_generated_tables(result_data)
             details = ProcessResultDetails(
                 schema_summary=result_data["schema_summary"],
@@ -579,10 +616,11 @@ def _serialize_log_group_file(log_file: LogGroupFile) -> LogGroupFileResponse:
     )
 
 
-@router.post("/{id}", response_model=UploadLogFilesResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/{id}", response_model=UploadLogFilesV2Response, status_code=status.HTTP_201_CREATED)
 def upload_log_files(
     id: str,
     files: list[UploadFile] = File(...),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
     database: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -647,64 +685,60 @@ def upload_log_files(
         for log_group_file, filename, content in staged_file_inputs
     ]
 
-    # Phase 2: Run the preprocessor.
+    # Phase 2: Classify uploaded files (fast, no LLM — determines parser key).
+    service = LogPreprocessorService(table_name="logs")
+    classification = service.classify(file_inputs)
+
+    # Phase 3: Persist the process record and enqueue the background ingestion job.
     process_record = LogGroupProcess(
         log_id=str(log_group.id),
         user_id=str(current_user.id),
-        status="processing",
+        status="classified",
+        classification=classification.model_dump_json(),
+        schema_version=classification.schema_version,
     )
     database.add(process_record)
 
     try:
-        database.flush()
-    except SQLAlchemyError as exc:
-        database.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create process record.",
-        ) from exc
-
-    try:
-        service = LogPreprocessorService(table_name="logs")
-        result: PreprocessorResult = service.preprocess(file_inputs)
-
-        process_record.status = "completed"
-        process_record.result = result.model_dump_json()
-        process_record.schema_version = result.schema_version
-    except Exception as exc:
-        logger.exception("Preprocessor failed for log group %s", id)
-        process_record.status = "failed"
-        process_record.error = str(exc)
-        database.commit()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Preprocessing failed: {exc}",
-        ) from exc
-
-    # Phase 3: Apply the schema to the swarm database.
-    for generated_table in result.generated_tables:
-        try:
-            swarm.apply_schema(str(log_group.id), generated_table.sqlite_ddl)
-        except LogDatabaseError as exc:
-            logger.warning("Failed to apply schema DDL for %s to swarm: %s", generated_table.table_name, exc)
-            result.warnings.append(f"Schema DDL for {generated_table.table_name} could not be applied: {exc}")
-
-    process_record.result = result.model_dump_json()
-
-    try:
         database.commit()
     except SQLAlchemyError as exc:
         database.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to persist preprocessing result.",
+            detail="Failed to persist process record.",
         ) from exc
 
-    _sync_metadata(database, str(log_group.id))
+    file_inputs_json = json.dumps([fi.model_dump() for fi in file_inputs])
+    background_tasks.add_task(
+        run_ingestion_job,
+        str(process_record.id),
+        str(log_group.id),
+        file_inputs_json,
+    )
 
-    return UploadLogFilesResponse(
+    return UploadLogFilesV2Response(
         uploaded_files=len(file_inputs),
-        process_result=_serialize_process_record(process_record),
+        process_id=str(process_record.id),
+        classification=ClassificationResponse(
+            schema_version=classification.schema_version,
+            dominant_format=classification.dominant_format,
+            structural_class=classification.structural_class.value,
+            selected_parser_key=classification.selected_parser_key,
+            file_classifications=[
+                FileClassificationResponse(
+                    file_id=fc.file_id,
+                    filename=fc.filename,
+                    detected_format=fc.detected_format,
+                    structural_class=fc.structural_class.value,
+                    format_confidence=fc.format_confidence,
+                    line_count=fc.line_count,
+                    warnings=fc.warnings,
+                )
+                for fc in classification.file_classifications
+            ],
+            warnings=classification.warnings,
+            confidence=classification.confidence,
+        ),
     )
 
 

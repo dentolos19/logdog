@@ -6,6 +6,12 @@ from enum import Enum
 from typing import Any
 
 from langchain_openrouter import ChatOpenRouter
+from lib.parsers.contracts import (
+    INGESTION_SCHEMA_VERSION,
+    ClassificationResult,
+    FileClassification,
+    StructuralClass,
+)
 from pydantic import BaseModel, Field, SecretStr
 
 # Lazy import to avoid circular dependency at module level.
@@ -222,7 +228,122 @@ class LogPreprocessorService:
         self._llm_available = bool(OPENROUTER_API_KEY)
 
     # ------------------------------------------------------------------
-    # Public API
+    # Public API — new classification-only path
+    # ------------------------------------------------------------------
+
+    def classify(self, files: list[FileInput]) -> ClassificationResult:
+        """Classify files and return routing metadata without schema generation.
+
+        This is the entry point for the new async ingestion pipeline.  It runs
+        quickly (no LLM calls) and returns enough information for the background
+        worker to route files to the appropriate parser pipeline.
+        """
+        warnings: list[str] = []
+        file_classifications: list[FileClassification] = []
+        observations: list[FileObservation] = []
+
+        for file_input in files:
+            lines = file_input.content.splitlines()
+            if not lines:
+                warnings.append(f"{file_input.filename}: file is empty, skipped.")
+                file_classifications.append(
+                    FileClassification(
+                        file_id=file_input.file_id,
+                        filename=file_input.filename,
+                        detected_format=DetectedFormat.UNKNOWN.value,
+                        structural_class=StructuralClass.UNSTRUCTURED,
+                        format_confidence=0.0,
+                        line_count=0,
+                        warnings=["File is empty."],
+                    )
+                )
+                continue
+
+            detected_format, format_confidence = self._detect_format(lines)
+            segmentation = self._detect_segmentation(lines, detected_format)
+            structural_class = self._format_to_structural_class(detected_format, format_confidence)
+
+            file_warnings: list[str] = []
+            if format_confidence < 0.5:
+                file_warnings.append(f"Low format confidence ({format_confidence:.2f}) — results may be approximate.")
+
+            observations.append(
+                FileObservation(
+                    filename=file_input.filename,
+                    line_count=len(lines),
+                    detected_format=detected_format,
+                    format_confidence=format_confidence,
+                    segmentation_hint=segmentation.strategy,
+                    sample_size=min(len(lines), MAX_SAMPLE_LINES),
+                    warnings=file_warnings,
+                )
+            )
+
+            file_classifications.append(
+                FileClassification(
+                    file_id=file_input.file_id,
+                    filename=file_input.filename,
+                    detected_format=detected_format.value,
+                    structural_class=structural_class,
+                    format_confidence=format_confidence,
+                    line_count=len(lines),
+                    warnings=file_warnings,
+                )
+            )
+
+        dominant_format = self._dominant_format(observations)
+        structural_class_overall = self._dominant_structural_class(file_classifications)
+        selected_parser_key = self._select_parser_key(structural_class_overall)
+        confidence = self._compute_confidence(observations, False)
+
+        return ClassificationResult(
+            schema_version=INGESTION_SCHEMA_VERSION,
+            dominant_format=dominant_format.value,
+            structural_class=structural_class_overall,
+            selected_parser_key=selected_parser_key,
+            file_classifications=file_classifications,
+            warnings=warnings,
+            confidence=confidence,
+        )
+
+    @staticmethod
+    def _format_to_structural_class(fmt: DetectedFormat, confidence: float) -> StructuralClass:
+        """Map a detected format (and its confidence) to a structural class."""
+        if fmt in (
+            DetectedFormat.JSON_LINES,
+            DetectedFormat.CSV,
+            DetectedFormat.SYSLOG,
+            DetectedFormat.APACHE_ACCESS,
+            DetectedFormat.NGINX_ACCESS,
+            DetectedFormat.LOGFMT,
+        ):
+            return StructuralClass.STRUCTURED
+        if fmt == DetectedFormat.KEY_VALUE:
+            return StructuralClass.STRUCTURED if confidence >= 0.6 else StructuralClass.SEMI_STRUCTURED
+        # PLAIN_TEXT, UNKNOWN
+        return StructuralClass.UNSTRUCTURED
+
+    @staticmethod
+    def _dominant_structural_class(file_classifications: list[FileClassification]) -> StructuralClass:
+        """Return the most common structural class across files."""
+        if not file_classifications:
+            return StructuralClass.UNSTRUCTURED
+        from collections import Counter
+
+        counts: Counter[StructuralClass] = Counter(fc.structural_class for fc in file_classifications)
+        return counts.most_common(1)[0][0]
+
+    @staticmethod
+    def _select_parser_key(structural_class: StructuralClass) -> str:
+        """Map structural class to a registered parser pipeline key."""
+        if structural_class == StructuralClass.STRUCTURED:
+            return "structured"
+        if structural_class == StructuralClass.SEMI_STRUCTURED:
+            return "semi_structured"
+        return "unstructured"
+
+    # ------------------------------------------------------------------
+    # Public API — legacy full-preprocess path (kept for backward compat)
     # ------------------------------------------------------------------
 
     def preprocess(self, files: list[FileInput]) -> PreprocessorResult:
