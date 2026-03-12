@@ -122,6 +122,45 @@ export interface LogProcess {
   updated_at: string;
 }
 
+export interface ParsedLogRow {
+  // Baseline columns — mirrors preprocessor._build_baseline_columns()
+  id: string;
+  timestamp: string | null;
+  timestamp_raw: string | null;
+  source: string;
+  source_type: string;
+  log_level: string;
+  event_type: string;
+  message: string;
+  raw_text: string;
+  record_group_id: string | null;
+  line_start: number | null;
+  line_end: number | null;
+  parse_confidence: number;
+  schema_version: string;
+  additional_data: Record<string, unknown>;
+  // Pipeline-only
+  raw_hash: string;
+  template_id: string | null;
+  // Semiconductor-extended
+  equipment_id: string | null;
+  lot_id: string | null;
+  wafer_id: string | null;
+  recipe_id: string | null;
+  step_id: string | null;
+  module_id: string | null;
+}
+
+export interface FileParseResult {
+  filename: string;
+  stages_executed: string[];
+  confidence: number;
+  format_detected: string | null;
+  total_latency_ms: number;
+  ai_fallback_used: boolean;
+  log_row: ParsedLogRow;
+}
+
 export interface LogGroupFile {
   id: string;
   asset_id: string;

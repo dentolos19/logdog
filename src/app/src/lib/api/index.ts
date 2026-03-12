@@ -271,6 +271,28 @@ export const getLogFiles = async (id: string) => {
   return data!;
 };
 
+export const testParser = async (files: File[]): Promise<import("./types").FileParseResult[]> => {
+  const formData = new FormData();
+  for (const file of files) {
+    formData.append("files", file);
+  }
+
+  const response = await fetch(`${API_URL}/parser/test`, {
+    method: "POST",
+    credentials: "include",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({ message: "Parse failed." }))) as {
+      message?: string;
+    };
+    throw new Error(body.message ?? "Parse failed.");
+  }
+
+  return response.json() as Promise<import("./types").FileParseResult[]>;
+};
+
 export const downloadLogFile = async (logGroupId: string, fileId: string): Promise<Blob> => {
   const response = await fetch(
     `${API_URL}/logs/${encodeURIComponent(logGroupId)}/files/${encodeURIComponent(fileId)}/download`,
