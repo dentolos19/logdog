@@ -337,3 +337,25 @@ export const downloadLogFile = async (logGroupId: string, fileId: string): Promi
 
   return response.blob();
 };
+
+export const getTableRows = async (
+  logGroupId: string,
+  tableName: string,
+  page: number,
+  pageSize: number,
+): Promise<import("./types").TableRowsResponse> => {
+  const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
+  const response = await fetch(
+    `${API_URL}/logs/${encodeURIComponent(logGroupId)}/tables/${encodeURIComponent(tableName)}/rows?${params}`,
+    { method: "GET", credentials: "include" },
+  );
+
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({ message: "Failed to load rows." }))) as {
+      message?: string;
+    };
+    throw new Error(body.message ?? "Failed to load rows.");
+  }
+
+  return response.json() as Promise<import("./types").TableRowsResponse>;
+};

@@ -15,7 +15,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
@@ -58,6 +58,7 @@ function PlatformInner({ children }: { children: ReactNode }) {
         </header>
         <ScrollArea className={"min-h-0 flex-1"}>
           <div className={"min-h-full"}>{children}</div>
+          <ScrollBar orientation="horizontal" />
         </ScrollArea>
       </SidebarInset>
     </SidebarProvider>

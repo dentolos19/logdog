@@ -289,6 +289,53 @@ class LogDatabaseSwarm:
         except sqlite3.DatabaseError as exc:
             raise LogDatabaseError(str(exc)) from exc
 
+    def fetch_table_rows(
+        self,
+        log_group_id: str,
+        table_name: str,
+        page: int = 1,
+        page_size: int = 50,
+    ) -> dict[str, Any]:
+        """Return paginated rows from a table.
+
+        Returns a dict with keys: columns, rows, total, page, page_size, total_pages.
+        Raises LogDatabaseError if the table does not exist or a database error occurs.
+        """
+        database_path = self.ensure_database(log_group_id)
+        safe_table = self._quote_identifier(table_name)
+        offset = (page - 1) * page_size
+
+        try:
+            with self._connect(database_path) as connection:
+                # Verify the table exists to prevent probing arbitrary names.
+                exists = connection.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+                    (table_name,),
+                ).fetchone()
+                if exists is None:
+                    raise LogDatabaseError(f"Table '{table_name}' does not exist.")
+
+                total_row = connection.execute(f"SELECT COUNT(*) AS n FROM {safe_table}").fetchone()
+                total = int(total_row["n"]) if total_row is not None else 0
+
+                cursor = connection.execute(
+                    f"SELECT * FROM {safe_table} LIMIT ? OFFSET ?",
+                    (page_size, offset),
+                )
+                column_names = [d[0] for d in cursor.description or []]
+                rows = [dict(row) for row in cursor.fetchall()]
+
+                return {
+                    "columns": column_names,
+                    "rows": rows,
+                    "total": total,
+                    "page": page,
+                    "page_size": page_size,
+                    "total_pages": max(1, (total + page_size - 1) // page_size),
+                }
+        except sqlite3.DatabaseError as exc:
+            raise LogDatabaseError(str(exc)) from exc
+
     def execute_read_only_query(
         self,
         log_group_id: str,

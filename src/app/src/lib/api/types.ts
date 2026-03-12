@@ -195,3 +195,12 @@ export interface LogGroupFile {
   mime_type: string;
   created_at: string;
 }
+
+export interface TableRowsResponse {
+  columns: string[];
+  rows: Record<string, unknown>[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}

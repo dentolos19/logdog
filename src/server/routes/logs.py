@@ -106,6 +106,15 @@ class QueryLogsResponse(BaseModel):
     truncated: bool
 
 
+class TableRowsResponse(BaseModel):
+    columns: list[str]
+    rows: list[dict[str, Any]]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
 def _get_owned_log_group(database: Session, user_id: str, log_group_id: str) -> LogGroup:
     log_group = (
         database.query(LogGroup)
@@ -864,3 +873,39 @@ def download_log_file(
             "Content-Length": str(asset.size),
         },
     )
+
+
+@router.get("/{id}/tables/{table_name}/rows", response_model=TableRowsResponse)
+def get_table_rows(
+    id: str,
+    table_name: str,
+    page: int = 1,
+    page_size: int = 50,
+    database: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if page < 1:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="page must be >= 1.")
+    if not (1 <= page_size <= 200):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="page_size must be between 1 and 200.")
+
+    log_group = _get_owned_log_group(database, str(current_user.id), id)
+
+    # Verify the table belongs to this log group (access control via metadata).
+    owned_table = (
+        database.query(LogGroupTable)
+        .filter(LogGroupTable.log_id == str(log_group.id), LogGroupTable.name == table_name)
+        .first()
+    )
+    if owned_table is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Table not found.")
+
+    try:
+        result = swarm.fetch_table_rows(str(log_group.id), table_name, page=page, page_size=page_size)
+    except LogDatabaseError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch rows: {exc}",
+        ) from exc
+
+    return TableRowsResponse.model_validate(result)

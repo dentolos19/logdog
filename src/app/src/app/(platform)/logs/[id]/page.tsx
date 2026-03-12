@@ -218,7 +218,7 @@ export default function LogGroupPage({ params }: { params: Promise<{ id: string 
                 <div className={"flex items-center gap-2"}>
                   <h2 className={"text-sm font-semibold"}>Tables</h2>
                 </div>
-                <TablesTab tables={logGroup.tables} files={files} />
+                <TablesTab tables={logGroup.tables} files={files} logGroupId={id} />
               </section>
             </TabsContent>
 
