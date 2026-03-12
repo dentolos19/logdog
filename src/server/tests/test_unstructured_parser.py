@@ -10,18 +10,14 @@ Covers:
   - Integration with the preprocessor for PLAIN_TEXT format
 """
 
-import hashlib
 from unittest.mock import patch
 
 import pytest
-from lib.preprocessor import (
-    ColumnKind,
-    DetectedFormat,
+from lib.parsers.preprocessor import (
     FileInput,
     LogPreprocessorService,
-    SegmentationStrategy,
 )
-from lib.unstructured_parser import (
+from lib.parsers.unstructured_parser import (
     _decode_base64_frames,
     _decode_hex_telemetry,
     _decode_zlib,
@@ -205,9 +201,7 @@ class TestFieldExtraction:
         assert "process_step" in fields
 
     def test_extracts_tool_id(self) -> None:
-        fields = extract_fields_heuristic(
-            "2025-06-15 08:00:00 INFO [EQP-CVD-01] Equipment ready."
-        )
+        fields = extract_fields_heuristic("2025-06-15 08:00:00 INFO [EQP-CVD-01] Equipment ready.")
         assert "tool_id" in fields
 
     def test_field_aliases(self) -> None:
@@ -218,17 +212,13 @@ class TestFieldExtraction:
         assert fields.get("recipe") == fields.get("recipe_id")
 
     def test_measurement_extraction(self) -> None:
-        fields = extract_fields_heuristic(
-            "2025-06-15 08:05:00 INFO for W0113: thickness=348.5nm uniformity=98.5%"
-        )
+        fields = extract_fields_heuristic("2025-06-15 08:05:00 INFO for W0113: thickness=348.5nm uniformity=98.5%")
         assert fields.get("thickness") == "348.5"
         assert fields.get("uniformity") == "98.5"
 
     def test_kv_no_clobber_measurements(self) -> None:
         """Generic KV should not swallow measurement values."""
-        fields = extract_fields_heuristic(
-            "Readout W0113: thickness=102.3nm pressure=5mTorr"
-        )
+        fields = extract_fields_heuristic("Readout W0113: thickness=102.3nm pressure=5mTorr")
         assert fields.get("thickness") == "102.3"
         # w0113 should NOT have 'thickness=102.3nm' as its value.
         assert fields.get("w0113") is None
@@ -261,7 +251,7 @@ class TestColumnInference:
 
 
 class TestExtractUnstructuredColumns:
-    @patch("lib.unstructured_parser.OPENROUTER_API_KEY", "")
+    @patch("lib.parsers.unstructured_parser.OPENROUTER_API_KEY", "")
     def test_returns_columns_for_semi_logs(self) -> None:
         columns = extract_unstructured_columns(SEMI_LOG_LINES)
         col_names = {c.name for c in columns}
@@ -269,11 +259,11 @@ class TestExtractUnstructuredColumns:
         assert "template" in col_names
         assert "template_cluster_id" in col_names
 
-    @patch("lib.unstructured_parser.OPENROUTER_API_KEY", "")
+    @patch("lib.parsers.unstructured_parser.OPENROUTER_API_KEY", "")
     def test_returns_empty_for_empty_input(self) -> None:
         assert extract_unstructured_columns([]) == []
 
-    @patch("lib.unstructured_parser.OPENROUTER_API_KEY", "")
+    @patch("lib.parsers.unstructured_parser.OPENROUTER_API_KEY", "")
     def test_returns_empty_for_all_noise(self) -> None:
         assert extract_unstructured_columns(["---", "===", "   "]) == []
 
@@ -284,7 +274,7 @@ class TestExtractUnstructuredColumns:
 
 
 class TestSampleExtraction:
-    @patch("lib.unstructured_parser.OPENROUTER_API_KEY", "")
+    @patch("lib.parsers.unstructured_parser.OPENROUTER_API_KEY", "")
     def test_extracts_samples(self) -> None:
         columns = extract_unstructured_columns(SEMI_LOG_LINES)
         col_names = {c.name for c in columns} | {"raw_text", "source", "message"}
@@ -300,7 +290,7 @@ class TestSampleExtraction:
 
 
 class TestPreprocessorIntegration:
-    @patch("lib.unstructured_parser.OPENROUTER_API_KEY", "")
+    @patch("lib.parsers.unstructured_parser.OPENROUTER_API_KEY", "")
     def test_plain_text_goes_through_unstructured_parser(self, service: LogPreprocessorService) -> None:
         """When the preprocessor detects PLAIN_TEXT, our unstructured parser should provide columns."""
         # Use truly unstructured text that won't match JSON/CSV/syslog/key=value.
@@ -322,7 +312,7 @@ class TestPreprocessorIntegration:
         # Template columns should always be included from Drain3 mining.
         assert "template" in col_names or "template_cluster_id" in col_names
 
-    @patch("lib.unstructured_parser.OPENROUTER_API_KEY", "")
+    @patch("lib.parsers.unstructured_parser.OPENROUTER_API_KEY", "")
     def test_baseline_columns_preserved(self, service: LogPreprocessorService) -> None:
         file_input = FileInput(filename="plain.log", content="\n".join(PLAIN_TEXT_LINES))
         service._llm_available = False
@@ -362,7 +352,7 @@ class TestBinaryHexHandling:
         assert "FRM1" in ascii_parts[0]
         assert "L3MCMmDB0xSKbdTf" in ascii_parts[1]
 
-    @patch("lib.unstructured_parser.OPENROUTER_API_KEY", "")
+    @patch("lib.parsers.unstructured_parser.OPENROUTER_API_KEY", "")
     def test_hex_dump_content_processed(self) -> None:
         """Hex dump content should be converted to ASCII before pipeline."""
         hex_lines = [
@@ -375,7 +365,7 @@ class TestBinaryHexHandling:
         col_names = {c.name for c in columns}
         assert "template" in col_names or "template_cluster_id" in col_names
 
-    @patch("lib.unstructured_parser.OPENROUTER_API_KEY", "")
+    @patch("lib.parsers.unstructured_parser.OPENROUTER_API_KEY", "")
     def test_pure_binary_returns_empty(self) -> None:
         """Lines that are entirely binary noise should produce no columns."""
         binary_lines = ["\xff\xfe\x00\x01" * 10, "\x80\x81\x82\x83" * 10]
@@ -512,7 +502,7 @@ class TestMasterBinaryDecoder:
         lines = preprocess_binary_input(raw)
         assert any("VAC_07" in l for l in lines)
 
-    @patch("lib.unstructured_parser.OPENROUTER_API_KEY", "")
+    @patch("lib.parsers.unstructured_parser.OPENROUTER_API_KEY", "")
     def test_tool_event_blob_drain3(self) -> None:
         """Valve OPEN/CLOSE events should be extractable and templatable."""
         # Simulate tool_event_blob_01.bin structure.
@@ -527,7 +517,8 @@ class TestMasterBinaryDecoder:
         assert any("Valve" in l for l in lines)
 
         # Run through Drain3 to verify template mining.
-        from lib.unstructured_parser import cluster_multiline, mine_templates
+        from lib.parsers.unstructured_parser import cluster_multiline, mine_templates
+
         valve_lines = [l for l in lines if "Valve" in l]
         if len(valve_lines) >= 2:
             clusters = cluster_multiline(valve_lines)

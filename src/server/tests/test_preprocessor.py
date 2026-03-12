@@ -2,7 +2,7 @@ import sqlite3
 from unittest.mock import patch
 
 import pytest
-from lib.preprocessor import (
+from lib.parsers.preprocessor import (
     ColumnKind,
     DetectedFormat,
     FileInput,
@@ -327,7 +327,7 @@ class TestLlmFallback:
         output_names = {column.name for column in result.columns}
         assert EXPECTED_BASELINE_NAMES.issubset(output_names)
 
-    @patch("lib.preprocessor.OPENROUTER_API_KEY", "")
+    @patch("lib.parsers.preprocessor.OPENROUTER_API_KEY", "")
     def test_no_api_key_warning(self) -> None:
         """When OPENROUTER_API_KEY is empty, a warning should indicate LLM was skipped."""
 

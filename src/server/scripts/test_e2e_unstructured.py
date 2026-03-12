@@ -13,7 +13,6 @@ No running server needed — this exercises the full pipeline in-process:
   5. Prints the inferred schema, columns, sample records, and confidence
 """
 
-import json
 import shutil
 import sys
 import tempfile
@@ -27,7 +26,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from lib.database_swarm import LogDatabaseSwarm
-from lib.preprocessor import FileInput, LogPreprocessorService
+from lib.parsers.preprocessor import FileInput, LogPreprocessorService
 
 DIVIDER = "=" * 70
 
@@ -40,6 +39,7 @@ def main() -> None:
     if not log_path.exists():
         print("Generating unstructured data first...")
         import subprocess
+
         subprocess.run(
             [sys.executable, str(Path(__file__).resolve().parent / "generate_unstructured_logs.py")],
             check=True,
@@ -81,7 +81,7 @@ def main() -> None:
     print(f"  Inferred Columns ({len(result.columns)} total)")
     print(DIVIDER)
     print(f"  {'Name':<25} {'Type':<10} {'Kind':<15} Description")
-    print(f"  {'-'*25} {'-'*10} {'-'*15} {'-'*40}")
+    print(f"  {'-' * 25} {'-' * 10} {'-' * 15} {'-' * 40}")
     for col in result.columns:
         desc = col.description[:40] + "..." if len(col.description) > 40 else col.description
         print(f"  {col.name:<25} {col.sql_type.value:<10} {col.kind.value:<15} {desc}")
@@ -109,7 +109,7 @@ def main() -> None:
     print(f"  Sample Records ({len(result.sample_records)} extracted)")
     print(DIVIDER)
     for i, sample in enumerate(result.sample_records):
-        print(f"\n  Record {i+1} (lines {sample.line_start}-{sample.line_end} from {sample.source_file}):")
+        print(f"\n  Record {i + 1} (lines {sample.line_start}-{sample.line_end} from {sample.source_file}):")
         for key, val in sample.fields.items():
             val_str = str(val)[:80]
             print(f"    {key:<25} = {val_str}")
@@ -154,7 +154,7 @@ def main() -> None:
             print(f"  ⚠ {w}")
 
     if result.assumptions:
-        print(f"\n  Assumptions:")
+        print("\n  Assumptions:")
         for a in result.assumptions:
             print(f"    • {a}")
 
@@ -168,7 +168,7 @@ def main() -> None:
     print(f"  Total columns:  {len(result.columns)} ({len(custom_cols)} from unstructured parser)")
     print(f"  Tables created: {len(result.generated_tables)}")
     print(f"  Confidence:     {result.confidence}")
-    print(f"\n  ✓ End-to-end test PASSED — unstructured parser integrates with preprocessor + swarm.\n")
+    print("\n  ✓ End-to-end test PASSED — unstructured parser integrates with preprocessor + swarm.\n")
 
 
 if __name__ == "__main__":

@@ -25,14 +25,13 @@ import chardet
 from drain3 import TemplateMiner
 from drain3.template_miner_config import TemplateMinerConfig
 from langchain_openrouter import ChatOpenRouter
-from pydantic import BaseModel, Field, SecretStr
-
-from lib.preprocessor import (
+from lib.parsers.preprocessor import (
     ColumnKind,
     InferredColumn,
     SampleRecord,
     SqlType,
 )
+from pydantic import BaseModel, Field, SecretStr
 
 logger = logging.getLogger(__name__)
 
@@ -56,9 +55,7 @@ MAX_LINE_LENGTH = 2000
 NOISE_LINE_RE = re.compile(r"^[\s\-=*#~]{0,3}$")
 
 # Continuation: indented, "at ...", "Caused by:", "... N more"
-CONTINUATION_RE = re.compile(
-    r"^(?:\s+at\s|Caused by:|\.{3}\s*\d+\s*more|\s{4,}\S|\t\S)"
-)
+CONTINUATION_RE = re.compile(r"^(?:\s+at\s|Caused by:|\.{3}\s*\d+\s*more|\s{4,}\S|\t\S)")
 
 # Semiconductor-domain timestamp patterns (broader than ISO-8601).
 TIMESTAMP_RE = re.compile(
@@ -79,12 +76,37 @@ KV_RE = re.compile(r"(?P<key>\w[\w.]*)\s*[=:]\s*(?:\"(?P<qval>[^\"]*)\"|(?P<val>
 
 # Words to skip as KV keys — common prepositions, articles, and operator names
 # that appear in prose before a colon (e.g., "Operator jchen: ...").
-_KV_STOP_WORDS = frozenset({
-    "at", "by", "in", "on", "to", "is", "of", "for", "the", "and", "or",
-    "not", "no", "vs", "was", "has", "had", "per", "via", "re",
-    # Avoid capturing single-letter keys.
-    "a", "e", "i", "o", "u", "x",
-})
+_KV_STOP_WORDS = frozenset(
+    {
+        "at",
+        "by",
+        "in",
+        "on",
+        "to",
+        "is",
+        "of",
+        "for",
+        "the",
+        "and",
+        "or",
+        "not",
+        "no",
+        "vs",
+        "was",
+        "has",
+        "had",
+        "per",
+        "via",
+        "re",
+        # Avoid capturing single-letter keys.
+        "a",
+        "e",
+        "i",
+        "o",
+        "u",
+        "x",
+    }
+)
 
 # Semiconductor-specific patterns.
 WAFER_ID_RE = re.compile(r"\b(?P<wafer>W\d{2,4}|LOT[_-]?\w+|FOUP[_-]?\w+)\b", re.IGNORECASE)
@@ -112,11 +134,32 @@ UNIT_STRIP_RE = re.compile(
 
 # Known measurement field names (for REAL type inference).
 MEASUREMENT_FIELD_NAMES = {
-    "thickness", "pressure", "temperature", "temp", "flow", "gas_flow",
-    "power", "voltage", "current", "rpm", "dose", "energy", "frequency",
-    "bias", "uniformity", "vacuum", "rf_power", "reflected", "delta",
-    "duration", "rate", "threshold", "vibration", "resistivity",
-    "particle_count", "target",
+    "thickness",
+    "pressure",
+    "temperature",
+    "temp",
+    "flow",
+    "gas_flow",
+    "power",
+    "voltage",
+    "current",
+    "rpm",
+    "dose",
+    "energy",
+    "frequency",
+    "bias",
+    "uniformity",
+    "vacuum",
+    "rf_power",
+    "reflected",
+    "delta",
+    "duration",
+    "rate",
+    "threshold",
+    "vibration",
+    "resistivity",
+    "particle_count",
+    "target",
 }
 
 # Hex dump line: offset followed by hex bytes.
@@ -147,8 +190,10 @@ ZLIB_MAGIC = (b"\x78\x9c", b"\x78\x01", b"\x78\xda")
 # LLM response schema (structured output)
 # ---------------------------------------------------------------------------
 
+
 class LlmFieldExtraction(BaseModel):
     """One field extracted by the LLM from unstructured text."""
+
     name: str
     sql_type: str = "TEXT"
     description: str = ""
@@ -157,6 +202,7 @@ class LlmFieldExtraction(BaseModel):
 
 class LlmUnstructuredResponse(BaseModel):
     """Structured LLM response for unstructured log analysis."""
+
     fields: list[LlmFieldExtraction] = Field(default_factory=list)
     summary: str = ""
     event_type_hint: str = ""
@@ -172,7 +218,7 @@ def is_binary_content(line: str) -> bool:
     """Return True if line has a high ratio of non-printable characters."""
     if not line:
         return False
-    non_printable = sum(1 for c in line if not c.isprintable() and c not in '\n\r\t')
+    non_printable = sum(1 for c in line if not c.isprintable() and c not in "\n\r\t")
     return non_printable / max(len(line), 1) > 0.3
 
 
@@ -288,14 +334,14 @@ def _decode_base64_frames(raw_bytes: bytes) -> list[str]:
     b64_clean = raw_payload.replace("\n", "").replace("\r", "")
 
     # Report frame metadata.
-    header = text[:begin_match.start()].strip()
+    header = text[: begin_match.start()].strip()
     if header:
         # Extract version/frame info from the header.
         printable_header = "".join(c if c.isprintable() else "" for c in header)
         if printable_header:
             lines.append(f"frame_header={printable_header}")
 
-    lines.append(f"payload_encoding=base64")
+    lines.append("payload_encoding=base64")
     lines.append(f"payload_length={len(b64_clean)}")
 
     try:
@@ -312,7 +358,7 @@ def _decode_base64_frames(raw_bytes: bytes) -> list[str]:
         lines.append(f"base64_payload_preview={b64_clean[:80]}")
 
     # Check for checksum after END marker.
-    after_end = text[end_match.end():].strip()
+    after_end = text[end_match.end() :].strip()
     printable_after = "".join(c if c.isprintable() else "" for c in after_end)
     if printable_after:
         lines.append(f"checksum={printable_after[:16]}")
@@ -357,22 +403,20 @@ def _decode_hex_telemetry(raw_bytes: bytes) -> list[str]:
                 record_count = len(byte_data) // record_len
                 lines.append(f"record_count={record_count}")
                 for i in range(min(record_count, 20)):
-                    rec = byte_data[i * record_len:(i + 1) * record_len]
+                    rec = byte_data[i * record_len : (i + 1) * record_len]
                     sensor_id = rec[:4].hex().upper()
                     # Try big-endian float for the reading value.
                     if len(rec) >= 8:
                         reading = struct.unpack(">f", rec[4:8])[0]
                         hex_repr = rec.hex().upper()
-                        lines.append(
-                            f"sensor={sensor_id} reading={reading:.4f} raw={hex_repr}"
-                        )
+                        lines.append(f"sensor={sensor_id} reading={reading:.4f} raw={hex_repr}")
                     else:
                         lines.append(f"sensor={sensor_id} raw={rec.hex().upper()}")
             else:
                 # Can't detect record structure; emit hex summary.
                 lines.append(f"hex_preview={byte_data[:64].hex().upper()}")
     except ValueError:
-        lines.append(f"hex_parse_error=invalid_hex_chars")
+        lines.append("hex_parse_error=invalid_hex_chars")
 
     return lines
 
@@ -403,13 +447,10 @@ def _detect_record_length(data: bytes) -> int | None:
         matches = 0
         checks = min(len(data) // candidate_len - 1, 10)
         for i in range(checks):
-            rec_a = data[i * candidate_len:(i + 1) * candidate_len]
-            rec_b = data[(i + 1) * candidate_len:(i + 2) * candidate_len]
+            rec_a = data[i * candidate_len : (i + 1) * candidate_len]
+            rec_b = data[(i + 1) * candidate_len : (i + 2) * candidate_len]
             # Count how many byte positions are similar (within 16).
-            similar = sum(
-                1 for a, b in zip(rec_a, rec_b)
-                if abs(a - b) <= 16
-            )
+            similar = sum(1 for a, b in zip(rec_a, rec_b) if abs(a - b) <= 16)
             if similar >= candidate_len * 0.4:
                 matches += 1
         if matches >= min(checks, 2):
@@ -465,7 +506,8 @@ def preprocess_binary_input(raw_bytes: bytes) -> list[str]:
     # Quick check: is this mostly printable text?
     sample = raw_bytes[:2048]
     non_printable = sum(
-        1 for b in sample
+        1
+        for b in sample
         if b < 0x20 and b not in (0x0A, 0x0D, 0x09)  # Not newline/CR/tab
     )
     ratio = non_printable / max(len(sample), 1)
@@ -484,6 +526,7 @@ def preprocess_binary_input(raw_bytes: bytes) -> list[str]:
 # Drain3 config helper
 # ---------------------------------------------------------------------------
 
+
 def _build_drain_config() -> TemplateMinerConfig:
     """Return a Drain3 config tuned for unstructured / semiconductor logs."""
     config = TemplateMinerConfig()
@@ -497,6 +540,7 @@ def _build_drain_config() -> TemplateMinerConfig:
 # ---------------------------------------------------------------------------
 # Core pipeline functions
 # ---------------------------------------------------------------------------
+
 
 def detect_encoding(raw_bytes: bytes) -> str:
     """Detect encoding of raw bytes, returning a codec name."""
@@ -522,11 +566,7 @@ def decode_content(raw_bytes: bytes) -> str:
 
 def filter_noise(lines: list[str]) -> list[str]:
     """Remove lines that are pure noise (blank / decorative separators / binary)."""
-    return [
-        line for line in lines
-        if not NOISE_LINE_RE.match(line)
-        and not is_binary_content(line)
-    ]
+    return [line for line in lines if not NOISE_LINE_RE.match(line) and not is_binary_content(line)]
 
 
 def cluster_multiline(lines: list[str]) -> list[tuple[int, int, str]]:
@@ -545,20 +585,24 @@ def cluster_multiline(lines: list[str]) -> list[tuple[int, int, str]]:
             current_lines.append(line)
         else:
             if current_lines:
-                clusters.append((
-                    current_start + 1,
-                    current_start + len(current_lines),
-                    "\n".join(current_lines),
-                ))
+                clusters.append(
+                    (
+                        current_start + 1,
+                        current_start + len(current_lines),
+                        "\n".join(current_lines),
+                    )
+                )
             current_start = idx
             current_lines = [line]
 
     if current_lines:
-        clusters.append((
-            current_start + 1,
-            current_start + len(current_lines),
-            "\n".join(current_lines),
-        ))
+        clusters.append(
+            (
+                current_start + 1,
+                current_start + len(current_lines),
+                "\n".join(current_lines),
+            )
+        )
 
     return clusters
 
@@ -679,13 +723,26 @@ def infer_columns_from_fields(
 
     # Skip keys that are already baseline columns or internal aliases.
     baseline_names = {
-        "id", "timestamp", "timestamp_raw", "source", "source_type",
-        "log_level", "event_type", "message", "raw_text",
-        "record_group_id", "line_start", "line_end",
-        "parse_confidence", "schema_version", "additional_data",
+        "id",
+        "timestamp",
+        "timestamp_raw",
+        "source",
+        "source_type",
+        "log_level",
+        "event_type",
+        "message",
+        "raw_text",
+        "record_group_id",
+        "line_start",
+        "line_end",
+        "parse_confidence",
+        "schema_version",
+        "additional_data",
         # Aliases — the canonical *_id columns are added via
         # SEMICONDUCTOR_COLUMNS; suppress the short aliases.
-        "wafer", "tool", "recipe",
+        "wafer",
+        "tool",
+        "recipe",
     }
 
     columns: list[InferredColumn] = []
@@ -698,14 +755,16 @@ def infer_columns_from_fields(
         examples = key_examples.get(key, [])
         if key in MEASUREMENT_FIELD_NAMES or _all_numeric(examples):
             sql_type = SqlType.REAL
-        columns.append(InferredColumn(
-            name=key,
-            sql_type=sql_type,
-            description=f"Extracted from unstructured text (appeared in {count}/{len(all_fields)} records).",
-            nullable=True,
-            kind=ColumnKind.DETECTED,
-            example_values=examples,
-        ))
+        columns.append(
+            InferredColumn(
+                name=key,
+                sql_type=sql_type,
+                description=f"Extracted from unstructured text (appeared in {count}/{len(all_fields)} records).",
+                nullable=True,
+                kind=ColumnKind.DETECTED,
+                example_values=examples,
+            )
+        )
 
     return columns
 
@@ -764,6 +823,7 @@ SEMICONDUCTOR_COLUMNS = [
 # LLM enrichment for unstructured logs
 # ---------------------------------------------------------------------------
 
+
 def call_llm_for_unstructured(
     sample_lines: list[str],
     heuristic_columns: list[InferredColumn],
@@ -784,14 +844,14 @@ def call_llm_for_unstructured(
     )
 
     structured_model = model.with_structured_output(
-        LlmUnstructuredResponse, method="json_schema", strict=True,
+        LlmUnstructuredResponse,
+        method="json_schema",
+        strict=True,
     )
 
     heuristic_summary = (
-        "\n".join(
-            f"  - {col.name} ({col.sql_type.value}): {col.description}"
-            for col in heuristic_columns
-        ) or "  (none detected)"
+        "\n".join(f"  - {col.name} ({col.sql_type.value}): {col.description}" for col in heuristic_columns)
+        or "  (none detected)"
     )
 
     sample_text = "\n".join(line[:MAX_LINE_LENGTH] for line in sample_lines[:MAX_SAMPLE_LINES])
@@ -835,6 +895,7 @@ def call_llm_for_unstructured(
 # Main entry point used by preprocessor
 # ---------------------------------------------------------------------------
 
+
 def extract_unstructured_columns(
     lines: list[str],
 ) -> list[InferredColumn]:
@@ -868,7 +929,8 @@ def extract_unstructured_columns(
         fields = extract_fields_heuristic(text)
         fields["template"] = template
         fields["template_cluster_id"] = hashlib.md5(
-            template.encode(), usedforsecurity=False,
+            template.encode(),
+            usedforsecurity=False,
         ).hexdigest()[:12]
         all_fields.append(fields)
 
@@ -901,14 +963,16 @@ def extract_unstructured_columns(
                 elif llm_field.sql_type.upper() in ("REAL", "FLOAT", "DOUBLE"):
                     sql_type = SqlType.REAL
 
-                heuristic_columns.append(InferredColumn(
-                    name=safe_name,
-                    sql_type=sql_type,
-                    description=llm_field.description,
-                    nullable=True,
-                    kind=ColumnKind.LLM_INFERRED,
-                    example_values=llm_field.example_values,
-                ))
+                heuristic_columns.append(
+                    InferredColumn(
+                        name=safe_name,
+                        sql_type=sql_type,
+                        description=llm_field.description,
+                        nullable=True,
+                        kind=ColumnKind.LLM_INFERRED,
+                        example_values=llm_field.example_values,
+                    )
+                )
                 existing_names.add(safe_name)
 
     return heuristic_columns
@@ -948,7 +1012,8 @@ def extract_unstructured_samples(
         fields["source_type"] = "file"
         fields["template"] = template
         fields["template_cluster_id"] = hashlib.md5(
-            template.encode(), usedforsecurity=False,
+            template.encode(),
+            usedforsecurity=False,
         ).hexdigest()[:12]
 
         if "message" not in fields:
@@ -957,11 +1022,13 @@ def extract_unstructured_samples(
         # Only include fields that map to known columns.
         filtered = {k: v for k, v in fields.items() if k in column_names}
 
-        samples.append(SampleRecord(
-            source_file=filename,
-            line_start=start,
-            line_end=end,
-            fields=filtered,
-        ))
+        samples.append(
+            SampleRecord(
+                source_file=filename,
+                line_start=start,
+                line_end=end,
+                fields=filtered,
+            )
+        )
 
     return samples

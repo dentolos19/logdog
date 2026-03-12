@@ -10,7 +10,7 @@ from lib.auth import get_current_user
 from lib.database import get_db
 from lib.database_swarm import LogDatabaseError, LogDatabaseSwarm, ReadOnlyQueryError
 from lib.models import Asset, LogGroup, LogGroupFile, LogGroupProcess, LogGroupTable, User
-from lib.preprocessor import (
+from lib.parsers.preprocessor import (
     FileInput,
     LogPreprocessorService,
     PreprocessorResult,
@@ -179,10 +179,7 @@ def _build_column_description_map(
         if generated_table.get("table_name") != table_name:
             continue
 
-        return {
-            column["name"]: column.get("description", "")
-            for column in generated_table.get("columns", [])
-        }
+        return {column["name"]: column.get("description", "") for column in generated_table.get("columns", [])}
 
     return {}
 
@@ -629,7 +626,8 @@ def upload_log_files(
 
         # Decode content for the preprocessor.
         # For binary files, run through our decoder pipeline first.
-        from lib.unstructured_parser import preprocess_binary_input
+        from lib.parsers.unstructured_parser import preprocess_binary_input
+
         decoded_lines = preprocess_binary_input(raw_data)
         content = "\n".join(decoded_lines)
 

@@ -11,12 +11,15 @@ from pydantic import BaseModel, Field, SecretStr
 # Lazy import to avoid circular dependency at module level.
 _unstructured_parser = None
 
+
 def _get_unstructured_parser():
     global _unstructured_parser
     if _unstructured_parser is None:
-        from lib import unstructured_parser as _up
+        from lib.parsers import unstructured_parser as _up
+
         _unstructured_parser = _up
     return _unstructured_parser
+
 
 logger = logging.getLogger(__name__)
 
@@ -258,15 +261,18 @@ class LogPreprocessorService:
             # the domain-aware extraction is more reliable than the raw KV
             # score suggests.  Boost format_confidence based on how many
             # domain columns were discovered.
-            if (
-                detected_format == DetectedFormat.KEY_VALUE
-                and format_confidence < 0.6
-            ):
+            if detected_format == DetectedFormat.KEY_VALUE and format_confidence < 0.6:
                 domain_col_count = sum(
-                    1 for col in heuristic_columns
-                    if col.name in (
-                        "wafer_id", "tool_id", "recipe_id", "process_step",
-                        "template", "template_cluster_id",
+                    1
+                    for col in heuristic_columns
+                    if col.name
+                    in (
+                        "wafer_id",
+                        "tool_id",
+                        "recipe_id",
+                        "process_step",
+                        "template",
+                        "template_cluster_id",
                     )
                 )
                 if domain_col_count >= 2:
@@ -492,7 +498,10 @@ class LogPreprocessorService:
     # ------------------------------------------------------------------
 
     def _extract_heuristic_columns(
-        self, lines: list[str], detected_format: DetectedFormat, format_confidence: float = 1.0,
+        self,
+        lines: list[str],
+        detected_format: DetectedFormat,
+        format_confidence: float = 1.0,
     ) -> list[InferredColumn]:
         """Derive columns from the detected format."""
 
