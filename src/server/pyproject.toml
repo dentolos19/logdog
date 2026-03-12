@@ -5,6 +5,8 @@ requires-python = ">=3.12,<3.14"
 dependencies = [
   "bcrypt",
   "boto3",
+  "chardet",
+  "drain3",
   "fastapi[standard]",
   "langchain-openrouter",
   "pydantic>=2.0.0,<2.12",
