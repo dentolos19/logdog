@@ -18,6 +18,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 _COOKIE_SECURE = os.getenv("APP_URL", "http").lower().startswith("https")
+_COOKIE_SAMESITE = os.getenv("AUTH_COOKIE_SAMESITE", "none" if _COOKIE_SECURE else "lax").strip().lower()
+
+if _COOKIE_SAMESITE not in {"lax", "strict", "none"}:
+    _COOKIE_SAMESITE = "none" if _COOKIE_SECURE else "lax"
+
+if _COOKIE_SAMESITE == "none" and not _COOKIE_SECURE:
+    _COOKIE_SAMESITE = "lax"
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -45,7 +52,7 @@ def _set_auth_cookies(response: Response, user_id: str) -> None:
         key="access_token",
         value=create_access_token(user_id),
         httponly=True,
-        samesite="lax",
+        samesite=_COOKIE_SAMESITE,
         secure=_COOKIE_SECURE,
         max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     )
@@ -53,7 +60,7 @@ def _set_auth_cookies(response: Response, user_id: str) -> None:
         key="refresh_token",
         value=create_refresh_token(user_id),
         httponly=True,
-        samesite="lax",
+        samesite=_COOKIE_SAMESITE,
         secure=_COOKIE_SECURE,
         # Scope the refresh token to the refresh endpoint only to minimize exposure.
         path="/auth/refresh",
@@ -114,7 +121,7 @@ def refresh(
         key="access_token",
         value=create_access_token(user_id),
         httponly=True,
-        samesite="lax",
+        samesite=_COOKIE_SAMESITE,
         secure=_COOKIE_SECURE,
         max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     )
