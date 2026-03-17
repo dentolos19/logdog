@@ -707,7 +707,7 @@ wheels = [
 ]
 
 [[package]]
-name = "naisc-server"
+name = "logdog-server"
 version = "1.0.0"
 source = { virtual = "." }
 dependencies = [

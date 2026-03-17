@@ -1,4 +1,4 @@
-# NAISC for Agents
+# Logdog for Agents
 
 ## Tech Architecture
 

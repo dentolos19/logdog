@@ -1,5 +1,5 @@
 {
-  "name": "naisc-server",
+  "name": "logdog-server",
   "private": true,
   "scripts": {
     "postinstall": "bun run types",

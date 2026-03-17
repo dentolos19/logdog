@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 # Environment / constants
 # ---------------------------------------------------------------------------
 
-APP_NAME = os.getenv("APP_NAME", "NAISC")
+APP_NAME = os.getenv("APP_NAME", "Logdog")
 APP_URL = os.getenv("APP_URL")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "inception/mercury-2")

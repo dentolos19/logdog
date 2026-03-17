@@ -1,3 +1,3 @@
-# National AI Student Challenge 2026
+# Logdog
 
 Hello world.

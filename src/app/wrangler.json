@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "naisc",
+  "name": "logdog",
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-01-01",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
@@ -19,7 +19,7 @@
   },
   "routes": [
     {
-      "pattern": "naisc.dennise.me",
+      "pattern": "logdog.dennise.me",
       "custom_domain": true
     }
   ]

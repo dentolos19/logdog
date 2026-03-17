@@ -1,10 +1,11 @@
 """Analyze binary test files to understand their structure."""
+
 import re
 import struct
 import zlib
 from pathlib import Path
 
-DATA_DIR = Path(r"c:\2025-Semester-2\NAISC Hackathon\unstructured sample data")
+DATA_DIR = Path(r"c:\2025-Semester-2\Logdog Hackathon\unstructured sample data")
 
 # === zlib_embedded_02.bin ===
 raw = (DATA_DIR / "zlib_embedded_02.bin").read_bytes()
@@ -50,19 +51,19 @@ for line in lines:
     print(f"  line: {line[:80]}")
 
 hex_str = lines[1] if len(lines) > 1 else lines[0]
-print(f"\n  Hex string length: {len(hex_str)} chars = {len(hex_str)//2} bytes")
+print(f"\n  Hex string length: {len(hex_str)} chars = {len(hex_str) // 2} bytes")
 byte_data = bytes.fromhex(hex_str)
 print(f"  Decoded bytes: {len(byte_data)} bytes")
 # Try parsing as float records
 for i in range(0, min(len(byte_data), 112), 14):
-    chunk = byte_data[i:i + 14]
+    chunk = byte_data[i : i + 14]
     hex_repr = " ".join(f"{b:02X}" for b in chunk)
     # Try interpreting as: 4-byte ID + 2-byte field + 4-byte float(BE) + 4-byte extra
     if len(chunk) >= 10:
         sensor_id = chunk[0:4].hex().upper()
         val_bytes = chunk[4:8]
         float_val = struct.unpack(">f", val_bytes)[0] if len(val_bytes) == 4 else 0
-        print(f"  record {i//14}: {hex_repr}  (sensor={sensor_id}, reading={float_val:.4f})")
+        print(f"  record {i // 14}: {hex_repr}  (sensor={sensor_id}, reading={float_val:.4f})")
 
 print()
 
@@ -75,11 +76,11 @@ end_idx = raw.find(b"END_B64")
 print(f"  BEGIN_B64 at offset: {begin_idx}")
 print(f"  END_B64 at offset: {end_idx}")
 if begin_idx >= 0 and end_idx >= 0:
-    payload = raw[begin_idx + len(b"BEGIN_B64"):end_idx]
+    payload = raw[begin_idx + len(b"BEGIN_B64") : end_idx]
     payload_text = payload.decode("ascii", errors="replace").strip()
     print(f"  Payload ({len(payload_text)} chars): {payload_text[:100]}...")
     # Check what's after END_B64
-    after = raw[end_idx + len(b"END_B64"):]
+    after = raw[end_idx + len(b"END_B64") :]
     print(f"  After END_B64 ({len(after)} bytes): {after.hex()}")
     # Before BEGIN_B64
     before = raw[:begin_idx]

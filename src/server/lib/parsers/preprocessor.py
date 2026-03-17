@@ -1186,8 +1186,8 @@ class LogPreprocessorService:
             api_key=SecretStr(OPENROUTER_API_KEY),
             temperature=0.0,
             max_tokens=4096,
-            app_title="NAISC",
-            app_url="https://naisc.dennise.me",
+            app_title="Logdog",
+            app_url="https://logdog.dennise.me",
         )
 
         structured_model = model.with_structured_output(LlmSchemaResponse, method="json_schema", strict=True)

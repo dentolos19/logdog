@@ -121,7 +121,7 @@ def main() -> None:
     print("  Applying DDL to swarm database ...")
     print(DIVIDER)
 
-    tmp_dir = Path(tempfile.mkdtemp(prefix="naisc_test_"))
+    tmp_dir = Path(tempfile.mkdtemp(prefix="logdog_test_"))
     swarm = LogDatabaseSwarm(root_directory=tmp_dir)
     test_group_id = "test-e2e-001"
 
