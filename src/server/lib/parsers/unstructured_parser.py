@@ -15,7 +15,6 @@ All public helpers are consumed by ``LogPreprocessorService`` in
 import base64
 import hashlib
 import logging
-import os
 import re
 import struct
 import zlib
@@ -24,25 +23,19 @@ from typing import Any
 import chardet
 from drain3 import TemplateMiner
 from drain3.template_miner_config import TemplateMinerConfig
-from langchain_openrouter import ChatOpenRouter
+from lib import ai
 from lib.parsers.preprocessor import (
     ColumnKind,
     InferredColumn,
     SampleRecord,
     SqlType,
 )
-from pydantic import BaseModel, Field, SecretStr
 
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Environment / constants
 # ---------------------------------------------------------------------------
-
-APP_NAME = os.getenv("APP_NAME", "Logdog")
-APP_URL = os.getenv("APP_URL")
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "inception/mercury-2")
 
 MAX_SAMPLE_LINES = 30
 MAX_LINE_LENGTH = 2000
@@ -184,29 +177,6 @@ WARN_MSG_RE = re.compile(r"WARN:\s*(?P<warn_msg>.+?)(?:\x00|$)")
 
 # Zlib magic bytes (78 9C = default compression, 78 01 = no/low, 78 DA = best).
 ZLIB_MAGIC = (b"\x78\x9c", b"\x78\x01", b"\x78\xda")
-
-
-# ---------------------------------------------------------------------------
-# LLM response schema (structured output)
-# ---------------------------------------------------------------------------
-
-
-class LlmFieldExtraction(BaseModel):
-    """One field extracted by the LLM from unstructured text."""
-
-    name: str
-    sql_type: str = "TEXT"
-    description: str = ""
-    example_values: list[str] = Field(default_factory=list)
-
-
-class LlmUnstructuredResponse(BaseModel):
-    """Structured LLM response for unstructured log analysis."""
-
-    fields: list[LlmFieldExtraction] = Field(default_factory=list)
-    summary: str = ""
-    event_type_hint: str = ""
-    warnings: list[str] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -827,27 +797,12 @@ SEMICONDUCTOR_COLUMNS = [
 def call_llm_for_unstructured(
     sample_lines: list[str],
     heuristic_columns: list[InferredColumn],
-) -> LlmUnstructuredResponse:
+) -> ai.LlmUnstructuredResponse:
     """Ask the LLM to discover additional fields in unstructured text."""
-    if not OPENROUTER_API_KEY:
-        return LlmUnstructuredResponse(
+    if not ai.has_openrouter_api_key():
+        return ai.LlmUnstructuredResponse(
             warnings=["OPENROUTER_API_KEY not set; LLM enrichment skipped."],
         )
-
-    model = ChatOpenRouter(
-        model=OPENROUTER_MODEL,
-        api_key=SecretStr(OPENROUTER_API_KEY),
-        temperature=0.0,
-        max_tokens=4096,
-        app_title=APP_NAME,
-        app_url=APP_URL,
-    )
-
-    structured_model = model.with_structured_output(
-        LlmUnstructuredResponse,
-        method="json_schema",
-        strict=True,
-    )
 
     heuristic_summary = (
         "\n".join(f"  - {col.name} ({col.sql_type.value}): {col.description}" for col in heuristic_columns)
@@ -881,14 +836,17 @@ def call_llm_for_unstructured(
 
     messages = [("system", system_prompt), ("human", user_prompt)]
 
-    try:
-        response: LlmUnstructuredResponse = structured_model.invoke(messages)
-        return response
-    except Exception as exc:
-        logger.warning("LLM unstructured enrichment failed: %s", exc)
-        return LlmUnstructuredResponse(
-            warnings=[f"LLM enrichment failed ({type(exc).__name__}): {exc}"],
-        )
+    invocation = ai.invoke_structured_openrouter(
+        messages,
+        ai.LlmUnstructuredResponse,
+        context="LLM unstructured enrichment",
+    )
+    if invocation.response is not None:
+        return invocation.response
+
+    return ai.LlmUnstructuredResponse(
+        warnings=[invocation.warning] if invocation.warning else [],
+    )
 
 
 # ---------------------------------------------------------------------------

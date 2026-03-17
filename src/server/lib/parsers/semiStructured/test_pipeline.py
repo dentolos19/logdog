@@ -56,18 +56,20 @@ Pressure = 500 mtorr
 RFPower = 300 watts
 """
 
-LOG_JSON = json.dumps({
-    "EquipmentID": "EQP_0001",
-    "LotID": "LOT_1234",
-    "WaferID": "WFR_0042",
-    "timestamp": "2024-01-15T08:30:00Z",
-    "level": "INFO",
-    "message": "Wafer process complete",
-    "recipe": {
-        "RecipeID": "RCP_0007",
-        "steps": 5,
+LOG_JSON = json.dumps(
+    {
+        "EquipmentID": "EQP_0001",
+        "LotID": "LOT_1234",
+        "WaferID": "WFR_0042",
+        "timestamp": "2024-01-15T08:30:00Z",
+        "level": "INFO",
+        "message": "Wafer process complete",
+        "recipe": {
+            "RecipeID": "RCP_0007",
+            "steps": 5,
+        },
     }
-})
+)
 
 LOG_SYSLOG = "Jan 15 08:30:00 EQP_0001 myprocess[1234]: ERROR something went wrong"
 
@@ -92,6 +94,7 @@ field_c :: 42
 # ---------------------------------------------------------------------------
 # 1. Full pipeline — format coverage
 # ---------------------------------------------------------------------------
+
 
 def test_pipeline_key_value():
     pipe = SemiStructuredPipeline()
@@ -163,6 +166,7 @@ def test_pipeline_empty_input():
 # 2. AI fallback path
 # ---------------------------------------------------------------------------
 
+
 def test_pipeline_forces_ai_fallback():
     """Set confidence_threshold=1.1 so AI fallback always triggers."""
     config = PipelineConfig(confidence_threshold=1.1, ai_fallback_enabled=True)
@@ -204,6 +208,7 @@ def test_pipeline_ai_fallback_caches_template():
 # 3. LogRow integrity
 # ---------------------------------------------------------------------------
 
+
 def test_log_row_id_is_deterministic():
     pipe = SemiStructuredPipeline()
     r1 = pipe.process(LOG_KEY_VALUE)
@@ -228,7 +233,7 @@ def test_log_row_to_dict():
     assert "log_level" in d
     assert "additional_data" in d
     assert isinstance(d["additional_data"], str)  # JSON-serialized string
-    json.loads(d["additional_data"])               # must be valid JSON
+    json.loads(d["additional_data"])  # must be valid JSON
 
 
 def test_log_row_to_json():
@@ -248,6 +253,7 @@ def test_log_row_log_group_id():
 # ---------------------------------------------------------------------------
 # 4. Batch processing
 # ---------------------------------------------------------------------------
+
 
 def test_batch_processing():
     pipe = SemiStructuredPipeline()
@@ -271,6 +277,7 @@ def test_batch_ids_are_unique():
 # 5. Diagnostics
 # ---------------------------------------------------------------------------
 
+
 def test_diagnostics_structure():
     pipe = SemiStructuredPipeline()
     pipe.process(LOG_KEY_VALUE)
@@ -286,6 +293,7 @@ def test_diagnostics_structure():
 # ---------------------------------------------------------------------------
 # 6. Component unit tests
 # ---------------------------------------------------------------------------
+
 
 def test_grok_engine_detects_format():
     grok = GrokEngine()
@@ -322,7 +330,7 @@ def test_field_extractor_section_delimited():
     ext = FieldExtractor()
     result = ext.extract(LOG_SECTION_DELIMITED)
     assert result.format_detected is not None
-    assert len(result.fields) >= 0   # at least parseable without crash
+    assert len(result.fields) >= 0  # at least parseable without crash
     assert result.confidence >= 0
 
 
@@ -412,7 +420,7 @@ def test_template_cache_stats():
 
 def test_ai_fallback_local_key_value():
     """Local heuristic fallback — no API key needed."""
-    ai = AIFallback(config=AIFallbackConfig(api_key=None))
+    ai = AIFallback(config=AIFallbackConfig(api_key=""))
     result = ai.extract(LOG_KEY_VALUE)
 
     assert result.success is True
@@ -423,7 +431,7 @@ def test_ai_fallback_local_key_value():
 
 
 def test_ai_fallback_cost_tracker():
-    ai = AIFallback(config=AIFallbackConfig(api_key=None))
+    ai = AIFallback(config=AIFallbackConfig(api_key=""))
     ai.extract(LOG_KEY_VALUE)
     ai.extract(LOG_KEY_VALUE)  # second call → cache hit
 
@@ -515,12 +523,13 @@ if __name__ == "__main__":
             passed += 1
         except Exception as e:
             import traceback
+
             print(f"FAILED   {test.__name__}: {e}")
             traceback.print_exc()
             errors.append((test.__name__, e))
             failed += 1
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Results: {passed} passed, {failed} failed out of {len(tests)} tests")
     if errors:
         print("\nFailures:")

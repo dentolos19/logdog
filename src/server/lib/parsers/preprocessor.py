@@ -1,18 +1,17 @@
 import json
 import logging
-import os
 import re
 from enum import Enum
 from typing import Any
 
-from langchain_openrouter import ChatOpenRouter
+from lib import ai
 from lib.parsers.contracts import (
     INGESTION_SCHEMA_VERSION,
     ClassificationResult,
     FileClassification,
     StructuralClass,
 )
-from pydantic import BaseModel, Field, SecretStr
+from pydantic import BaseModel, Field
 
 # Lazy import to avoid circular dependency at module level.
 _unstructured_parser = None
@@ -28,9 +27,6 @@ def _get_unstructured_parser():
 
 
 logger = logging.getLogger(__name__)
-
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "inception/mercury-2")
 
 # Limits for the sample lines sent to the LLM.
 MAX_SAMPLE_LINES = 30
@@ -144,28 +140,6 @@ class PreprocessorResult(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# LLM Response Schemas (for structured output)
-# ---------------------------------------------------------------------------
-
-
-class LlmColumnSuggestion(BaseModel):
-    """A single column suggested or enriched by the LLM."""
-
-    name: str
-    sql_type: str = "TEXT"
-    description: str = ""
-    nullable: bool = True
-
-
-class LlmSchemaResponse(BaseModel):
-    """Structured response from the LLM for schema inference."""
-
-    columns: list[LlmColumnSuggestion] = Field(default_factory=list)
-    summary: str = ""
-    warnings: list[str] = Field(default_factory=list)
-
-
-# ---------------------------------------------------------------------------
 # Regex patterns for format detection
 # ---------------------------------------------------------------------------
 
@@ -225,7 +199,7 @@ class LogPreprocessorService:
 
     def __init__(self, table_name: str = "logs") -> None:
         self.table_name = table_name
-        self._llm_available = bool(OPENROUTER_API_KEY)
+        self._llm_available = ai.has_openrouter_api_key()
 
     # ------------------------------------------------------------------
     # Public API — new classification-only path
@@ -1181,17 +1155,6 @@ class LogPreprocessorService:
     ) -> dict[str, Any]:
         """Call the LLM to enrich the schema with semantic understanding."""
 
-        model = ChatOpenRouter(
-            model=OPENROUTER_MODEL,
-            api_key=SecretStr(OPENROUTER_API_KEY),
-            temperature=0.0,
-            max_tokens=4096,
-            app_title="Logdog",
-            app_url="https://logdog.dennise.me",
-        )
-
-        structured_model = model.with_structured_output(LlmSchemaResponse, method="json_schema", strict=True)
-
         heuristic_summary = (
             "\n".join(
                 f"  - {column.name} ({column.sql_type.value}): {column.description}" for column in heuristic_columns
@@ -1232,7 +1195,17 @@ class LogPreprocessorService:
             ("human", user_prompt),
         ]
 
-        response: LlmSchemaResponse = structured_model.invoke(messages)
+        invocation = ai.invoke_structured_openrouter(
+            messages,
+            ai.LlmSchemaResponse,
+            context="LLM schema inference",
+        )
+        if invocation.warning:
+            raise RuntimeError(invocation.warning)
+
+        response = invocation.response
+        if response is None:
+            raise RuntimeError("LLM enrichment returned no response.")
 
         inferred_columns: list[InferredColumn] = []
         for suggestion in response.columns:

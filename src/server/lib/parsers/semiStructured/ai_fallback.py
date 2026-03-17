@@ -15,11 +15,13 @@ Key design decisions (from decision notes):
 """
 
 import json
-import hashlib
 import time
 import logging
 from dataclasses import dataclass, field
 from typing import Any, Optional
+
+from lib import ai
+from pydantic import BaseModel, Field
 
 from .template_cache import TemplateCache, CachedTemplate
 
@@ -64,18 +66,21 @@ Common semiconductor log fields to look for:
 @dataclass
 class AIFallbackConfig:
     """Configuration for the AI fallback module."""
+
+    # None = use OPENROUTER_API_KEY from environment; empty string disables AI calls.
     api_key: Optional[str] = None
-    model: str = "gemini-3.1-flash-lite-preview"
+    # None = use OPENROUTER_MODEL from environment.
+    model: Optional[str] = None
     endpoint: str = "https://generativelanguage.googleapis.com/v1beta/models"
-    default_thinking_level: str = "low"    # low, medium, high
-    max_input_tokens: int = 4000           # truncate input if too long
+    default_thinking_level: str = "low"  # low, medium, high
+    max_input_tokens: int = 4000  # truncate input if too long
     timeout_seconds: float = 10.0
     max_retries: int = 2
     cache_enabled: bool = True
 
     # Cost tracking
-    input_price_per_m: float = 0.25        # $0.25 / 1M input tokens
-    output_price_per_m: float = 1.50       # $1.50 / 1M output tokens
+    input_price_per_m: float = 0.25  # $0.25 / 1M input tokens
+    output_price_per_m: float = 1.50  # $1.50 / 1M output tokens
 
 
 # ---------------------------------------------------------------------------
@@ -117,8 +122,7 @@ class CostTracker:
         self.total_input_tokens += input_tokens
         self.total_output_tokens += output_tokens
         self.total_cost_usd += (
-            input_tokens / 1_000_000 * config.input_price_per_m +
-            output_tokens / 1_000_000 * config.output_price_per_m
+            input_tokens / 1_000_000 * config.input_price_per_m + output_tokens / 1_000_000 * config.output_price_per_m
         )
         self.cache_misses += 1
 
@@ -132,10 +136,16 @@ class CostTracker:
             "cache_hit_rate": f"{self.cache_hit_rate:.1%}",
             "cache_hits": self.cache_hits,
             "cache_misses": self.cache_misses,
-            "avg_cost_per_call": round(
-                self.total_cost_usd / max(self.total_calls, 1), 6
-            ),
+            "avg_cost_per_call": round(self.total_cost_usd / max(self.total_calls, 1), 6),
         }
+
+
+class LlmSemiStructuredResponse(BaseModel):
+    """Structured response for semi-structured fallback extraction."""
+
+    fields: dict[str, Any] = Field(default_factory=dict)
+    format_type: str = "unknown"
+    section_map: dict[str, int] = Field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -234,53 +244,89 @@ class AIFallback:
             return "medium"
         return "low"
 
-    # ---- Gemini API call --------------------------------------------------
+    # ---- AI API call --------------------------------------------------
 
     def _call_gemini(
-        self, raw_text: str, thinking_level: str,
+        self,
+        raw_text: str,
+        thinking_level: str,
         context: Optional[dict] = None,
     ) -> AIFallbackResult:
         """
-        Call Gemini 3.1 Flash-Lite API for field extraction.
+        Call a centralized LLM backend for field extraction.
 
-        NOTE: This is the API call scaffold. In production, this would use
-        httpx or google-genai SDK. For this implementation, we simulate
-        the API structure and provide a local fallback parser.
+        Uses lib.ai to keep AI client setup and model selection centralized.
+        Falls back to local heuristics if no key is configured or invocation fails.
         """
-        if not self.config.api_key:
+        resolved_api_key = ai.resolve_openrouter_api_key(self.config.api_key)
+        if not ai.has_openrouter_api_key(resolved_api_key):
             logger.info("No API key configured — using local heuristic fallback")
             return self._local_fallback(raw_text, thinking_level)
 
-        # Build the request payload
-        truncated = raw_text[:self.config.max_input_tokens * 4]  # rough char limit
+        # Build the prompt payload.
+        truncated = raw_text[: self.config.max_input_tokens * 4]  # rough char limit
+        context_json = json.dumps(context or {}, ensure_ascii=True)
+        budget = self._thinking_budget(thinking_level)
 
-        payload = {
-            "contents": [{
-                "role": "user",
-                "parts": [{"text": f"Extract structured fields from this log:\n\n{truncated}"}]
-            }],
-            "systemInstruction": {
-                "parts": [{"text": SYSTEM_PROMPT}]
-            },
-            "generationConfig": {
-                "responseMimeType": "application/json",
-                "temperature": 0.1,
-                "thinkingConfig": {
-                    "thinkingBudget": self._thinking_budget(thinking_level)
-                }
-            }
-        }
-
-        # In production, make the actual HTTP call here:
-        # url = f"{self.config.endpoint}/{self.config.model}:generateContent"
-        # response = httpx.post(url, json=payload, params={"key": self.config.api_key})
-        #
-        # For now, fall back to local parsing:
-        logger.info(
-            f"Would call Gemini API with thinking_level={thinking_level}, "
-            f"input_chars={len(truncated)}"
+        system_prompt = (
+            f"{SYSTEM_PROMPT}\n\n"
+            "Return JSON matching this schema exactly:\n"
+            "- fields: object containing extracted flat key/value pairs\n"
+            "- format_type: short format identifier\n"
+            "- section_map: object of section_name -> field_count\n"
+            "Do not include prose or markdown."
         )
-        return self._local_fallback(raw_text, thinking_level)
+        user_prompt = (
+            f"Thinking level: {thinking_level} (budget={budget}).\n"
+            f"Context JSON: {context_json}\n\n"
+            "Extract structured fields from this log:\n\n"
+            f"{truncated}"
+        )
+        messages = [
+            ("system", system_prompt),
+            ("human", user_prompt),
+        ]
+
+        invocation = ai.invoke_structured_openrouter(
+            messages,
+            LlmSemiStructuredResponse,
+            context="Semi-structured AI fallback",
+            model=self.config.model,
+            api_key=resolved_api_key,
+            temperature=0.1,
+            max_tokens=4096,
+        )
+        if invocation.response is None:
+            if invocation.warning:
+                logger.warning("Semi-structured AI fallback failed: %s", invocation.warning)
+            return self._local_fallback(raw_text, thinking_level)
+
+        response = invocation.response
+        fields = dict(response.fields)
+        section_map = dict(response.section_map)
+        format_type = response.format_type or "unknown"
+        fields["_format_type"] = format_type
+        fields["_section_map"] = section_map
+
+        est_input_tokens = len(truncated) // 4
+        est_output_tokens = len(json.dumps(fields, ensure_ascii=True)) // 4
+        self.cost_tracker.record_call(
+            est_input_tokens,
+            est_output_tokens,
+            self.config,
+        )
+
+        return AIFallbackResult(
+            success=len(fields) > 2,
+            fields=fields,
+            format_type=format_type,
+            section_map=section_map,
+            thinking_level=thinking_level,
+            estimated_cost_usd=(
+                est_input_tokens / 1_000_000 * self.config.input_price_per_m
+                + est_output_tokens / 1_000_000 * self.config.output_price_per_m
+            ),
+        )
 
     def _thinking_budget(self, level: str) -> int:
         """Map thinking level to token budget."""
@@ -313,6 +359,7 @@ class AIFallback:
 
             # ROW markers
             import re
+
             row_m = re.match(r"^ROW\s+(\d+)", stripped)
             if row_m:
                 current_section = f"row_{row_m.group(1)}"
@@ -352,9 +399,7 @@ class AIFallback:
 
         est_input_tokens = len(text) // 4
         est_output_tokens = len(json.dumps(fields)) // 4
-        self.cost_tracker.record_call(
-            est_input_tokens, est_output_tokens, self.config
-        )
+        self.cost_tracker.record_call(est_input_tokens, est_output_tokens, self.config)
 
         return AIFallbackResult(
             success=len(fields) > 2,  # at least some fields extracted
@@ -363,8 +408,8 @@ class AIFallback:
             section_map=section_map,
             thinking_level=thinking_level,
             estimated_cost_usd=(
-                est_input_tokens / 1_000_000 * self.config.input_price_per_m +
-                est_output_tokens / 1_000_000 * self.config.output_price_per_m
+                est_input_tokens / 1_000_000 * self.config.input_price_per_m
+                + est_output_tokens / 1_000_000 * self.config.output_price_per_m
             ),
         )
 
@@ -418,18 +463,11 @@ def build_gemini_request(
 
     return {
         "model": model,
-        "contents": [{
-            "role": "user",
-            "parts": [{"text": f"Extract structured fields from this log:\n\n{raw_text}"}]
-        }],
-        "systemInstruction": {
-            "parts": [{"text": SYSTEM_PROMPT}]
-        },
+        "contents": [{"role": "user", "parts": [{"text": f"Extract structured fields from this log:\n\n{raw_text}"}]}],
+        "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
         "generationConfig": {
             "responseMimeType": "application/json",
             "temperature": 0.1,
-            "thinkingConfig": {
-                "thinkingBudget": budget
-            }
-        }
+            "thinkingConfig": {"thinkingBudget": budget},
+        },
     }

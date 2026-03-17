@@ -251,7 +251,7 @@ class TestColumnInference:
 
 
 class TestExtractUnstructuredColumns:
-    @patch("lib.parsers.unstructured_parser.OPENROUTER_API_KEY", "")
+    @patch("lib.ai.OPENROUTER_API_KEY", "")
     def test_returns_columns_for_semi_logs(self) -> None:
         columns = extract_unstructured_columns(SEMI_LOG_LINES)
         col_names = {c.name for c in columns}
@@ -259,11 +259,11 @@ class TestExtractUnstructuredColumns:
         assert "template" in col_names
         assert "template_cluster_id" in col_names
 
-    @patch("lib.parsers.unstructured_parser.OPENROUTER_API_KEY", "")
+    @patch("lib.ai.OPENROUTER_API_KEY", "")
     def test_returns_empty_for_empty_input(self) -> None:
         assert extract_unstructured_columns([]) == []
 
-    @patch("lib.parsers.unstructured_parser.OPENROUTER_API_KEY", "")
+    @patch("lib.ai.OPENROUTER_API_KEY", "")
     def test_returns_empty_for_all_noise(self) -> None:
         assert extract_unstructured_columns(["---", "===", "   "]) == []
 
@@ -274,7 +274,7 @@ class TestExtractUnstructuredColumns:
 
 
 class TestSampleExtraction:
-    @patch("lib.parsers.unstructured_parser.OPENROUTER_API_KEY", "")
+    @patch("lib.ai.OPENROUTER_API_KEY", "")
     def test_extracts_samples(self) -> None:
         columns = extract_unstructured_columns(SEMI_LOG_LINES)
         col_names = {c.name for c in columns} | {"raw_text", "source", "message"}
@@ -290,7 +290,7 @@ class TestSampleExtraction:
 
 
 class TestPreprocessorIntegration:
-    @patch("lib.parsers.unstructured_parser.OPENROUTER_API_KEY", "")
+    @patch("lib.ai.OPENROUTER_API_KEY", "")
     def test_plain_text_goes_through_unstructured_parser(self, service: LogPreprocessorService) -> None:
         """When the preprocessor detects PLAIN_TEXT, our unstructured parser should provide columns."""
         # Use truly unstructured text that won't match JSON/CSV/syslog/key=value.
@@ -312,7 +312,7 @@ class TestPreprocessorIntegration:
         # Template columns should always be included from Drain3 mining.
         assert "template" in col_names or "template_cluster_id" in col_names
 
-    @patch("lib.parsers.unstructured_parser.OPENROUTER_API_KEY", "")
+    @patch("lib.ai.OPENROUTER_API_KEY", "")
     def test_baseline_columns_preserved(self, service: LogPreprocessorService) -> None:
         file_input = FileInput(filename="plain.log", content="\n".join(PLAIN_TEXT_LINES))
         service._llm_available = False
@@ -352,7 +352,7 @@ class TestBinaryHexHandling:
         assert "FRM1" in ascii_parts[0]
         assert "L3MCMmDB0xSKbdTf" in ascii_parts[1]
 
-    @patch("lib.parsers.unstructured_parser.OPENROUTER_API_KEY", "")
+    @patch("lib.ai.OPENROUTER_API_KEY", "")
     def test_hex_dump_content_processed(self) -> None:
         """Hex dump content should be converted to ASCII before pipeline."""
         hex_lines = [
@@ -365,7 +365,7 @@ class TestBinaryHexHandling:
         col_names = {c.name for c in columns}
         assert "template" in col_names or "template_cluster_id" in col_names
 
-    @patch("lib.parsers.unstructured_parser.OPENROUTER_API_KEY", "")
+    @patch("lib.ai.OPENROUTER_API_KEY", "")
     def test_pure_binary_returns_empty(self) -> None:
         """Lines that are entirely binary noise should produce no columns."""
         binary_lines = ["\xff\xfe\x00\x01" * 10, "\x80\x81\x82\x83" * 10]
@@ -502,7 +502,7 @@ class TestMasterBinaryDecoder:
         lines = preprocess_binary_input(raw)
         assert any("VAC_07" in l for l in lines)
 
-    @patch("lib.parsers.unstructured_parser.OPENROUTER_API_KEY", "")
+    @patch("lib.ai.OPENROUTER_API_KEY", "")
     def test_tool_event_blob_drain3(self) -> None:
         """Valve OPEN/CLOSE events should be extractable and templatable."""
         # Simulate tool_event_blob_01.bin structure.
