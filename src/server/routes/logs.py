@@ -297,14 +297,14 @@ def _get_table_row_counts(log_group_id: str) -> dict[str, int]:
         return {}
 
 
-@router.get("/", response_model=list[LogGroupListResponse])
+@router.get("", response_model=list[LogGroupListResponse])
 def get_log_groups(database: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     return (
         database.query(LogGroup).filter(LogGroup.user_id == current_user.id).order_by(LogGroup.updated_at.desc()).all()
     )
 
 
-@router.post("/", response_model=LogGroupResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=LogGroupResponse, status_code=status.HTTP_201_CREATED)
 def create_log_group(
     body: CreateLogGroupRequest,
     database: Session = Depends(get_db),
