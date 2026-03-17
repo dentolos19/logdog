@@ -43,6 +43,28 @@ class LogGroup(Base):
     files = relationship("LogGroupFile", back_populates="log_group", cascade="all, delete-orphan")
     tables = relationship("LogGroupTable", back_populates="log_group", cascade="all, delete-orphan")
     processes = relationship("LogGroupProcess", back_populates="log_group", cascade="all, delete-orphan")
+    swarm_credential = relationship(
+        "LogGroupSwarmCredential",
+        back_populates="log_group",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
+
+
+class LogGroupSwarmCredential(Base):
+    __tablename__ = "log_swarm_credentials"
+
+    id = Column(String(36), primary_key=True, index=True, nullable=False, default=lambda: str(uuid.uuid4()))
+    log_id = Column(String(36), ForeignKey("logs.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    provider = Column(String, nullable=False, default="turso")
+    database_name = Column(String, nullable=False)
+    database_url = Column(String, nullable=False)
+    database_token = Column(String, nullable=False)
+    group_name = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+    log_group = relationship("LogGroup", back_populates="swarm_credential")
 
 
 class LogGroupFile(Base):

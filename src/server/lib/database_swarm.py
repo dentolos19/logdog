@@ -1,17 +1,29 @@
 import json
+import os
+import re
 import sqlite3
 from collections.abc import Sequence
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
-from lib.models import LogGroupTable
+from lib.database import SessionLocal
+from lib.models import LogGroupSwarmCredential, LogGroupTable
+from sqlalchemy import create_engine
+from sqlalchemy.engine import Connection, Engine
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 STORE_DIR = Path("store")
 QUERY_ROW_LIMIT = 200
 PREVIEW_ROW_LIMIT = 25
 ALLOWED_QUERY_PREFIXES = ("select", "with", "pragma", "explain")
+TURSO_API_BASE_URL = "https://api.turso.tech"
+DATABASE_NAME_MAX_LENGTH = 64
+DATABASE_NAME_PATTERN = re.compile(r"[^a-z0-9-]+")
+IS_PRODUCTION = bool(os.getenv("DATABASE_URL", "").strip() and os.getenv("DATABASE_TOKEN", "").strip())
 
 JsonScalar = str | int | float | bool | None
 QueryParameters = dict[str, JsonScalar] | list[JsonScalar] | tuple[JsonScalar, ...] | None
@@ -28,11 +40,31 @@ class ReadOnlyQueryError(LogDatabaseError):
 class LogDatabaseSwarm:
     def __init__(self, root_directory: Path = STORE_DIR):
         self.root_directory = root_directory
+        self.production_mode = IS_PRODUCTION
+        self._engine_cache: dict[str, Engine] = {}
 
     def database_path(self, log_group_id: str) -> Path:
         return self.root_directory / f"{log_group_id}.sqlite3"
 
-    def ensure_database(self, log_group_id: str) -> Path:
+    def ensure_database(
+        self,
+        log_group_id: str,
+        database: Session | None = None,
+        provision_if_missing: bool = False,
+    ) -> Path:
+        if self.production_mode:
+            credential = self._get_swarm_credential(log_group_id=log_group_id, database=database)
+            if credential is None:
+                if not provision_if_missing:
+                    raise LogDatabaseError("Swarm database credentials are missing for this log group.")
+
+                if database is None:
+                    raise LogDatabaseError("A database session is required to provision a production swarm database.")
+
+                self._create_remote_database_credential(log_group_id=log_group_id, database=database)
+
+            return Path(f"{log_group_id}.turso")
+
         try:
             self.root_directory.mkdir(parents=True, exist_ok=True)
             database_path = self.database_path(log_group_id)
@@ -46,6 +78,17 @@ class LogDatabaseSwarm:
 
     def apply_schema(self, log_group_id: str, ddl: str) -> None:
         """Execute a CREATE TABLE DDL statement against the log group's swarm database."""
+
+        if self.production_mode:
+            self.ensure_database(log_group_id)
+            engine = self._get_remote_engine(log_group_id)
+
+            try:
+                with engine.begin() as connection:
+                    connection.exec_driver_sql(ddl)
+            except SQLAlchemyError as exc:
+                raise LogDatabaseError(str(exc)) from exc
+            return
 
         database_path = self.ensure_database(log_group_id)
 
@@ -93,6 +136,21 @@ class LogDatabaseSwarm:
             if isinstance(value, (dict, list)):
                 return json.dumps(value)
             return value  # type: ignore[return-value]
+
+        if self.production_mode:
+            self.ensure_database(log_group_id)
+            engine = self._get_remote_engine(log_group_id)
+
+            try:
+                with engine.begin() as connection:
+                    inserted = 0
+                    for row in rows:
+                        values = tuple(_coerce(row.get(col)) for col in columns)
+                        connection.exec_driver_sql(sql, values)
+                        inserted += 1
+                    return inserted
+            except SQLAlchemyError as exc:
+                raise LogDatabaseError(str(exc)) from exc
 
         try:
             with self._connect(database_path) as connection:
@@ -144,6 +202,22 @@ class LogDatabaseSwarm:
                 return json.dumps(value)
             return value  # type: ignore[return-value]
 
+        if self.production_mode:
+            self.ensure_database(log_group_id)
+            engine = self._get_remote_engine(log_group_id)
+
+            try:
+                with engine.begin() as connection:
+                    connection.exec_driver_sql(ddl)
+                    inserted = 0
+                    for row in rows:
+                        values = tuple(_coerce(row.get(col)) for col in columns)
+                        connection.exec_driver_sql(insert_sql, values)
+                        inserted += 1
+                    return inserted
+            except SQLAlchemyError as exc:
+                raise LogDatabaseError(str(exc)) from exc
+
         try:
             with self._connect(database_path) as connection:
                 connection.execute(ddl)
@@ -157,7 +231,55 @@ class LogDatabaseSwarm:
         except sqlite3.DatabaseError as exc:
             raise LogDatabaseError(str(exc)) from exc
 
-    def delete_database(self, log_group_id: str) -> None:
+    def delete_database(self, log_group_id: str, database: Session | None = None) -> None:
+        if self.production_mode:
+            credential = self._get_swarm_credential(log_group_id=log_group_id, database=database)
+            if credential is None:
+                return
+
+            api_key, organization_slug, _, _ = self._require_turso_api_config()
+
+            try:
+                self._turso_request(
+                    method="DELETE",
+                    path=f"/v1/organizations/{organization_slug}/databases/{credential.database_name}",
+                    api_key=api_key,
+                )
+            except LogDatabaseError as exc:
+                if "HTTP 404" not in str(exc):
+                    raise
+
+            self._dispose_remote_engine(log_group_id)
+
+            if database is not None:
+                credential_in_session = (
+                    database.query(LogGroupSwarmCredential)
+                    .filter(LogGroupSwarmCredential.log_id == log_group_id)
+                    .first()
+                )
+                if credential_in_session is not None:
+                    database.delete(credential_in_session)
+                    database.flush()
+                return
+
+            scoped_session = SessionLocal()
+            try:
+                credential_in_session = (
+                    scoped_session.query(LogGroupSwarmCredential)
+                    .filter(LogGroupSwarmCredential.log_id == log_group_id)
+                    .first()
+                )
+                if credential_in_session is not None:
+                    scoped_session.delete(credential_in_session)
+                    scoped_session.commit()
+            except SQLAlchemyError as exc:
+                scoped_session.rollback()
+                raise LogDatabaseError(str(exc)) from exc
+            finally:
+                scoped_session.close()
+
+            return
+
         database_path = self.database_path(log_group_id)
 
         try:
@@ -175,7 +297,7 @@ class LogDatabaseSwarm:
             raise LogDatabaseError(str(exc)) from exc
 
     def sync_table_metadata(self, database: Session, log_group_id: str) -> list[dict[str, Any]]:
-        self.ensure_database(log_group_id)
+        self.ensure_database(log_group_id, database=database)
         tables = self.list_tables(log_group_id)
         existing_tables = {
             table.name: table
@@ -210,6 +332,36 @@ class LogDatabaseSwarm:
         return tables
 
     def list_tables(self, log_group_id: str) -> list[dict[str, Any]]:
+        if self.production_mode:
+            self.ensure_database(log_group_id)
+            engine = self._get_remote_engine(log_group_id)
+
+            try:
+                with engine.connect() as connection:
+                    table_rows = (
+                        connection.exec_driver_sql(
+                            """
+                        SELECT name
+                        FROM sqlite_master
+                        WHERE type = 'table'
+                          AND name NOT LIKE 'sqlite_%'
+                        ORDER BY name ASC
+                        """
+                        )
+                        .mappings()
+                        .all()
+                    )
+
+                    return [
+                        {
+                            "name": str(row["name"]),
+                            "columns": self._get_columns_remote(connection, str(row["name"])),
+                        }
+                        for row in table_rows
+                    ]
+            except SQLAlchemyError as exc:
+                raise LogDatabaseError(str(exc)) from exc
+
         database_path = self.ensure_database(log_group_id)
 
         try:
@@ -237,6 +389,34 @@ class LogDatabaseSwarm:
     def summarize_tables(self, log_group_id: str) -> list[dict[str, Any]]:
         """Return each table's name, columns, and row count without loading preview rows."""
 
+        if self.production_mode:
+            self.ensure_database(log_group_id)
+            engine = self._get_remote_engine(log_group_id)
+
+            try:
+                with engine.connect() as connection:
+                    tables = self.list_tables(log_group_id)
+                    summaries: list[dict[str, Any]] = []
+
+                    for table in tables:
+                        safe_table_name = self._quote_identifier(table["name"])
+                        row_count_row = (
+                            connection.exec_driver_sql(f"SELECT COUNT(*) AS row_count FROM {safe_table_name}")
+                            .mappings()
+                            .first()
+                        )
+                        summaries.append(
+                            {
+                                "name": table["name"],
+                                "columns": table["columns"],
+                                "row_count": int(row_count_row["row_count"] if row_count_row is not None else 0),
+                            }
+                        )
+
+                    return summaries
+            except SQLAlchemyError as exc:
+                raise LogDatabaseError(str(exc)) from exc
+
         database_path = self.ensure_database(log_group_id)
 
         try:
@@ -262,6 +442,43 @@ class LogDatabaseSwarm:
             raise LogDatabaseError(str(exc)) from exc
 
     def explore_database(self, log_group_id: str, preview_limit: int = PREVIEW_ROW_LIMIT) -> list[dict[str, Any]]:
+        if self.production_mode:
+            self.ensure_database(log_group_id)
+            engine = self._get_remote_engine(log_group_id)
+
+            try:
+                with engine.connect() as connection:
+                    tables = self.list_tables(log_group_id)
+                    explored_tables: list[dict[str, Any]] = []
+
+                    for table in tables:
+                        safe_table_name = self._quote_identifier(table["name"])
+                        row_count = (
+                            connection.exec_driver_sql(f"SELECT COUNT(*) AS row_count FROM {safe_table_name}")
+                            .mappings()
+                            .first()
+                        )
+                        preview_rows = (
+                            connection.exec_driver_sql(
+                                f"SELECT * FROM {safe_table_name} LIMIT ?",
+                                (preview_limit,),
+                            )
+                            .mappings()
+                            .all()
+                        )
+                        explored_tables.append(
+                            {
+                                "name": table["name"],
+                                "columns": table["columns"],
+                                "row_count": int(row_count["row_count"] if row_count is not None else 0),
+                                "preview_rows": [dict(row) for row in preview_rows],
+                            }
+                        )
+
+                    return explored_tables
+            except SQLAlchemyError as exc:
+                raise LogDatabaseError(str(exc)) from exc
+
         database_path = self.ensure_database(log_group_id)
 
         try:
@@ -301,6 +518,43 @@ class LogDatabaseSwarm:
         Returns a dict with keys: columns, rows, total, page, page_size, total_pages.
         Raises LogDatabaseError if the table does not exist or a database error occurs.
         """
+
+        if self.production_mode:
+            self.ensure_database(log_group_id)
+            engine = self._get_remote_engine(log_group_id)
+            safe_table = self._quote_identifier(table_name)
+            offset = (page - 1) * page_size
+
+            try:
+                with engine.connect() as connection:
+                    exists = connection.exec_driver_sql(
+                        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+                        (table_name,),
+                    ).first()
+                    if exists is None:
+                        raise LogDatabaseError(f"Table '{table_name}' does not exist.")
+
+                    total_row = connection.exec_driver_sql(f"SELECT COUNT(*) AS n FROM {safe_table}").mappings().first()
+                    total = int(total_row["n"]) if total_row is not None else 0
+
+                    cursor = connection.exec_driver_sql(
+                        f"SELECT * FROM {safe_table} LIMIT ? OFFSET ?",
+                        (page_size, offset),
+                    )
+                    rows = [dict(row) for row in cursor.mappings().all()]
+                    column_names = list(cursor.keys())
+
+                    return {
+                        "columns": column_names,
+                        "rows": rows,
+                        "total": total,
+                        "page": page,
+                        "page_size": page_size,
+                        "total_pages": max(1, (total + page_size - 1) // page_size),
+                    }
+            except SQLAlchemyError as exc:
+                raise LogDatabaseError(str(exc)) from exc
+
         database_path = self.ensure_database(log_group_id)
         safe_table = self._quote_identifier(table_name)
         offset = (page - 1) * page_size
@@ -345,6 +599,26 @@ class LogDatabaseSwarm:
     ) -> dict[str, Any]:
         normalized_sql = self._normalize_sql(sql)
         self._validate_query_prefix(normalized_sql)
+
+        if self.production_mode:
+            self.ensure_database(log_group_id)
+            engine = self._get_remote_engine(log_group_id)
+
+            try:
+                with engine.connect() as connection:
+                    cursor = connection.exec_driver_sql(normalized_sql, self._coerce_parameters(parameters))
+                    column_names = list(cursor.keys())
+                    rows = cursor.fetchmany(row_limit)
+
+                    return {
+                        "columns": column_names,
+                        "rows": [dict(row._mapping) for row in rows],
+                        "row_count": len(rows),
+                        "truncated": cursor.fetchone() is not None,
+                    }
+            except SQLAlchemyError as exc:
+                raise LogDatabaseError(str(exc)) from exc
+
         database_path = self.ensure_database(log_group_id)
 
         with self._connect(database_path) as connection:
@@ -394,6 +668,21 @@ class LogDatabaseSwarm:
             for row in column_rows
         ]
 
+    def _get_columns_remote(self, connection: Connection, table_name: str) -> list[dict[str, Any]]:
+        safe_table_name = self._quote_identifier(table_name)
+        column_rows = connection.exec_driver_sql(f"PRAGMA table_info({safe_table_name})").mappings().all()
+
+        return [
+            {
+                "name": row["name"],
+                "type": row["type"],
+                "not_null": bool(row["notnull"]),
+                "default_value": row["dflt_value"],
+                "primary_key": bool(row["pk"]),
+            }
+            for row in column_rows
+        ]
+
     def _normalize_sql(self, sql: str) -> str:
         normalized_sql = sql.strip()
 
@@ -425,7 +714,7 @@ class LogDatabaseSwarm:
             return parameters
 
         if isinstance(parameters, list | tuple):
-            return parameters
+            return tuple(parameters)
 
         raise ReadOnlyQueryError("Query parameters must be an object or an array.")
 
@@ -477,3 +766,210 @@ class LogDatabaseSwarm:
             return sqlite3.SQLITE_DENY
 
         return sqlite3.SQLITE_OK
+
+    def _get_remote_engine(self, log_group_id: str) -> Engine:
+        cached = self._engine_cache.get(log_group_id)
+        if cached is not None:
+            return cached
+
+        credential = self._get_swarm_credential(log_group_id=log_group_id)
+        if credential is None:
+            raise LogDatabaseError("Swarm database credentials are missing for this log group.")
+
+        engine = create_engine(
+            self._normalize_turso_database_url(credential.database_url),
+            connect_args={"auth_token": credential.database_token},
+        )
+        self._engine_cache[log_group_id] = engine
+        return engine
+
+    def _dispose_remote_engine(self, log_group_id: str) -> None:
+        engine = self._engine_cache.pop(log_group_id, None)
+        if engine is not None:
+            engine.dispose()
+
+    def _normalize_turso_database_url(self, database_url: str) -> str:
+        normalized = database_url.strip()
+        if normalized.startswith("libsql://"):
+            normalized = normalized.replace("libsql://", "sqlite+libsql://", 1)
+
+        if not normalized.startswith("sqlite+libsql://"):
+            raise LogDatabaseError("Invalid Turso database URL for swarm database.")
+
+        if "?" in normalized:
+            if "secure=" not in normalized:
+                normalized = f"{normalized}&secure=true"
+        else:
+            normalized = f"{normalized}?secure=true"
+
+        return normalized
+
+    def _get_swarm_credential(
+        self,
+        log_group_id: str,
+        database: Session | None = None,
+    ) -> LogGroupSwarmCredential | None:
+        if database is not None:
+            return (
+                database.query(LogGroupSwarmCredential).filter(LogGroupSwarmCredential.log_id == log_group_id).first()
+            )
+
+        scoped_session = SessionLocal()
+        try:
+            return (
+                scoped_session.query(LogGroupSwarmCredential)
+                .filter(LogGroupSwarmCredential.log_id == log_group_id)
+                .first()
+            )
+        finally:
+            scoped_session.close()
+
+    def _create_remote_database_credential(self, log_group_id: str, database: Session) -> LogGroupSwarmCredential:
+        existing = self._get_swarm_credential(log_group_id=log_group_id, database=database)
+        if existing is not None:
+            return existing
+
+        api_key, organization_slug, group_name, name_prefix = self._require_turso_api_config()
+        database_name = self._build_database_name(name_prefix=name_prefix, log_group_id=log_group_id)
+
+        created_payload = self._turso_request(
+            method="POST",
+            path=f"/v1/organizations/{organization_slug}/databases",
+            api_key=api_key,
+            payload={"name": database_name, "group": group_name},
+        )
+
+        created_database = created_payload.get("database", {})
+        resolved_database_name = str(created_database.get("Name") or created_database.get("name") or database_name)
+        hostname = created_database.get("Hostname") or created_database.get("hostname")
+
+        if hostname is None:
+            database_details_payload = self._turso_request(
+                method="GET",
+                path=f"/v1/organizations/{organization_slug}/databases/{resolved_database_name}",
+                api_key=api_key,
+            )
+            details_database = database_details_payload.get("database", {})
+            hostname = details_database.get("Hostname") or details_database.get("hostname")
+
+        if hostname is None:
+            raise LogDatabaseError("Turso API did not return a database hostname.")
+
+        token_payload = self._turso_request(
+            method="POST",
+            path=(
+                f"/v1/organizations/{organization_slug}/databases/{resolved_database_name}"
+                "/auth/tokens?authorization=full-access"
+            ),
+            api_key=api_key,
+        )
+
+        database_token = token_payload.get("jwt") or token_payload.get("token")
+        if not database_token:
+            raise LogDatabaseError("Turso API did not return a database auth token.")
+
+        credential = LogGroupSwarmCredential(
+            log_id=log_group_id,
+            provider="turso",
+            database_name=resolved_database_name,
+            database_url=f"libsql://{hostname}",
+            database_token=str(database_token),
+            group_name=group_name,
+        )
+        database.add(credential)
+        database.flush()
+
+        return credential
+
+    def _require_turso_api_config(self) -> tuple[str, str, str, str]:
+        api_key = os.getenv("TURSO_API_KEY", "").strip()
+        organization_slug = os.getenv("TURSO_ORGANIZATION_SLUG", "").strip()
+        group_name = os.getenv("TURSO_GROUP", "logdog").strip() or "logdog"
+        name_prefix = os.getenv("TURSO_SWARM_DATABASE_PREFIX", "logdog-swarm").strip() or "logdog-swarm"
+
+        if not api_key:
+            raise LogDatabaseError("Missing TURSO_API_KEY environment variable.")
+
+        if not organization_slug:
+            organizations_payload = self._turso_request(
+                method="GET",
+                path="/v1/organizations",
+                api_key=api_key,
+            )
+            organizations = organizations_payload.get("organizations", [])
+            if isinstance(organizations, list) and organizations:
+                first_organization = organizations[0]
+                if isinstance(first_organization, dict):
+                    organization_slug = str(
+                        first_organization.get("slug")
+                        or first_organization.get("Slug")
+                        or first_organization.get("name")
+                        or first_organization.get("Name")
+                        or ""
+                    ).strip()
+
+        if not organization_slug:
+            raise LogDatabaseError(
+                "Missing TURSO_ORGANIZATION_SLUG and could not discover an organization from Turso API."
+            )
+
+        return api_key, organization_slug, group_name, name_prefix
+
+    def _build_database_name(self, name_prefix: str, log_group_id: str) -> str:
+        normalized_prefix = self._sanitize_database_name_component(name_prefix)
+        normalized_group = self._sanitize_database_name_component(log_group_id)
+
+        if not normalized_prefix:
+            normalized_prefix = "swarm"
+        if not normalized_group:
+            normalized_group = "group"
+
+        database_name = f"{normalized_prefix}-{normalized_group}"
+        database_name = database_name[:DATABASE_NAME_MAX_LENGTH].strip("-")
+        if not database_name:
+            raise LogDatabaseError("Could not build a valid Turso database name for log group.")
+
+        return database_name
+
+    def _sanitize_database_name_component(self, value: str) -> str:
+        normalized = DATABASE_NAME_PATTERN.sub("-", value.lower())
+        normalized = re.sub(r"-+", "-", normalized).strip("-")
+        return normalized
+
+    def _turso_request(
+        self,
+        method: str,
+        path: str,
+        api_key: str,
+        payload: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        body = None
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Accept": "application/json",
+        }
+
+        if payload is not None:
+            body = json.dumps(payload).encode("utf-8")
+            headers["Content-Type"] = "application/json"
+
+        request = Request(
+            url=f"{TURSO_API_BASE_URL}{path}",
+            data=body,
+            headers=headers,
+            method=method,
+        )
+
+        try:
+            with urlopen(request, timeout=30) as response:
+                response_body = response.read().decode("utf-8")
+                if not response_body:
+                    return {}
+                return json.loads(response_body)
+        except HTTPError as exc:
+            error_body = exc.read().decode("utf-8", errors="replace")
+            raise LogDatabaseError(f"Turso API request failed (HTTP {exc.code}): {error_body}") from exc
+        except URLError as exc:
+            raise LogDatabaseError(f"Turso API request failed: {exc}") from exc
+        except json.JSONDecodeError as exc:
+            raise LogDatabaseError("Turso API returned malformed JSON.") from exc

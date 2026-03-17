@@ -315,7 +315,11 @@ def create_log_group(
 
     try:
         database.flush()
-        swarm.ensure_database(str(log_group.id))
+        swarm.ensure_database(
+            str(log_group.id),
+            database=database,
+            provision_if_missing=True,
+        )
         database.commit()
     except SQLAlchemyError as exc:
         database.rollback()
@@ -376,21 +380,20 @@ def delete_log_group(
     log_group = _get_owned_log_group(database, str(current_user.id), id)
 
     try:
+        swarm.delete_database(id, database=database)
         database.delete(log_group)
         database.commit()
+    except LogDatabaseError as exc:
+        database.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete the log database: {exc}",
+        ) from exc
     except SQLAlchemyError as exc:
         database.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete the log group.",
-        ) from exc
-
-    try:
-        swarm.delete_database(id)
-    except LogDatabaseError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"The log group was deleted, but database cleanup failed: {exc}",
         ) from exc
 
 
