@@ -810,9 +810,15 @@ class LogDatabaseSwarm:
         database: Session | None = None,
     ) -> LogGroupSwarmCredential | None:
         if database is not None:
-            return (
-                database.query(LogGroupSwarmCredential).filter(LogGroupSwarmCredential.log_id == log_group_id).first()
-            )
+            try:
+                return (
+                    database.query(LogGroupSwarmCredential)
+                    .filter(LogGroupSwarmCredential.log_id == log_group_id)
+                    .first()
+                )
+            except (AssertionError, SQLAlchemyError):
+                # Fallback for invalid/detached sessions.
+                pass
 
         scoped_session = SessionLocal()
         try:
@@ -896,7 +902,11 @@ class LogDatabaseSwarm:
                 path="/v1/organizations",
                 api_key=api_key,
             )
-            organizations = organizations_payload.get("organizations", [])
+            # Handle both dict response (with "organizations" key) and direct list response
+            if isinstance(organizations_payload, list):
+                organizations = organizations_payload
+            else:
+                organizations = organizations_payload.get("organizations", [])
             if isinstance(organizations, list) and organizations:
                 first_organization = organizations[0]
                 if isinstance(first_organization, dict):
