@@ -1,0 +1,18 @@
+{
+  "name": "printly-server",
+  "private": true,
+  "scripts": {
+    "postinstall": "bun run types",
+    "dev": "wrangler dev",
+    "types": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
+  },
+  "dependencies": {
+    "@cloudflare/containers": "^0.1.0",
+    "hono": "^4.12.2"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.0",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.68.0"
+  }
+}

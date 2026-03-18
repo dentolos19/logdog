@@ -1,0 +1,50 @@
+name: Web Deployment
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+jobs:
+  deploy:
+    name: Deploy
+    environment: Production
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install Dependencies for App
+        working-directory: src/app
+        run: bun install --frozen-lockfile
+
+      - name: Install Dependencies for Server
+        working-directory: src/server-worker
+        run: bun install --frozen-lockfile
+
+      - name: Build App
+        working-directory: src/app
+        run: bun opennextjs-cloudflare build
+        env:
+          NEXT_PUBLIC_API_URL: ${{ vars.API_URL }}
+
+      - name: Deploy Server to Cloudflare
+        uses: cloudflare/wrangler-action@v3
+        with:
+          accountId: ${{ secrets.CLOUDFLARE_ID }}
+          apiToken: ${{ secrets.CLOUDFLARE_TOKEN }}
+          command: deploy
+          workingDirectory: src/server-worker
+
+      - name: Deploy App to Cloudflare
+        uses: cloudflare/wrangler-action@v3
+        with:
+          accountId: ${{ secrets.CLOUDFLARE_ID }}
+          apiToken: ${{ secrets.CLOUDFLARE_TOKEN }}
+          command: deploy
+          workingDirectory: src/app
