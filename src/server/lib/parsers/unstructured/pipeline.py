@@ -110,14 +110,20 @@ class UnstructuredPipeline(ParserPipeline):
             reasons.append(f"Detected {detected_format.value} content.")
         elif detected_format == DetectedFormat.KEY_VALUE and confidence < 0.6:
             score = max(score, 0.7)
-            reasons.append("Low-confidence key-value content handled better by heuristics.")
+            reasons.append(
+                "Low-confidence key-value content handled better by heuristics."
+            )
         else:
             score = max(score, 0.4)
-            reasons.append(f"Structured hints detected ({detected_format.value}); available as fallback.")
+            reasons.append(
+                f"Structured hints detected ({detected_format.value}); available as fallback."
+            )
 
         hex_count = sum(1 for line in non_empty[:100] if _up.is_hex_dump_line(line))
         if hex_count > 0:
-            score = max(score, min(0.92, 0.65 + (hex_count / max(1, len(non_empty[:100])))))
+            score = max(
+                score, min(0.92, 0.65 + (hex_count / max(1, len(non_empty[:100]))))
+            )
             reasons.append("Hex dump patterns detected and can be decoded.")
 
         if request.filename.lower().endswith((".bin", ".dat", ".blob")):
@@ -149,7 +155,9 @@ class UnstructuredPipeline(ParserPipeline):
             clean_lines = _up.filter_noise(lines)
 
             if not clean_lines:
-                warnings.append(f"'{file_input.filename}': no content after noise filtering, skipped.")
+                warnings.append(
+                    f"'{file_input.filename}': no content after noise filtering, skipped."
+                )
                 continue
 
             # Hex-dump special handling.
@@ -159,7 +167,9 @@ class UnstructuredPipeline(ParserPipeline):
                 if ascii_lines:
                     clean_lines = ascii_lines
                 else:
-                    warnings.append(f"'{file_input.filename}': hex-dump only, no ASCII content extractable.")
+                    warnings.append(
+                        f"'{file_input.filename}': hex-dump only, no ASCII content extractable."
+                    )
                     continue
 
             # Cluster + mine templates.
@@ -174,9 +184,13 @@ class UnstructuredPipeline(ParserPipeline):
                 fields["template"] = template
                 import hashlib
 
-                fields["template_cluster_id"] = hashlib.md5(template.encode(), usedforsecurity=False).hexdigest()[:12]
+                fields["template_cluster_id"] = hashlib.md5(
+                    template.encode(), usedforsecurity=False
+                ).hexdigest()[:12]
                 all_fields.append(fields)
-                row = _row_from_fields(fields, file_input.filename, start, end, text, template)
+                row = _row_from_fields(
+                    fields, file_input.filename, start, end, text, template
+                )
                 file_rows.append(row)
 
             if not file_rows:
@@ -187,10 +201,14 @@ class UnstructuredPipeline(ParserPipeline):
             extra_cols = self._infer_extra_columns(all_fields)
 
             all_cols = list(BASELINE_COLUMNS) + extra_cols
-            table_name = make_table_name(self.parser_key, file_input.file_id, file_input.filename)
+            table_name = make_table_name(
+                self.parser_key, file_input.file_id, file_input.filename
+            )
             ddl = build_ddl(table_name, all_cols)
 
-            table_defs.append(TableDefinition(table_name=table_name, columns=all_cols, sqlite_ddl=ddl))
+            table_defs.append(
+                TableDefinition(table_name=table_name, columns=all_cols, sqlite_ddl=ddl)
+            )
             records[table_name] = file_rows
             total_confidence += 0.65  # unstructured confidence baseline
             processed += 1
@@ -206,25 +224,26 @@ class UnstructuredPipeline(ParserPipeline):
         )
 
     @staticmethod
-    def _infer_extra_columns(all_fields: list[dict[str, Any]]) -> list[ColumnDefinition]:
-        """Return ColumnDefinitions for fields that appear in enough records."""
+    def _infer_extra_columns(
+        all_fields: list[dict[str, Any]],
+    ) -> list[ColumnDefinition]:
+        """Return ColumnDefinitions for all unique fields extracted from records.
+
+        Every field extracted from rows MUST be represented in the DDL to avoid
+        'no such column' errors at insert time. We include all keys regardless of
+        frequency, using a low threshold of 1 (include if appears in >=1 record).
+        """
         if not all_fields:
             return []
 
         key_counts: dict[str, int] = {}
-        key_examples: dict[str, list[str]] = {}
         for fields in all_fields:
-            for k, v in fields.items():
+            for k in fields.keys():
                 if k in BASELINE_COLUMN_NAMES:
                     continue
                 key_counts[k] = key_counts.get(k, 0) + 1
-                exs = key_examples.setdefault(k, [])
-                if len(exs) < 3 and v is not None:
-                    exs.append(str(v)[:100])
 
-        threshold = max(2, len(all_fields) // 20)
         cols: list[ColumnDefinition] = []
-        # Measurement field names that should use REAL type.
         real_fields = {
             "thickness",
             "pressure",
@@ -252,9 +271,7 @@ class UnstructuredPipeline(ParserPipeline):
             "resistivity",
             "particle_count",
         }
-        for k, count in key_counts.items():
-            if count < threshold:
-                continue
+        for k in key_counts:
             sql_type = "REAL" if k in real_fields else "TEXT"
             cols.append(ColumnDefinition(name=k, sql_type=sql_type))
 
