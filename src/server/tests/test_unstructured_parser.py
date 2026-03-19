@@ -1,4 +1,4 @@
-"""Tests for the unstructured log parser (lib/unstructured_parser.py).
+"""Tests for the unstructured log parser package.
 
 Covers:
   - Encoding detection
@@ -17,7 +17,7 @@ from lib.parsers.preprocessor import (
     FileInput,
     LogPreprocessorService,
 )
-from lib.parsers.unstructured_parser import (
+from lib.parsers.unstructured import (
     _decode_base64_frames,
     _decode_hex_telemetry,
     _decode_zlib,
@@ -517,7 +517,7 @@ class TestMasterBinaryDecoder:
         assert any("Valve" in l for l in lines)
 
         # Run through Drain3 to verify template mining.
-        from lib.parsers.unstructured_parser import cluster_multiline, mine_templates
+        from lib.parsers.unstructured import cluster_multiline, mine_templates
 
         valve_lines = [l for l in lines if "Valve" in l]
         if len(valve_lines) >= 2:

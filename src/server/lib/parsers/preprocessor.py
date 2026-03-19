@@ -20,7 +20,7 @@ _unstructured_parser = None
 def _get_unstructured_parser():
     global _unstructured_parser
     if _unstructured_parser is None:
-        from lib.parsers import unstructured_parser as _up
+        from lib.parsers import unstructured as _up
 
         _unstructured_parser = _up
     return _unstructured_parser

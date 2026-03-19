@@ -676,7 +676,7 @@ def upload_log_files(
 
         # Decode content for the preprocessor.
         # For binary files, run through our decoder pipeline first.
-        from lib.parsers.unstructured_parser import preprocess_binary_input
+        from lib.parsers.unstructured import preprocess_binary_input
 
         decoded_lines = preprocess_binary_input(raw_data)
         content = "\n".join(decoded_lines)

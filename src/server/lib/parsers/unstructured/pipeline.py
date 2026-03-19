@@ -1,8 +1,8 @@
 """Unstructured log parser pipeline.
 
-Wraps the existing ``unstructured_parser`` helpers behind the ``ParserPipeline``
-interface. Handles files classified as ``StructuralClass.UNSTRUCTURED``
-(PLAIN_TEXT, UNKNOWN, or low-confidence binary-decoded inputs).
+Uses shared helpers from this package behind the ``ParserPipeline`` interface.
+Handles files classified as ``StructuralClass.UNSTRUCTURED`` (PLAIN_TEXT,
+UNKNOWN, or low-confidence binary-decoded inputs).
 
 For each file the pipeline:
   1. Filters noise lines.
@@ -19,8 +19,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
-# Import helpers from the existing unstructured_parser module.
-from lib.parsers import unstructured_parser as _up
+from . import core as _up
 from lib.parsers.contracts import (
     BASELINE_COLUMN_NAMES,
     BASELINE_COLUMNS,
@@ -75,7 +74,7 @@ def _row_from_fields(
 class UnstructuredPipeline(ParserPipeline):
     """Parser pipeline for unstructured / plain-text log files.
 
-    Reuses the battle-tested helpers in ``unstructured_parser.py`` —
+    Reuses the battle-tested helpers in this package —
     binary normalization, noise filtering, Drain3 template mining, and
     heuristic field extraction — and adapts their output to ``ParserPipelineResult``.
     """
