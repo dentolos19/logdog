@@ -1,0 +1,19 @@
+# Editor configurations
+.vs/
+.idea/
+
+# Environment files
+bin/
+obj/
+*.user
+*.suo
+
+# User files
+.env*
+!.env*.template
+
+# Miscellaneous files
+.DS_Store
+Desktop.ini
+Thumbs.db
+!.gitkeep
