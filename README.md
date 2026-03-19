@@ -1,3 +1,0 @@
-# Logdog
-
-Hello world.
