@@ -20,7 +20,10 @@ from typing import TYPE_CHECKING, Any
 from lib.parsers.contracts import (
     BASELINE_COLUMN_NAMES,
     BASELINE_COLUMNS,
+    ParserSupportRequest,
+    ParserSupportResult,
     ParserPipelineResult,
+    StructuralClass,
     TableDefinition,
     build_ddl,
     make_table_name,
@@ -108,6 +111,56 @@ class SemiStructuredParserPipeline(ParserPipeline):
     """
 
     parser_key = "semi_structured"
+
+    def supports(self, request: ParserSupportRequest) -> ParserSupportResult:
+        lines = [line for line in request.content.splitlines() if line.strip()]
+        if not lines:
+            return ParserSupportResult(
+                parser_key=self.parser_key,
+                supported=False,
+                score=0.0,
+                reasons=["File is empty after trimming."],
+                structural_class=StructuralClass.SEMI_STRUCTURED,
+            )
+
+        continuation_count = sum(1 for line in lines if MULTILINE_CONTINUATION_PATTERN.match(line))
+        continuation_ratio = continuation_count / len(lines)
+
+        from lib.parsers.preprocessor import DetectedFormat, LogPreprocessorService
+
+        detector = LogPreprocessorService(table_name="logs")
+        detected_format, confidence = detector._detect_format(lines)
+
+        score = 0.0
+        reasons: list[str] = []
+
+        if detected_format == DetectedFormat.KEY_VALUE:
+            score = max(score, 0.55 + confidence * 0.35)
+            reasons.append(f"Key-value style content detected (confidence {confidence:.2f}).")
+
+        if detected_format in (DetectedFormat.PLAIN_TEXT, DetectedFormat.UNKNOWN):
+            score = max(score, 0.4 + confidence * 0.2)
+            reasons.append("Plain or unknown text can be handled by semi-structured stages.")
+
+        if continuation_ratio > 0.1:
+            score = max(score, min(0.9, 0.5 + continuation_ratio))
+            reasons.append(f"Detected multiline continuation patterns ({continuation_count}/{len(lines)} lines).")
+
+        if request.filename.lower().endswith((".log", ".txt")):
+            score = max(score, 0.45)
+            reasons.append("Text log extension matched (.log/.txt).")
+
+        if not reasons:
+            reasons.append("No strong semi-structured signals detected.")
+
+        return ParserSupportResult(
+            parser_key=self.parser_key,
+            supported=score >= 0.4,
+            score=round(min(score, 1.0), 2),
+            reasons=reasons,
+            detected_format=detected_format.value,
+            structural_class=StructuralClass.SEMI_STRUCTURED,
+        )
 
     def parse(
         self,

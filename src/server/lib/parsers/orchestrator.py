@@ -21,7 +21,7 @@ from typing import Any
 from lib.database import SessionLocal
 from lib.database_swarm import LogDatabaseSwarm
 from lib.models import LogGroupProcess, LogGroupTable
-from lib.parsers.contracts import ClassificationResult
+from lib.parsers.contracts import ClassificationResult, ParserPipelineResult
 from lib.parsers.preprocessor import FileInput
 from lib.parsers.registry import ParserRegistry
 
@@ -103,23 +103,70 @@ def run_ingestion_job(
         file_inputs = [FileInput(**fi) for fi in raw_inputs]
 
         # Route to the correct parser pipeline.
-        parser_key = classification.selected_parser_key
-        try:
-            pipeline = ParserRegistry.route(parser_key)
-        except KeyError as exc:
-            _fail(db, process, str(exc))
+        preferred_keys: list[str] = []
+        if classification.selected_parser_key:
+            preferred_keys.append(classification.selected_parser_key)
+
+        grouped_inputs, selections, routing_warnings = ParserRegistry.resolve_for_files(
+            file_inputs=file_inputs,
+            preferred_keys=preferred_keys,
+        )
+
+        if not grouped_inputs:
+            _fail(db, process, "No parser could be selected for the uploaded files")
             return
 
         logger.info(
-            "run_ingestion_job: process=%s group=%s parser=%s files=%d",
+            "run_ingestion_job: process=%s group=%s parsers=%s files=%d",
             process_id,
             log_group_id,
-            parser_key,
+            ",".join(sorted(grouped_inputs.keys())),
             len(file_inputs),
         )
 
-        # Parse!
-        pipeline_result = pipeline.parse(file_inputs, classification)
+        table_definitions = []
+        merged_records: dict[str, list[dict[str, Any]]] = {}
+        merged_warnings = list(routing_warnings)
+        parser_keys_used: list[str] = []
+        confidence_total = 0.0
+        confidence_count = 0
+
+        for parser_key, parser_files in grouped_inputs.items():
+            try:
+                pipeline = ParserRegistry.route(parser_key)
+            except KeyError as exc:
+                merged_warnings.append(str(exc))
+                continue
+
+            try:
+                group_result = pipeline.ingest(parser_files, classification)
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("run_ingestion_job: parser '%s' failed", parser_key)
+                merged_warnings.append(f"Parser '{parser_key}' failed: {exc}")
+                continue
+
+            table_definitions.extend(group_result.table_definitions)
+            merged_records.update(group_result.records)
+            merged_warnings.extend(group_result.warnings)
+            parser_keys_used.append(parser_key)
+            confidence_total += group_result.confidence
+            confidence_count += 1
+
+        if not table_definitions:
+            selection_summary = ", ".join(
+                f"{selection.filename}->{selection.parser_key} ({selection.score:.2f})" for selection in selections
+            )
+            merged_warnings.append(f"Routing summary: {selection_summary}")
+            _fail(db, process, "; ".join(merged_warnings) or "All parser groups failed")
+            return
+
+        pipeline_result = ParserPipelineResult(
+            table_definitions=table_definitions,
+            records=merged_records,
+            parser_key=parser_keys_used[0] if len(parser_keys_used) == 1 else "multi_parser",
+            warnings=merged_warnings,
+            confidence=round((confidence_total / confidence_count) if confidence_count else 0.0, 2),
+        )
 
         # Persist to swarm DB and sync metadata to app DB.
         for table_def in pipeline_result.table_definitions:

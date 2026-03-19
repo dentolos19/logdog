@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+import xml.etree.ElementTree as ET
 from enum import Enum
 from typing import Any
 
@@ -55,6 +56,7 @@ class SqlType(str, Enum):
 
 class DetectedFormat(str, Enum):
     JSON_LINES = "json_lines"
+    XML = "xml"
     CSV = "csv"
     SYSLOG = "syslog"
     APACHE_ACCESS = "apache_access"
@@ -285,6 +287,7 @@ class LogPreprocessorService:
         """Map a detected format (and its confidence) to a structural class."""
         if fmt in (
             DetectedFormat.JSON_LINES,
+            DetectedFormat.XML,
             DetectedFormat.CSV,
             DetectedFormat.SYSLOG,
             DetectedFormat.APACHE_ACCESS,
@@ -504,6 +507,10 @@ class LogPreprocessorService:
         if json_hits > 0:
             scores[DetectedFormat.JSON_LINES] = json_hits / len(sample)
 
+        xml_score = self._score_xml(sample)
+        if xml_score > 0:
+            scores[DetectedFormat.XML] = xml_score
+
         # CSV: first line looks like a header with commas, subsequent lines match column count.
         csv_score = self._score_csv(sample)
         if csv_score > 0:
@@ -547,6 +554,13 @@ class LogPreprocessorService:
     def _detect_segmentation(self, lines: list[str], detected_format: DetectedFormat) -> SegmentationResult:
         """Decide how records should be grouped from lines."""
 
+        if detected_format == DetectedFormat.XML:
+            return SegmentationResult(
+                strategy=SegmentationStrategy.PER_FILE,
+                confidence=0.9,
+                rationale="XML payload is parsed as a whole document before row extraction.",
+            )
+
         # Whole-file as a single record when file is very short or unstructured.
         if len(lines) <= 3 and detected_format in (DetectedFormat.PLAIN_TEXT, DetectedFormat.UNKNOWN):
             return SegmentationResult(
@@ -569,6 +583,7 @@ class LogPreprocessorService:
         # Per-line for most structured formats.
         if detected_format in (
             DetectedFormat.JSON_LINES,
+            DetectedFormat.XML,
             DetectedFormat.CSV,
             DetectedFormat.SYSLOG,
             DetectedFormat.APACHE_ACCESS,
@@ -602,6 +617,8 @@ class LogPreprocessorService:
 
         if detected_format == DetectedFormat.JSON_LINES:
             return self._columns_from_json(lines)
+        if detected_format == DetectedFormat.XML:
+            return self._columns_from_xml(lines)
         if detected_format == DetectedFormat.CSV:
             return self._columns_from_csv(lines)
         if detected_format in (DetectedFormat.SYSLOG,):
@@ -655,6 +672,50 @@ class LogPreprocessorService:
                 example_values=list(examples),
             )
             for key, examples in all_keys.items()
+        ]
+
+    def _columns_from_xml(self, lines: list[str]) -> list[InferredColumn]:
+        """Extract column names from a simple XML document by inspecting leaf elements and attributes."""
+
+        document = "\n".join(lines).strip()
+        if not document:
+            return []
+
+        try:
+            root = ET.fromstring(document)
+        except ET.ParseError:
+            return []
+
+        detected_keys: dict[str, set[str]] = {}
+
+        for element in root.iter():
+            for attr_name, attr_value in element.attrib.items():
+                key = self._sanitize_column_name(f"attr_{attr_name}")
+                detected_keys.setdefault(key, set())
+                if attr_value and len(detected_keys[key]) < 3:
+                    detected_keys[key].add(str(attr_value)[:100])
+
+            if len(element) > 0:
+                continue
+
+            value = (element.text or "").strip()
+            if not value:
+                continue
+            key = self._sanitize_column_name(element.tag)
+            detected_keys.setdefault(key, set())
+            if len(detected_keys[key]) < 3:
+                detected_keys[key].add(value[:100])
+
+        return [
+            InferredColumn(
+                name=key,
+                sql_type=SqlType.TEXT,
+                description=f"Extracted from XML field '{key}'.",
+                nullable=True,
+                kind=ColumnKind.DETECTED,
+                example_values=list(examples),
+            )
+            for key, examples in detected_keys.items()
         ]
 
     def _columns_from_csv(self, lines: list[str]) -> list[InferredColumn]:
@@ -1317,6 +1378,20 @@ class LogPreprocessorService:
             return isinstance(parsed, dict)
         except (json.JSONDecodeError, ValueError):
             return False
+
+    @staticmethod
+    def _score_xml(lines: list[str]) -> float:
+        """Estimate whether the sample represents an XML document."""
+
+        document = "\n".join(lines).strip()
+        if not document.startswith("<"):
+            return 0.0
+
+        try:
+            ET.fromstring(document)
+            return 0.95
+        except ET.ParseError:
+            return 0.0
 
     @staticmethod
     def _score_csv(sample: list[str]) -> float:

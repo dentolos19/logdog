@@ -90,6 +90,13 @@ CSV_SAMPLE = [
     "2025-01-01T00:00:02Z,ERROR,db,Query timeout after 30s",
 ]
 
+XML_SAMPLE = [
+    "<logs>",
+    '  <entry level="INFO" source="api">Application started</entry>',
+    '  <entry level="WARN" source="scheduler">Delayed task</entry>',
+    "</logs>",
+]
+
 
 class TestFormatDetection:
     def test_json_lines_format_detection(self, service: LogPreprocessorService) -> None:
@@ -121,6 +128,11 @@ class TestFormatDetection:
         detected_format, confidence = service._detect_format(CSV_SAMPLE)
         assert detected_format == DetectedFormat.CSV
         assert confidence >= 0.5
+
+    def test_xml_format_detection(self, service: LogPreprocessorService) -> None:
+        detected_format, confidence = service._detect_format(XML_SAMPLE)
+        assert detected_format == DetectedFormat.XML
+        assert confidence >= 0.8
 
 
 # ---------------------------------------------------------------------------

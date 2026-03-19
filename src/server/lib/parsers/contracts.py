@@ -81,6 +81,35 @@ class ClassificationResult(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Common parser entrypoint contracts
+# ---------------------------------------------------------------------------
+
+
+class ParserSupportRequest(BaseModel):
+    file_id: str | None = None
+    filename: str
+    content: str
+    mime_type: str | None = None
+
+
+class ParserSupportResult(BaseModel):
+    parser_key: str
+    supported: bool
+    score: float = Field(ge=0.0, le=1.0, default=0.0)
+    reasons: list[str] = Field(default_factory=list)
+    detected_format: str | None = None
+    structural_class: StructuralClass | None = None
+
+
+class FileParserSelection(BaseModel):
+    file_id: str | None = None
+    filename: str
+    parser_key: str
+    score: float = Field(ge=0.0, le=1.0)
+    reasons: list[str] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
 # Shared DDL helpers
 # ---------------------------------------------------------------------------
 

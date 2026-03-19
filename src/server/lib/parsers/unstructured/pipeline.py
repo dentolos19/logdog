@@ -24,7 +24,10 @@ from lib.parsers.contracts import (
     BASELINE_COLUMN_NAMES,
     BASELINE_COLUMNS,
     ColumnDefinition,
+    ParserSupportRequest,
+    ParserSupportResult,
     ParserPipelineResult,
+    StructuralClass,
     TableDefinition,
     build_ddl,
     make_table_name,
@@ -80,6 +83,55 @@ class UnstructuredPipeline(ParserPipeline):
     """
 
     parser_key = "unstructured"
+
+    def supports(self, request: ParserSupportRequest) -> ParserSupportResult:
+        lines = request.content.splitlines()
+        non_empty = [line for line in lines if line.strip()]
+
+        if not non_empty:
+            return ParserSupportResult(
+                parser_key=self.parser_key,
+                supported=False,
+                score=0.0,
+                reasons=["File is empty after trimming."],
+                structural_class=StructuralClass.UNSTRUCTURED,
+            )
+
+        from lib.parsers.preprocessor import DetectedFormat, LogPreprocessorService
+
+        detector = LogPreprocessorService(table_name="logs")
+        detected_format, confidence = detector._detect_format(non_empty)
+
+        score = 0.35
+        reasons: list[str] = ["Unstructured parser is the general fallback."]
+
+        if detected_format in (DetectedFormat.PLAIN_TEXT, DetectedFormat.UNKNOWN):
+            score = max(score, 0.75)
+            reasons.append(f"Detected {detected_format.value} content.")
+        elif detected_format == DetectedFormat.KEY_VALUE and confidence < 0.6:
+            score = max(score, 0.7)
+            reasons.append("Low-confidence key-value content handled better by heuristics.")
+        else:
+            score = max(score, 0.4)
+            reasons.append(f"Structured hints detected ({detected_format.value}); available as fallback.")
+
+        hex_count = sum(1 for line in non_empty[:100] if _up.is_hex_dump_line(line))
+        if hex_count > 0:
+            score = max(score, min(0.92, 0.65 + (hex_count / max(1, len(non_empty[:100])))))
+            reasons.append("Hex dump patterns detected and can be decoded.")
+
+        if request.filename.lower().endswith((".bin", ".dat", ".blob")):
+            score = max(score, 0.9)
+            reasons.append("Binary-like extension matched.")
+
+        return ParserSupportResult(
+            parser_key=self.parser_key,
+            supported=True,
+            score=round(min(score, 1.0), 2),
+            reasons=reasons,
+            detected_format=detected_format.value,
+            structural_class=StructuralClass.UNSTRUCTURED,
+        )
 
     def parse(
         self,

@@ -16,6 +16,7 @@ import csv
 import json
 import logging
 import re
+import xml.etree.ElementTree as ET
 from io import StringIO
 from typing import TYPE_CHECKING, Any
 
@@ -23,7 +24,10 @@ from lib.parsers.contracts import (
     BASELINE_COLUMN_NAMES,
     BASELINE_COLUMNS,
     ColumnDefinition,
+    ParserSupportRequest,
+    ParserSupportResult,
     ParserPipelineResult,
+    StructuralClass,
     TableDefinition,
     build_ddl,
     make_table_name,
@@ -345,6 +349,45 @@ def _extract_logfmt_records(lines: list[str], filename: str) -> list[dict[str, A
     return records
 
 
+def _extract_xml_records(content: str, filename: str) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    try:
+        root = ET.fromstring(content)
+    except ET.ParseError:
+        return records
+
+    def _element_to_row(element: ET.Element) -> dict[str, Any]:
+        row = _base_row(filename, 1, 1, ET.tostring(element, encoding="unicode")[:4000])
+        row["event_type"] = "xml_record"
+        row["parse_confidence"] = 0.9
+        row["message"] = f"XML record: {element.tag}"
+
+        for attr_key, attr_value in element.attrib.items():
+            safe_key = _sanitize(f"attr_{attr_key}")
+            if safe_key not in BASELINE_COLUMN_NAMES:
+                row[safe_key] = attr_value
+
+        for child in element.iter():
+            if child is element or len(child) > 0:
+                continue
+            text = (child.text or "").strip()
+            if not text:
+                continue
+            safe_key = _sanitize(child.tag)
+            if safe_key not in BASELINE_COLUMN_NAMES and safe_key not in row:
+                row[safe_key] = text
+
+        return row
+
+    children = list(root)
+    if not children:
+        records.append(_element_to_row(root))
+        return records
+
+    records.extend(_element_to_row(child) for child in children if isinstance(child.tag, str))
+    return records
+
+
 # ---------------------------------------------------------------------------
 # Pipeline
 # ---------------------------------------------------------------------------
@@ -358,6 +401,59 @@ class StructuredPipeline(ParserPipeline):
     """
 
     parser_key = "structured"
+
+    def supports(self, request: ParserSupportRequest) -> ParserSupportResult:
+        filename_lower = request.filename.lower()
+        lines = request.content.splitlines()
+
+        score = 0.0
+        reasons: list[str] = []
+        detected_format: str | None = None
+
+        if filename_lower.endswith(".xml"):
+            score = max(score, 0.8)
+            reasons.append("XML extension matched.")
+            detected_format = "xml"
+            try:
+                ET.fromstring(request.content)
+                score = max(score, 0.92)
+                reasons.append("Valid XML payload detected.")
+            except ET.ParseError:
+                reasons.append("XML extension matched but content could not be parsed as XML.")
+
+        from lib.parsers.preprocessor import LogPreprocessorService
+
+        detector = LogPreprocessorService(table_name="logs")
+        fmt, confidence = detector._detect_format(lines) if lines else (DetectedFormat.UNKNOWN, 0.0)
+        if fmt in {
+            DetectedFormat.JSON_LINES,
+            DetectedFormat.CSV,
+            DetectedFormat.SYSLOG,
+            DetectedFormat.APACHE_ACCESS,
+            DetectedFormat.NGINX_ACCESS,
+            DetectedFormat.LOGFMT,
+            DetectedFormat.KEY_VALUE,
+        }:
+            score = max(score, confidence)
+            detected_format = detected_format or fmt.value
+            reasons.append(f"Structured format '{fmt.value}' detected with confidence {confidence:.2f}.")
+
+        if filename_lower.endswith((".json", ".csv")):
+            score = max(score, 0.75)
+            reasons.append("Structured extension matched (.json/.csv).")
+
+        supported = score >= 0.45
+        if not reasons:
+            reasons.append("No strong structured signals detected.")
+
+        return ParserSupportResult(
+            parser_key=self.parser_key,
+            supported=supported,
+            score=round(min(score, 1.0), 2),
+            reasons=reasons,
+            detected_format=detected_format,
+            structural_class=StructuralClass.STRUCTURED,
+        )
 
     def parse(
         self,
@@ -411,6 +507,8 @@ class StructuredPipeline(ParserPipeline):
         )
 
     def _extract(self, lines: list[str], content: str, filename: str, detected_format: str) -> list[dict[str, Any]]:
+        if detected_format == "xml":
+            return _extract_xml_records(content, filename)
         if detected_format == DetectedFormat.JSON_LINES.value:
             return _extract_json_records(lines, filename)
         if detected_format == DetectedFormat.CSV.value:
@@ -421,6 +519,8 @@ class StructuredPipeline(ParserPipeline):
             return _extract_clf_records(lines, filename, detected_format)
         if detected_format in (DetectedFormat.LOGFMT.value, DetectedFormat.KEY_VALUE.value):
             return _extract_logfmt_records(lines, filename)
+        if filename.lower().endswith(".xml"):
+            return _extract_xml_records(content, filename)
         # Fallback: treat as logfmt/kv
         logger.warning("Unexpected format '%s' in structured pipeline, falling back to logfmt", detected_format)
         return _extract_logfmt_records(lines, filename)
