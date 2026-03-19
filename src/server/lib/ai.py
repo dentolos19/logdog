@@ -8,8 +8,6 @@ from pydantic import BaseModel, Field, SecretStr
 
 logger = logging.getLogger(__name__)
 
-APP_NAME = os.getenv("APP_NAME", "Logdog")
-APP_URL = os.getenv("APP_URL", "https://logdog.dennise.me")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "inception/mercury-2")
 
@@ -83,8 +81,8 @@ def get_openrouter_client(
         api_key=SecretStr(resolved_api_key),
         temperature=temperature,
         max_tokens=max_tokens,
-        app_title=APP_NAME,
-        app_url=APP_URL,
+        app_title="Logdog",
+        app_url="https://logdog.dennise.me",
     )
 
 

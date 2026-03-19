@@ -60,6 +60,8 @@ export default function LogGroupPage({ params }: { params: Promise<{ id: string 
   const [filesLoading, setFilesLoading] = useState(false);
   const [filesError, setFilesError] = useState<string | null>(null);
 
+  const [activeTab, setActiveTab] = useState("data");
+
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -121,6 +123,20 @@ export default function LogGroupPage({ params }: { params: Promise<{ id: string 
     fetchProcesses();
     fetchFiles();
   }, [fetchLogGroup, fetchProcesses, fetchFiles]);
+
+  useEffect(() => {
+    if (activeTab !== "processes") return;
+
+    const isTerminal = (p: LogProcess) => p.status === "completed" || p.status === "failed";
+
+    const tick = () => {
+      if (processes.length > 0 && processes.every(isTerminal)) return;
+      fetchProcesses();
+    };
+
+    const interval = setInterval(tick, 3000);
+    return () => clearInterval(interval);
+  }, [activeTab, processes, fetchProcesses]);
 
   const openRenameDialog = () => {
     renameForm.reset({ name: logGroup?.name ?? "" });
@@ -203,7 +219,7 @@ export default function LogGroupPage({ params }: { params: Promise<{ id: string 
         )}
 
         {logGroup !== null && (
-          <Tabs defaultValue={"data"} className={"flex flex-col gap-4"}>
+          <Tabs value={activeTab} onValueChange={setActiveTab} className={"flex flex-col gap-4"}>
             <TabsList className={"w-fit"}>
               <TabsTrigger value={"data"}>Data</TabsTrigger>
               <TabsTrigger value={"processes"}>Processes</TabsTrigger>
