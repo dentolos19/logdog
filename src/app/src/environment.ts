@@ -1,5 +1,8 @@
 const LOCAL_API_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 
+export const isDevelopment = process.env.NODE_ENV !== "production";
+export const isProduction = process.env.NODE_ENV === "production";
+
 function normalizeApiUrl(value: string | undefined) {
 	const trimmedValue = (value ?? "").trim();
 	if (trimmedValue.length === 0) {
@@ -22,7 +25,6 @@ function normalizeApiUrl(value: string | undefined) {
 	const isLocalHost = LOCAL_API_HOSTS.has(hostname);
 	const isHttpsPage =
 		typeof window !== "undefined" && window.location.protocol === "https:";
-	const isProduction = process.env.NODE_ENV === "production";
 
 	// Prevent mixed-content calls in production/cross-site HTTPS pages.
 	if (protocol === "http:" && !isLocalHost && (isHttpsPage || isProduction)) {

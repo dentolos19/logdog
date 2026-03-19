@@ -151,6 +151,21 @@ const logGroupFileSchema = z.object({
 	created_at: z.string(),
 });
 
+const processStatusCountSchema = z.object({
+	pending: z.number(),
+	classified: z.number(),
+	processing: z.number(),
+	completed: z.number(),
+	failed: z.number(),
+});
+
+const dashboardStatsSchema = z.object({
+	log_group_count: z.number(),
+	total_files: z.number(),
+	total_rows: z.number(),
+	processes: processStatusCountSchema,
+});
+
 export const schema = createSchema({
 	"/auth/login": {
 		method: "post",
@@ -216,6 +231,10 @@ export const schema = createSchema({
 		method: "get",
 		output: z.array(logGroupFileSchema),
 	},
+	"@get/stats": {
+		method: "get",
+		output: dashboardStatsSchema,
+	},
 });
 
 export type UploadLogFilesResponse = z.infer<
@@ -226,6 +245,7 @@ export type ClassificationResponse = z.infer<
 >;
 export type FileClassification = z.infer<typeof fileClassificationSchema>;
 export type ProcessResponse = z.infer<typeof processResponseSchema>;
+export type DashboardStats = z.infer<typeof dashboardStatsSchema>;
 
 export const errorSchema = z.object({
 	message: z.string(),
@@ -306,6 +326,12 @@ export const getLogFiles = async (id: string) => {
 	const { data, error } = await $fetch("@get/logs/:id/files", {
 		params: { id },
 	});
+	if (error) throw new Error(error.message ?? "Request failed.");
+	return data!;
+};
+
+export const getStats = async () => {
+	const { data, error } = await $fetch("@get/stats");
 	if (error) throw new Error(error.message ?? "Request failed.");
 	return data!;
 };

@@ -1,5 +1,6 @@
 "use client";
 
+import { isDevelopment } from "@/environment";
 import { useAuth } from "@/components/auth-provider";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -20,14 +21,20 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { ChevronUpIcon, LayoutDashboardIcon, LogOutIcon, ScrollTextIcon, SettingsIcon } from "lucide-react";
+import { ChevronUpIcon, FlaskConicalIcon, LayoutDashboardIcon, LogOutIcon, ScrollTextIcon, SettingsIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
-const NAV_ITEMS = [
+const BASE_NAV_ITEMS = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboardIcon },
   { label: "Logs", href: "/logs", icon: ScrollTextIcon },
 ];
+
+const DEV_NAV_ITEMS = [
+  { label: "Development", href: "/development", icon: FlaskConicalIcon },
+];
+
+const NAV_ITEMS = isDevelopment ? [...BASE_NAV_ITEMS, ...DEV_NAV_ITEMS] : BASE_NAV_ITEMS;
 
 export function AppSidebar() {
   const { user, signOut } = useAuth();

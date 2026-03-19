@@ -35,7 +35,9 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
 
 
 @app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+async def validation_exception_handler(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
     return JSONResponse(status_code=422, content={"message": "Invalid request."})
 
 
@@ -50,10 +52,12 @@ app.add_middleware(
 from routes.auth import router as auth_router
 from routes.logs import router as logs_router
 from routes.parser import router as parser_router
+from routes.stats import router as stats_router
 
 app.include_router(auth_router)
 app.include_router(logs_router)
 app.include_router(parser_router)
+app.include_router(stats_router)
 
 
 @app.get("/")
