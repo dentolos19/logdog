@@ -137,7 +137,6 @@ function TableItem({ table, presentation, logGroupId, onInfoClick }: TableItemPr
         <span className={"text-sm font-medium"}>{presentation.displayName}</span>
         <div className={"ml-auto flex items-center gap-1.5"}>
           {table.is_normalized && <Badge variant={"outline"}>Normalized</Badge>}
-          {presentation.fileBadge !== null && <Badge variant={"outline"}>{presentation.fileBadge}</Badge>}
           <Badge variant={"secondary"}>
             {table.columns.length} {table.columns.length === 1 ? "column" : "columns"}
           </Badge>
@@ -409,14 +408,20 @@ function ColumnDetailRow({ column }: ColumnDetailRowProps) {
 
 interface TablePresentation {
   displayName: string;
-  fileBadge: string | null;
 }
 
 function getTablePresentation(table: LogGroupTable, files: LogGroupFile[]): TablePresentation {
   if (table.name === "logs") {
+    const sourceFiles = files.filter((file) =>
+      files.some((f) => f.id === file.id)
+    );
+    if (sourceFiles.length > 0) {
+      return {
+        displayName: `Normalized Logs (${sourceFiles.length} source file${sourceFiles.length === 1 ? "" : "s"})`,
+      };
+    }
     return {
       displayName: "Normalized Logs",
-      fileBadge: null,
     };
   }
 
@@ -426,13 +431,11 @@ function getTablePresentation(table: LogGroupTable, files: LogGroupFile[]): Tabl
     if (file !== undefined) {
       return {
         displayName: `Logs for ${file.name}`,
-        fileBadge: file.name,
       };
     }
   }
 
   return {
     displayName: table.name,
-    fileBadge: null,
   };
 }

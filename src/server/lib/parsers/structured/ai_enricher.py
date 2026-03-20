@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -27,7 +27,6 @@ MAX_SAMPLE_LINES = 50
 MAX_TOTAL_CHARS = 8000
 
 
-@dataclass
 class LlmStructuredColumn(BaseModel):
     """A column suggested by the LLM for structured data."""
 
@@ -35,7 +34,7 @@ class LlmStructuredColumn(BaseModel):
     sql_type: str = "TEXT"
     description: str = ""
     nullable: bool = True
-    examples: list[str] = field(default_factory=list)
+    examples: list[str] = Field(default_factory=list)
 
 
 class LlmStructuredSchemaResponse(BaseModel):

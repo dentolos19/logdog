@@ -128,6 +128,14 @@ function ProcessRow({ process, onViewDetails }: ProcessRowProps) {
       {process.status === "failed" && process.error !== null && (
         <p className={"rounded bg-destructive/10 px-2 py-1 font-mono text-xs text-destructive"}>{process.error}</p>
       )}
+
+      {process.result !== null && process.result.file_observations.length > 0 && (
+        <ProcessFileList
+          fileObservations={process.result.file_observations}
+          generatedTables={process.result.generated_tables}
+          processStatus={process.status}
+        />
+      )}
     </div>
   );
 }
@@ -325,4 +333,69 @@ function getGeneratedTableLabel(table: ProcessResultDetails["generated_tables"][
   }
 
   return table.table_name;
+}
+
+interface ProcessFileListProps {
+  fileObservations: ProcessResultDetails["file_observations"];
+  generatedTables: ProcessResultDetails["generated_tables"];
+  processStatus: string;
+}
+
+function ProcessFileList({ fileObservations, generatedTables, processStatus }: ProcessFileListProps) {
+  function getFileStatus(): "completed" | "failed" | "processing" | "classified" | "queued" {
+    if (processStatus === "completed") return "completed";
+    if (processStatus === "failed") return "failed";
+    if (processStatus === "processing") return "processing";
+    if (processStatus === "classified") return "classified";
+    return "queued";
+  }
+
+  function findTableForFile(filename: string): ProcessResultDetails["generated_tables"][number] | null {
+    return generatedTables.find((table) => table.file_name === filename) ?? null;
+  }
+
+  function getStatusBadgeVariant(
+    status: "completed" | "failed" | "processing" | "classified" | "queued"
+  ): "secondary" | "destructive" | "outline" {
+    if (status === "completed") return "secondary";
+    if (status === "failed") return "destructive";
+    return "outline";
+  }
+
+  const fileStatus = getFileStatus();
+
+  return (
+    <Accordion type={"single"} collapsible={true} className={"w-full"}>
+      <AccordionItem value={"files"} className={"border-none"}>
+        <AccordionTrigger className={"h-auto rounded-md border px-3 py-2 text-xs hover:no-underline hover:bg-muted/50"}>
+          <div className={"flex items-center gap-2"}>
+            <span className={"font-medium"}>Files ({fileObservations.length})</span>
+            <span className={"text-muted-foreground"}>View breakdown</span>
+          </div>
+        </AccordionTrigger>
+        <AccordionContent>
+          <div className={"flex flex-col divide-y rounded-md border"}>
+            {fileObservations.map((observation) => {
+              const matchedTable = findTableForFile(observation.filename);
+              return (
+                <div key={observation.filename} className={"flex items-center gap-3 px-3 py-2"}>
+                  <span className={"flex-1 truncate font-mono text-xs"}>{observation.filename}</span>
+                  <Badge variant={getStatusBadgeVariant(fileStatus)} className={"shrink-0 text-xs"}>
+                    {fileStatus.charAt(0).toUpperCase() + fileStatus.slice(1)}
+                  </Badge>
+                  {matchedTable !== null ? (
+                    <Badge variant={"outline"} className={"shrink-0 max-w-40 truncate text-xs"}>
+                      {matchedTable.table_name}
+                    </Badge>
+                  ) : (
+                    <span className={"shrink-0 text-xs text-muted-foreground"}>No table generated</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </AccordionContent>
+      </AccordionItem>
+    </Accordion>
+  );
 }
