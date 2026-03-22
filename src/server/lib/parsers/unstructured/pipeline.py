@@ -9,9 +9,10 @@ For each file the pipeline:
   2. Clusters multiline records (Drain3 + continuation patterns).
   3. Mines Drain3 log templates.
   4. Extracts fields from each cluster via heuristics.
-  5. Optionally enriches with LLM-inferred extra columns.
-  6. Generates a CREATE TABLE DDL statement.
-  7. Returns ``ParserPipelineResult`` with table definitions and row data.
+  5. Infers extra columns via frequency thresholds.
+  6. Optionally enriches with LLM-inferred extra columns.
+  7. Suppresses high-frequency heartbeat/noise rows (>40 % frequency, no actionable fields).
+  8. Generates a CREATE TABLE DDL statement and returns ``ParserPipelineResult``.
 """
 
 from __future__ import annotations
