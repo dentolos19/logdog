@@ -46,6 +46,10 @@ class LlmUnstructuredResponse(BaseModel):
     fields: list[LlmFieldExtraction] = Field(default_factory=list)
     summary: str = ""
     event_type_hint: str = ""
+    heartbeat_templates: list[str] = Field(
+        default_factory=list,
+        description="Template strings identified as periodic heartbeats or status pings with no actionable content.",
+    )
     warnings: list[str] = Field(default_factory=list)
 
 

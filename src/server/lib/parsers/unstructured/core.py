@@ -498,12 +498,46 @@ def preprocess_binary_input(raw_bytes: bytes) -> list[str]:
 
 
 def _build_drain_config() -> TemplateMinerConfig:
-    """Return a Drain3 config tuned for unstructured / semiconductor logs."""
+    """Return a Drain3 config tuned for unstructured / semiconductor logs.
+
+    Masking instructions replace high-variance tokens (hex values, wafer IDs,
+    timestamps, RF codes) with stable placeholders *before* Drain3 clustering.
+    Without masking, each unique hex value or wafer ID creates a separate
+    cluster, defeating the template-mining cost reduction.
+    """
+    from drain3.masking import MaskingInstruction
+
     config = TemplateMinerConfig()
     config.drain_sim_th = 0.4
-    config.drain_depth = 4
-    config.drain_max_children = 100
+    config.drain_depth = 5
+    config.drain_max_children = 512
     config.drain_max_clusters = 1024
+
+    # Mask high-variance tokens before clustering to prevent cluster explosion.
+    config.masking_instructions = [
+        # ISO-8601 and common timestamp formats.
+        MaskingInstruction(
+            r"\d{4}[-/]\d{2}[-/]\d{2}[T ]\d{2}:\d{2}:\d{2}(?:[.,]\d+)?(?:Z|[+-]\d{2}:?\d{2})?",
+            "TIMESTAMP",
+        ),
+        # Hex values (0xDEAD, 0x1A2B3C, etc.).
+        MaskingInstruction(r"0x[A-Fa-f0-9]+", "HEX"),
+        # Wafer IDs (W0045, LOT-ABC, FOUP_123).
+        MaskingInstruction(r"\bW\d{2,4}\b", "WAFER_ID"),
+        MaskingInstruction(r"\b(?:LOT|FOUP)[_-]?\w+\b", "LOT_ID"),
+        # RF error codes (RF_217, RF_12).
+        MaskingInstruction(r"\bRF_\d+\b", "RF_CODE"),
+        # Generic numeric values (integers and floats).
+        MaskingInstruction(r"\b\d+\.\d+(?:[eE][+-]?\d+)?\b", "NUM"),
+        # IP addresses.
+        MaskingInstruction(r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b", "IP"),
+        # UUIDs.
+        MaskingInstruction(
+            r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b",
+            "UUID",
+        ),
+    ]
+
     return config
 
 
