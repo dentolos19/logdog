@@ -4,14 +4,14 @@
   "scripts": {
     "postinstall": "bun run types",
     "dev": "wrangler dev",
-    "types": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
+    "types": "wrangler types"
   },
   "dependencies": {
-    "@cloudflare/containers": "^0.1.1",
-    "hono": "^4.12.8"
+    "@cloudflare/containers": "^0.2.0",
+    "hono": "^4.12.9"
   },
   "devDependencies": {
-    "typescript": "^5.9.3",
-    "wrangler": "^4.76.0"
+    "typescript": "^6.0.2",
+    "wrangler": "^4.77.0"
   }
 }
