@@ -285,7 +285,14 @@ class Normalizer:
             if fmt == "CSV":
                 return "csv_record"
 
-        sem_keys = {"equipment_id", "EquipmentID", "lot_id", "LotID", "wafer_id", "WaferID"}
+        sem_keys = {
+            "equipment_id",
+            "EquipmentID",
+            "lot_id",
+            "LotID",
+            "wafer_id",
+            "WaferID",
+        }
         if any(k in data for k in sem_keys):
             return "equipment_event"
 

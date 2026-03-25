@@ -301,7 +301,9 @@ class LogPreprocessorService:
         return StructuralClass.UNSTRUCTURED
 
     @staticmethod
-    def _dominant_structural_class(file_classifications: list[FileClassification]) -> StructuralClass:
+    def _dominant_structural_class(
+        file_classifications: list[FileClassification],
+    ) -> StructuralClass:
         """Return the most common structural class across files."""
         if not file_classifications:
             return StructuralClass.UNSTRUCTURED
@@ -424,7 +426,10 @@ class LogPreprocessorService:
                 schema_summary = llm_result["summary"]
                 warnings.extend(llm_result.get("warnings", []))
             except Exception as error:
-                logger.warning("LLM schema inference failed, continuing with heuristics only: %s", error)
+                logger.warning(
+                    "LLM schema inference failed, continuing with heuristics only: %s",
+                    error,
+                )
                 warnings.append(f"LLM enrichment failed ({type(error).__name__}); using heuristic-only schema.")
         else:
             if not self._llm_available:
@@ -562,7 +567,10 @@ class LogPreprocessorService:
             )
 
         # Whole-file as a single record when file is very short or unstructured.
-        if len(lines) <= 3 and detected_format in (DetectedFormat.PLAIN_TEXT, DetectedFormat.UNKNOWN):
+        if len(lines) <= 3 and detected_format in (
+            DetectedFormat.PLAIN_TEXT,
+            DetectedFormat.UNKNOWN,
+        ):
             return SegmentationResult(
                 strategy=SegmentationStrategy.PER_FILE,
                 confidence=0.7,
@@ -623,7 +631,10 @@ class LogPreprocessorService:
             return self._columns_from_csv(lines)
         if detected_format in (DetectedFormat.SYSLOG,):
             return self._columns_from_syslog()
-        if detected_format in (DetectedFormat.APACHE_ACCESS, DetectedFormat.NGINX_ACCESS):
+        if detected_format in (
+            DetectedFormat.APACHE_ACCESS,
+            DetectedFormat.NGINX_ACCESS,
+        ):
             return self._columns_from_clf()
         if detected_format in (DetectedFormat.LOGFMT, DetectedFormat.KEY_VALUE):
             # Low-confidence KV often means mixed prose with embedded key=value
@@ -765,13 +776,22 @@ class LogPreprocessorService:
                 kind=ColumnKind.DETECTED,
             ),
             InferredColumn(
-                name="facility", sql_type=SqlType.TEXT, description="Syslog facility name.", kind=ColumnKind.DETECTED
+                name="facility",
+                sql_type=SqlType.TEXT,
+                description="Syslog facility name.",
+                kind=ColumnKind.DETECTED,
             ),
             InferredColumn(
-                name="severity", sql_type=SqlType.TEXT, description="Syslog severity level.", kind=ColumnKind.DETECTED
+                name="severity",
+                sql_type=SqlType.TEXT,
+                description="Syslog severity level.",
+                kind=ColumnKind.DETECTED,
             ),
             InferredColumn(
-                name="hostname", sql_type=SqlType.TEXT, description="Originating hostname.", kind=ColumnKind.DETECTED
+                name="hostname",
+                sql_type=SqlType.TEXT,
+                description="Originating hostname.",
+                kind=ColumnKind.DETECTED,
             ),
             InferredColumn(
                 name="process_name",
@@ -779,7 +799,12 @@ class LogPreprocessorService:
                 description="Name of the process that generated the log.",
                 kind=ColumnKind.DETECTED,
             ),
-            InferredColumn(name="pid", sql_type=SqlType.INTEGER, description="Process ID.", kind=ColumnKind.DETECTED),
+            InferredColumn(
+                name="pid",
+                sql_type=SqlType.INTEGER,
+                description="Process ID.",
+                kind=ColumnKind.DETECTED,
+            ),
         ]
 
     def _columns_from_clf(self) -> list[InferredColumn]:
@@ -787,7 +812,10 @@ class LogPreprocessorService:
 
         return [
             InferredColumn(
-                name="remote_host", sql_type=SqlType.TEXT, description="Client IP address.", kind=ColumnKind.DETECTED
+                name="remote_host",
+                sql_type=SqlType.TEXT,
+                description="Client IP address.",
+                kind=ColumnKind.DETECTED,
             ),
             InferredColumn(
                 name="ident",
@@ -808,7 +836,10 @@ class LogPreprocessorService:
                 kind=ColumnKind.DETECTED,
             ),
             InferredColumn(
-                name="request_path", sql_type=SqlType.TEXT, description="Requested URI path.", kind=ColumnKind.DETECTED
+                name="request_path",
+                sql_type=SqlType.TEXT,
+                description="Requested URI path.",
+                kind=ColumnKind.DETECTED,
             ),
             InferredColumn(
                 name="request_protocol",
@@ -829,7 +860,10 @@ class LogPreprocessorService:
                 kind=ColumnKind.DETECTED,
             ),
             InferredColumn(
-                name="referer", sql_type=SqlType.TEXT, description="HTTP Referer header.", kind=ColumnKind.DETECTED
+                name="referer",
+                sql_type=SqlType.TEXT,
+                description="HTTP Referer header.",
+                kind=ColumnKind.DETECTED,
             ),
             InferredColumn(
                 name="user_agent",
@@ -1313,7 +1347,9 @@ class LogPreprocessorService:
 
         if not observations:
             return SegmentationResult(
-                strategy=SegmentationStrategy.PER_LINE, confidence=0.5, rationale="No files analyzed."
+                strategy=SegmentationStrategy.PER_LINE,
+                confidence=0.5,
+                rationale="No files analyzed.",
             )
 
         strategies = [observation.segmentation_hint for observation in observations]

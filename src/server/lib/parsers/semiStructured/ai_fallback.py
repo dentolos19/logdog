@@ -463,7 +463,12 @@ def build_gemini_request(
 
     return {
         "model": model,
-        "contents": [{"role": "user", "parts": [{"text": f"Extract structured fields from this log:\n\n{raw_text}"}]}],
+        "contents": [
+            {
+                "role": "user",
+                "parts": [{"text": f"Extract structured fields from this log:\n\n{raw_text}"}],
+            }
+        ],
         "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
         "generationConfig": {
             "responseMimeType": "application/json",

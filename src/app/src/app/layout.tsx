@@ -5,25 +5,25 @@ import { cn } from "@/lib/utils";
 import "./globals.css";
 
 const fontSans = Geist({
-	variable: "--font-geist-sans",
-	subsets: ["latin"],
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
 });
 
 const fontMono = Geist_Mono({
-	variable: "--font-geist-mono",
-	subsets: ["latin"],
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
 });
 
 export const metadata: Metadata = {
-	title: "Logdog",
+  title: "Logdog",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-	return (
-		<html lang={"en"} suppressHydrationWarning>
-			<body className={cn(fontSans.variable, fontMono.variable, "antialiased")}>
-				<AppProvider>{children}</AppProvider>
-			</body>
-		</html>
-	);
+  return (
+    <html lang={"en"} suppressHydrationWarning>
+      <body className={cn(fontSans.variable, fontMono.variable, "antialiased")}>
+        <AppProvider>{children}</AppProvider>
+      </body>
+    </html>
+  );
 }

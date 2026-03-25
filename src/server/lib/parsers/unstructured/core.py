@@ -611,7 +611,9 @@ def cluster_multiline(lines: list[str]) -> list[tuple[int, int, str]]:
     return clusters
 
 
-def mine_templates(clusters: list[tuple[int, int, str]]) -> tuple[TemplateMiner, list[str]]:
+def mine_templates(
+    clusters: list[tuple[int, int, str]],
+) -> tuple[TemplateMiner, list[str]]:
     """Run Drain3 template mining over cluster texts.
 
     Returns the miner and a list of template strings (one per cluster, in order).

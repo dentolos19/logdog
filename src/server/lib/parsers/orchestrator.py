@@ -214,7 +214,10 @@ def _fail(db: Any, process: LogGroupProcess | None, message: str) -> None:
         process.error = message  # type: ignore[assignment]
         db.commit()
     except Exception:  # noqa: BLE001
-        logger.exception("_fail: could not persist failure for process %s", getattr(process, "id", "?"))
+        logger.exception(
+            "_fail: could not persist failure for process %s",
+            getattr(process, "id", "?"),
+        )
 
 
 def _sync_log_table(

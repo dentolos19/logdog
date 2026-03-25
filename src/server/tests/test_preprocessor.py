@@ -28,7 +28,12 @@ def _mock_llm_schema_response(columns: list[dict] | None = None, summary: str = 
 
     return LlmSchemaResponse(
         columns=[
-            {"name": "trace_id", "sql_type": "TEXT", "description": "Distributed trace ID.", "nullable": True},
+            {
+                "name": "trace_id",
+                "sql_type": "TEXT",
+                "description": "Distributed trace ID.",
+                "nullable": True,
+            },
         ]
         if columns is None
         else columns,
@@ -242,8 +247,18 @@ class TestDdlGeneration:
 
     def test_ddl_contains_id_primary_key(self, service: LogPreprocessorService) -> None:
         columns = [
-            InferredColumn(name="id", sql_type=SqlType.INTEGER, nullable=False, kind=ColumnKind.BASELINE),
-            InferredColumn(name="message", sql_type=SqlType.TEXT, nullable=True, kind=ColumnKind.BASELINE),
+            InferredColumn(
+                name="id",
+                sql_type=SqlType.INTEGER,
+                nullable=False,
+                kind=ColumnKind.BASELINE,
+            ),
+            InferredColumn(
+                name="message",
+                sql_type=SqlType.TEXT,
+                nullable=True,
+                kind=ColumnKind.BASELINE,
+            ),
         ]
         ddl = service._generate_ddl("test_table", columns)
         assert "PRIMARY KEY AUTOINCREMENT" in ddl

@@ -20,3 +20,6 @@ dependencies = [
 
 [dependency-groups]
 dev = ["pytest", "httpx"]
+
+[tool.ruff]
+line-length = 120

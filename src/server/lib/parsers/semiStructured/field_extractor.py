@@ -105,7 +105,13 @@ class FieldExtractor:
         except json.JSONDecodeError:
             return False
 
-    def _flatten_json(self, obj: Any, result: ExtractionResult, prefix: str = "", section: Optional[str] = None):
+    def _flatten_json(
+        self,
+        obj: Any,
+        result: ExtractionResult,
+        prefix: str = "",
+        section: Optional[str] = None,
+    ):
         """Recursively flatten JSON into ExtractedFields."""
         if isinstance(obj, dict):
             for k, v in obj.items():
@@ -141,7 +147,11 @@ class FieldExtractor:
                 continue
 
             # ROW headers
-            row_match = re.match(r"^ROW\s+(\d+)\s*(?:[:\-]\s*(.+?))?(?:\s*\((.+)\))?\s*$", line.strip(), re.IGNORECASE)
+            row_match = re.match(
+                r"^ROW\s+(\d+)\s*(?:[:\-]\s*(.+?))?(?:\s*\((.+)\))?\s*$",
+                line.strip(),
+                re.IGNORECASE,
+            )
             if row_match:
                 result.metadata["current_row"] = int(row_match.group(1))
                 if row_match.group(2):

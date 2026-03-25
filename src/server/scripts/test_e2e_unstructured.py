@@ -41,7 +41,10 @@ def main() -> None:
         import subprocess
 
         subprocess.run(
-            [sys.executable, str(Path(__file__).resolve().parent / "generate_unstructured_logs.py")],
+            [
+                sys.executable,
+                str(Path(__file__).resolve().parent / "generate_unstructured_logs.py"),
+            ],
             check=True,
         )
 

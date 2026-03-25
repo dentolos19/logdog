@@ -8,7 +8,13 @@ from sqlalchemy.orm import relationship
 class User(Base):
     __tablename__ = "users"
 
-    id = Column(String(36), primary_key=True, index=True, nullable=False, default=lambda: str(uuid.uuid4()))
+    id = Column(
+        String(36),
+        primary_key=True,
+        index=True,
+        nullable=False,
+        default=lambda: str(uuid.uuid4()),
+    )
     email = Column(String, unique=True, index=True, nullable=False)
     password = Column(String, nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
@@ -21,7 +27,13 @@ class User(Base):
 class Asset(Base):
     __tablename__ = "assets"
 
-    id = Column(String(36), primary_key=True, index=True, nullable=False, default=lambda: str(uuid.uuid4()))
+    id = Column(
+        String(36),
+        primary_key=True,
+        index=True,
+        nullable=False,
+        default=lambda: str(uuid.uuid4()),
+    )
     name = Column(String, nullable=False)
     size = Column(Integer, nullable=False)
     type = Column(String, nullable=False)
@@ -33,11 +45,22 @@ class Asset(Base):
 class LogGroup(Base):
     __tablename__ = "logs"
 
-    id = Column(String(36), primary_key=True, index=True, nullable=False, default=lambda: str(uuid.uuid4()))
+    id = Column(
+        String(36),
+        primary_key=True,
+        index=True,
+        nullable=False,
+        default=lambda: str(uuid.uuid4()),
+    )
     user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     name = Column(String, nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
 
     user = relationship("User", back_populates="log_groups")
     files = relationship("LogGroupFile", back_populates="log_group", cascade="all, delete-orphan")
@@ -54,15 +77,32 @@ class LogGroup(Base):
 class LogGroupSwarmCredential(Base):
     __tablename__ = "log_swarm_credentials"
 
-    id = Column(String(36), primary_key=True, index=True, nullable=False, default=lambda: str(uuid.uuid4()))
-    log_id = Column(String(36), ForeignKey("logs.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    id = Column(
+        String(36),
+        primary_key=True,
+        index=True,
+        nullable=False,
+        default=lambda: str(uuid.uuid4()),
+    )
+    log_id = Column(
+        String(36),
+        ForeignKey("logs.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
     provider = Column(String, nullable=False, default="turso")
     database_name = Column(String, nullable=False)
     database_url = Column(String, nullable=False)
     database_token = Column(String, nullable=False)
     group_name = Column(String, nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
 
     log_group = relationship("LogGroup", back_populates="swarm_credential")
 
@@ -70,7 +110,13 @@ class LogGroupSwarmCredential(Base):
 class LogGroupFile(Base):
     __tablename__ = "log_files"
 
-    id = Column(String(36), primary_key=True, index=True, nullable=False, default=lambda: str(uuid.uuid4()))
+    id = Column(
+        String(36),
+        primary_key=True,
+        index=True,
+        nullable=False,
+        default=lambda: str(uuid.uuid4()),
+    )
     user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     log_id = Column(String(36), ForeignKey("logs.id", ondelete="CASCADE"), nullable=False)
     asset_id = Column(String(36), ForeignKey("assets.id", ondelete="CASCADE"), nullable=False)
@@ -84,13 +130,24 @@ class LogGroupFile(Base):
 class LogGroupTable(Base):
     __tablename__ = "log_tables"
 
-    id = Column(String(36), primary_key=True, index=True, nullable=False, default=lambda: str(uuid.uuid4()))
+    id = Column(
+        String(36),
+        primary_key=True,
+        index=True,
+        nullable=False,
+        default=lambda: str(uuid.uuid4()),
+    )
     log_id = Column(String(36), ForeignKey("logs.id", ondelete="CASCADE"), nullable=False)
     name = Column(String, nullable=False)
     columns = Column(String, nullable=False)  # JSON string of column names and types
     is_normalized = Column(Integer, nullable=False, default=0)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
 
     log_group = relationship("LogGroup", back_populates="tables")
 
@@ -98,7 +155,13 @@ class LogGroupTable(Base):
 class LogGroupProcess(Base):
     __tablename__ = "log_processes"
 
-    id = Column(String(36), primary_key=True, index=True, nullable=False, default=lambda: str(uuid.uuid4()))
+    id = Column(
+        String(36),
+        primary_key=True,
+        index=True,
+        nullable=False,
+        default=lambda: str(uuid.uuid4()),
+    )
     log_id = Column(String(36), ForeignKey("logs.id", ondelete="CASCADE"), nullable=False)
     user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     status = Column(String, nullable=False, default="queued")  # queued | classified | processing | completed | failed
@@ -107,7 +170,12 @@ class LogGroupProcess(Base):
     error = Column(String, nullable=True)
     schema_version = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
 
     log_group = relationship("LogGroup", back_populates="processes")
     user = relationship("User", back_populates="log_group_processes")

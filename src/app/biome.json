@@ -7,6 +7,7 @@
   },
   "formatter": {
     "enabled": true,
+    "indentStyle": "space",
     "lineWidth": 120
   },
   "linter": {
@@ -14,17 +15,12 @@
     "rules": {
       "recommended": true,
       "suspicious": {
-        "noArrayIndexKey": "off",
-        "noUnknownAtRules": "off"
+        "noArrayIndexKey": "off"
       },
       "nursery": {
         "useSortedClasses": {
           "level": "info",
-          "fix": "safe",
-          "options": {
-            "attributes": ["className"],
-            "functions": ["cn"]
-          }
+          "fix": "safe"
         }
       }
     }

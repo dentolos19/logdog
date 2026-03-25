@@ -211,7 +211,12 @@ def _try_dotnet(file_path: str) -> str:
         return ""
     try:
         out = Path(tempfile.gettempdir()) / (Path(file_path).stem + "_parsed.json")
-        subprocess.run([str(parser), file_path, str(out)], check=True, capture_output=True, timeout=30)
+        subprocess.run(
+            [str(parser), file_path, str(out)],
+            check=True,
+            capture_output=True,
+            timeout=30,
+        )
         if out.exists():
             return out.read_text(errors="ignore")
     except:
@@ -320,7 +325,12 @@ def split_by_type(content: str, file_path: str) -> List[Tuple[str, dict]]:
         header = lines[0] if lines else ""
         for i, line in enumerate(lines[1:], 1):
             if line.strip():
-                chunks.append((line, {"source": fname, "type": "csv", "line": i, "header": header}))
+                chunks.append(
+                    (
+                        line,
+                        {"source": fname, "type": "csv", "line": i, "header": header},
+                    )
+                )
     elif ext == ".xml":
         for i, elem in enumerate(re.findall(r"<[^>]+>[^<]*</[^>]+>", content)):
             chunks.append((elem, {"source": fname, "type": "xml", "element": i + 1}))
@@ -333,7 +343,12 @@ def split_by_type(content: str, file_path: str) -> List[Tuple[str, dict]]:
             import pandas as pd
 
             for i, row in pd.read_parquet(file_path).iterrows():
-                chunks.append((str(row.to_dict()), {"source": fname, "type": "parquet", "row": i + 1}))
+                chunks.append(
+                    (
+                        str(row.to_dict()),
+                        {"source": fname, "type": "parquet", "row": i + 1},
+                    )
+                )
         except:
             chunks.append((content[:10000], {"source": fname, "type": "parquet"}))
     else:
@@ -456,7 +471,10 @@ class AIClient:
             self.client = OpenAI(
                 api_key=self.api_key,
                 base_url="https://openrouter.ai/api/v1",
-                default_headers={"HTTP-Referer": "http://localhost", "X-Title": "Log Pipeline"},
+                default_headers={
+                    "HTTP-Referer": "http://localhost",
+                    "X-Title": "Log Pipeline",
+                },
             )
             print(f"[AI] Connected (model: {self.model})")
         except Exception as e:
@@ -472,7 +490,10 @@ class AIClient:
             event = record.get("event_type", "")
             prompt = f"Log Level: {level}\nEvent Type: {event}\nMessage: {msg}\n\nBriefly comment (1 line) on this log entry."
             response = self.client.chat.completions.create(
-                model=self.model, messages=[{"role": "user", "content": prompt}], max_tokens=100, temperature=0.1
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=100,
+                temperature=0.1,
             )
             return response.choices[0].message.content.strip()
         except:
@@ -505,7 +526,14 @@ class AIClient:
             extra_data = {
                 k: v
                 for k, v in ai_data.items()
-                if k not in ["timestamp", "log_level", "event_type", "message", "parse_confidence"]
+                if k
+                not in [
+                    "timestamp",
+                    "log_level",
+                    "event_type",
+                    "message",
+                    "parse_confidence",
+                ]
             }
 
             return {

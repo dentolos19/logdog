@@ -3,9 +3,6 @@
     "target": "es2021",
     "module": "es2022",
     "moduleResolution": "bundler",
-    "strict": true,
-    "noEmit": true,
     "skipLibCheck": true
-  },
-  "include": ["**/*.ts"]
+  }
 }

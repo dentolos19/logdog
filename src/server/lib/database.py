@@ -25,7 +25,15 @@ def _normalize_turso_url(raw_url: str) -> str:
     parsed_url = urlsplit(normalized)
     query = dict(parse_qsl(parsed_url.query, keep_blank_values=True))
     query.setdefault("secure", "true")
-    return urlunsplit((parsed_url.scheme, parsed_url.netloc, parsed_url.path, urlencode(query), parsed_url.fragment))
+    return urlunsplit(
+        (
+            parsed_url.scheme,
+            parsed_url.netloc,
+            parsed_url.path,
+            urlencode(query),
+            parsed_url.fragment,
+        )
+    )
 
 
 def _has_any_rows(database_engine, table_names: list[str]) -> bool:
@@ -71,7 +79,10 @@ def _migrate_local_sqlite_to_turso_if_needed() -> None:
         target_metadata = MetaData()
         target_metadata.reflect(bind=engine, only=table_names)
 
-        with source_engine.connect() as source_connection, engine.begin() as target_connection:
+        with (
+            source_engine.connect() as source_connection,
+            engine.begin() as target_connection,
+        ):
             for table_name in table_names:
                 source_table = source_metadata.tables.get(table_name)
                 target_table: Table | None = target_metadata.tables.get(table_name)

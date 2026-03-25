@@ -253,7 +253,10 @@ def parser_ingest(
         preferred_keys=preferred_keys,
     )
     if not grouped:
-        raise HTTPException(status_code=400, detail="No parser could be selected for the provided files.")
+        raise HTTPException(
+            status_code=400,
+            detail="No parser could be selected for the provided files.",
+        )
 
     table_definitions = []
     merged_records: dict[str, list[dict[str, Any]]] = {}

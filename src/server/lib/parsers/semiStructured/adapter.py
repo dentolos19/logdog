@@ -51,12 +51,24 @@ def _segment(lines: list[str]) -> list[tuple[int, int, str]]:
             current_lines.append(line)
         else:
             if current_lines:
-                clusters.append((current_start + 1, current_start + len(current_lines), "\n".join(current_lines)))
+                clusters.append(
+                    (
+                        current_start + 1,
+                        current_start + len(current_lines),
+                        "\n".join(current_lines),
+                    )
+                )
             current_start = idx
             current_lines = [line]
 
     if current_lines:
-        clusters.append((current_start + 1, current_start + len(current_lines), "\n".join(current_lines)))
+        clusters.append(
+            (
+                current_start + 1,
+                current_start + len(current_lines),
+                "\n".join(current_lines),
+            )
+        )
 
     return clusters
 

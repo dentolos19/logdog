@@ -4,12 +4,27 @@ import logging
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    HTTPException,
+    UploadFile,
+    status,
+)
 from fastapi.responses import StreamingResponse
 from lib.auth import get_current_user
 from lib.database import get_db
 from lib.database_swarm import LogDatabaseError, LogDatabaseSwarm, ReadOnlyQueryError
-from lib.models import Asset, LogGroup, LogGroupFile, LogGroupProcess, LogGroupTable, User
+from lib.models import (
+    Asset,
+    LogGroup,
+    LogGroupFile,
+    LogGroupProcess,
+    LogGroupTable,
+    User,
+)
 from lib.parsers.contracts import ClassificationResult as _ClassificationResult  # noqa: F401
 from lib.parsers.orchestrator import run_ingestion_job
 from lib.parsers.preprocessor import (
@@ -218,7 +233,9 @@ def _extract_generated_tables(result_data: dict[str, Any]) -> list[dict[str, Any
     return []
 
 
-def _serialize_generated_table(generated_table: dict[str, Any]) -> "GeneratedTableResponse":
+def _serialize_generated_table(
+    generated_table: dict[str, Any],
+) -> "GeneratedTableResponse":
     return GeneratedTableResponse(
         table_name=str(generated_table["table_name"]),
         sqlite_ddl=str(generated_table["sqlite_ddl"]),
@@ -340,7 +357,11 @@ def create_log_group(
 
 
 @router.get("/{id}", response_model=LogGroupResponse)
-def get_log_group(id: str, database: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def get_log_group(
+    id: str,
+    database: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     log_group = _get_owned_log_group(database, str(current_user.id), id)
     _sync_metadata(database, str(log_group.id))
     row_counts = _get_table_row_counts(str(log_group.id))
@@ -375,7 +396,9 @@ def update_log_group(
 
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_log_group(
-    id: str, database: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+    id: str,
+    database: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> None:
     log_group = _get_owned_log_group(database, str(current_user.id), id)
 
@@ -628,7 +651,11 @@ def _serialize_log_group_file(log_file: LogGroupFile) -> LogGroupFileResponse:
     )
 
 
-@router.post("/{id}", response_model=UploadLogFilesV2Response, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{id}",
+    response_model=UploadLogFilesV2Response,
+    status_code=status.HTTP_201_CREATED,
+)
 def upload_log_files(
     id: str,
     files: list[UploadFile] = File(...),
@@ -666,7 +693,13 @@ def upload_log_files(
         mime_type = upload.content_type or "application/octet-stream"
 
         # Persist the asset and link it to this log group.
-        asset = store_asset(raw_data=raw_data, name=filename, size=len(raw_data), mime_type=mime_type, db=database)
+        asset = store_asset(
+            raw_data=raw_data,
+            name=filename,
+            size=len(raw_data),
+            mime_type=mime_type,
+            db=database,
+        )
         log_group_file = LogGroupFile(
             user_id=str(current_user.id),
             log_id=str(log_group.id),
@@ -755,7 +788,11 @@ def upload_log_files(
 
 
 @router.get("/{id}/explore", response_model=ExploreLogsResponse)
-def explore_logs(id: str, database: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def explore_logs(
+    id: str,
+    database: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     log_group = _get_owned_log_group(database, str(current_user.id), id)
     _sync_metadata(database, str(log_group.id))
 
@@ -890,7 +927,10 @@ def get_table_rows(
     if page < 1:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="page must be >= 1.")
     if not (1 <= page_size <= 200):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="page_size must be between 1 and 200.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="page_size must be between 1 and 200.",
+        )
 
     log_group = _get_owned_log_group(database, str(current_user.id), id)
 

@@ -72,10 +72,7 @@ class LogParser
         {
             return ParseBinary(filePath);
         }
-        return JsonSerializer.Serialize(
-            records,
-            new JsonSerializerOptions { WriteIndented = false }
-        );
+        return JsonSerializer.Serialize(records, new JsonSerializerOptions { WriteIndented = false });
     }
 
     static string ParseEvt(string filePath)
@@ -103,9 +100,6 @@ class LogParser
             chunks = records,
         };
 
-        return JsonSerializer.Serialize(
-            output,
-            new JsonSerializerOptions { WriteIndented = false }
-        );
+        return JsonSerializer.Serialize(output, new JsonSerializerOptions { WriteIndented = false });
     }
 }

@@ -1,26 +1,26 @@
 {
-	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "logdog",
-	"main": ".open-next/worker.js",
-	"compatibility_date": "2026-01-01",
-	"compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
-	"keep_vars": true,
-	"observability": {
-		"logs": {
-			"enabled": true
-		},
-		"traces": {
-			"enabled": true
-		}
-	},
-	"assets": {
-		"binding": "ASSETS",
-		"directory": ".open-next/assets"
-	},
-	"routes": [
-		{
-			"pattern": "logdog.dennise.me",
-			"custom_domain": true
-		}
-	]
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "logdog",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-01-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "keep_vars": true,
+  "observability": {
+    "logs": {
+      "enabled": true
+    },
+    "traces": {
+      "enabled": true
+    }
+  },
+  "assets": {
+    "binding": "ASSETS",
+    "directory": ".open-next/assets"
+  },
+  "routes": [
+    {
+      "pattern": "logdog.dennise.me",
+      "custom_domain": true
+    }
+  ]
 }

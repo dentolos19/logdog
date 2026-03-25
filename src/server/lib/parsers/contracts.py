@@ -116,27 +116,74 @@ class FileParserSelection(BaseModel):
 #: Baseline columns present in every parser-generated table.
 BASELINE_COLUMNS: list[ColumnDefinition] = [
     ColumnDefinition(
-        name="id", sql_type="INTEGER", nullable=False, primary_key=True, description="Auto-incrementing primary key."
+        name="id",
+        sql_type="INTEGER",
+        nullable=False,
+        primary_key=True,
+        description="Auto-incrementing primary key.",
     ),
-    ColumnDefinition(name="timestamp", sql_type="TEXT", description="Normalized ISO-8601 timestamp, if detectable."),
     ColumnDefinition(
-        name="timestamp_raw", sql_type="TEXT", description="Original timestamp string as found in the log."
+        name="timestamp",
+        sql_type="TEXT",
+        description="Normalized ISO-8601 timestamp, if detectable.",
     ),
-    ColumnDefinition(name="source", sql_type="TEXT", description="Source identifier (filename, hostname, service)."),
-    ColumnDefinition(name="source_type", sql_type="TEXT", description="Category of source ('file', 'stream', 'api')."),
-    ColumnDefinition(name="log_level", sql_type="TEXT", description="Severity level (INFO, WARN, ERROR, etc.)."),
+    ColumnDefinition(
+        name="timestamp_raw",
+        sql_type="TEXT",
+        description="Original timestamp string as found in the log.",
+    ),
+    ColumnDefinition(
+        name="source",
+        sql_type="TEXT",
+        description="Source identifier (filename, hostname, service).",
+    ),
+    ColumnDefinition(
+        name="source_type",
+        sql_type="TEXT",
+        description="Category of source ('file', 'stream', 'api').",
+    ),
+    ColumnDefinition(
+        name="log_level",
+        sql_type="TEXT",
+        description="Severity level (INFO, WARN, ERROR, etc.).",
+    ),
     ColumnDefinition(name="event_type", sql_type="TEXT", description="Classified event type."),
     ColumnDefinition(name="message", sql_type="TEXT", description="Human-readable message content."),
-    ColumnDefinition(name="raw_text", sql_type="TEXT", nullable=False, description="Complete original log text."),
-    ColumnDefinition(name="record_group_id", sql_type="TEXT", description="Links related multiline records."),
     ColumnDefinition(
-        name="line_start", sql_type="INTEGER", description="1-based source line where this record starts."
+        name="raw_text",
+        sql_type="TEXT",
+        nullable=False,
+        description="Complete original log text.",
     ),
-    ColumnDefinition(name="line_end", sql_type="INTEGER", description="1-based source line where this record ends."),
-    ColumnDefinition(name="parse_confidence", sql_type="REAL", description="Confidence score (0.0–1.0)."),
-    ColumnDefinition(name="schema_version", sql_type="TEXT", description="Schema version used to parse this record."),
     ColumnDefinition(
-        name="additional_data", sql_type="TEXT", description="JSON blob for extra fields not mapped to columns."
+        name="record_group_id",
+        sql_type="TEXT",
+        description="Links related multiline records.",
+    ),
+    ColumnDefinition(
+        name="line_start",
+        sql_type="INTEGER",
+        description="1-based source line where this record starts.",
+    ),
+    ColumnDefinition(
+        name="line_end",
+        sql_type="INTEGER",
+        description="1-based source line where this record ends.",
+    ),
+    ColumnDefinition(
+        name="parse_confidence",
+        sql_type="REAL",
+        description="Confidence score (0.0–1.0).",
+    ),
+    ColumnDefinition(
+        name="schema_version",
+        sql_type="TEXT",
+        description="Schema version used to parse this record.",
+    ),
+    ColumnDefinition(
+        name="additional_data",
+        sql_type="TEXT",
+        description="JSON blob for extra fields not mapped to columns.",
     ),
 ]
 
