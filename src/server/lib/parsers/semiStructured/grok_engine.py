@@ -18,42 +18,39 @@ from typing import Optional
 # ---------------------------------------------------------------------------
 BASE_PATTERNS: dict[str, str] = {
     # Primitives
-    "INT":        r"(?:[+-]?\d+)",
-    "POS_INT":    r"(?:\d+)",
-    "FLOAT":      r"(?:[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)",
-    "WORD":       r"(?:\w+)",
-    "NOTSPACE":   r"(?:\S+)",
-    "DATA":       r"(?:.*?)",
+    "INT": r"(?:[+-]?\d+)",
+    "POS_INT": r"(?:\d+)",
+    "FLOAT": r"(?:[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)",
+    "WORD": r"(?:\w+)",
+    "NOTSPACE": r"(?:\S+)",
+    "DATA": r"(?:.*?)",
     "GREEDYDATA": r"(?:.*)",
-
     # Networking
-    "IP":         r"(?:\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})",
-    "HOSTNAME":   r"(?:[\w\.\-]+)",
-    "MAC":        r"(?:[\da-fA-F]{2}(?::[\da-fA-F]{2}){5})",
-
+    "IP": r"(?:\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})",
+    "HOSTNAME": r"(?:[\w\.\-]+)",
+    "MAC": r"(?:[\da-fA-F]{2}(?::[\da-fA-F]{2}){5})",
     # Timestamps
-    "ISO8601":       r"(?:\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?)",
+    "ISO8601": r"(?:\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?)",
     "TIMESTAMP_ISO": r"(?:\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)",
-    "SYSLOG_TS":     r"(?:\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2})",
-    "HTTPDATE":      r"(?:\d{2}/\w{3}/\d{4}:\d{2}:\d{2}:\d{2}\s+[+-]\d{4})",
-
+    "SYSLOG_TS": r"(?:\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2})",
+    "HTTPDATE": r"(?:\d{2}/\w{3}/\d{4}:\d{2}:\d{2}:\d{2}\s+[+-]\d{4})",
     # Log levels
     "LOGLEVEL": r"(?:DEBUG|INFO|NOTICE|WARN(?:ING)?|ERROR|CRIT(?:ICAL)?|FATAL|SEVERE|ALERT|EMERG(?:ENCY)?)",
-
     # Identifiers (semiconductor domain)
-    "EQUIP_ID":   r"(?:EQP_\d{4})",
-    "LOT_ID":     r"(?:LOT_\d{4})",
-    "WAFER_ID":   r"(?:WFR_\d{4})",
-    "MODULE_ID":  r"(?:MOD_\d{4})",
-    "RECIPE_ID":  r"(?:RCP_\d{4})",
-    "JOB_ID":     r"(?:(?:CJOB|PRJOB)_\d{4})",
-    "SENSOR_ID":  r"(?:SENSOR_\d{4})",
-    "STEP_ID":    r"(?:(?:PRESTEP|POSTSTEP|\d+(?:\.\d+)*))",
+    "EQUIP_ID": r"(?:EQP_\d{4})",
+    "LOT_ID": r"(?:LOT_\d{4})",
+    "WAFER_ID": r"(?:WFR_\d{4})",
+    "MODULE_ID": r"(?:MOD_\d{4})",
+    "RECIPE_ID": r"(?:RCP_\d{4})",
+    "JOB_ID": r"(?:(?:CJOB|PRJOB)_\d{4})",
+    "SENSOR_ID": r"(?:SENSOR_\d{4})",
+    "STEP_ID": r"(?:(?:PRESTEP|POSTSTEP|\d+(?:\.\d+)*))",
 }
 
 
 def _resolve_pattern(pattern_str: str, base: dict[str, str] = BASE_PATTERNS) -> str:
     """Replace %{PATTERN_NAME:field_name} with the underlying regex."""
+
     def _replace(m: re.Match) -> str:
         name = m.group(1)
         capture = m.group(2)
@@ -61,6 +58,7 @@ def _resolve_pattern(pattern_str: str, base: dict[str, str] = BASE_PATTERNS) -> 
         if capture:
             return f"(?P<{capture}>{raw})"
         return raw
+
     return re.sub(r"%\{(\w+)(?::(\w+))?\}", _replace, pattern_str)
 
 
@@ -72,19 +70,16 @@ COMPOUND_PATTERNS: dict[str, str] = {
     "SYSLOG": r"%{SYSLOG_TS:timestamp}\s+%{HOSTNAME:host}\s+%{WORD:program}(?:\[%{POS_INT:pid}\])?:\s+%{GREEDYDATA:message}",
     "APACHE_ACCESS": r"%{IP:client_ip}\s+-\s+%{NOTSPACE:user}\s+\[%{HTTPDATE:timestamp}\]\s+\"%{WORD:method}\s+%{NOTSPACE:request}\s+HTTP/%{FLOAT:http_version}\"\s+%{INT:status}\s+%{INT:bytes}",
     "NGINX_ACCESS": r"%{IP:client_ip}\s+-\s+%{NOTSPACE:user}\s+\[%{HTTPDATE:timestamp}\]\s+\"%{WORD:method}\s+%{NOTSPACE:request}\s+HTTP/%{FLOAT:http_version}\"\s+%{INT:status}\s+%{INT:bytes}\s+\"%{DATA:referrer}\"\s+\"%{DATA:user_agent}\"",
-
     # Semiconductor / equipment log formats
     "SECTION_HEADER": r"^---\s+(?P<section_name>\w+(?:\s+\w+)*)\s+---\s*$",
-    "KV_JSON_LINE":   r'^\s*"(?P<key>[^"]+)"\s*:\s*"?(?P<value>[^",}]*)"?\s*,?\s*$',
-    "KV_EQUALS":      r"^(?P<key>[\w\.]+)\s*=\s*(?P<value>.+?)\s*$",
+    "KV_JSON_LINE": r'^\s*"(?P<key>[^"]+)"\s*:\s*"?(?P<value>[^",}]*)"?\s*,?\s*$',
+    "KV_EQUALS": r"^(?P<key>[\w\.]+)\s*=\s*(?P<value>.+?)\s*$",
     "RECIPE_STEP_HEADER": r"^(?:ROW\s+%{POS_INT:row_num}|RecipeStepID)\s*[:\-]?\s*%{STEP_ID:step_id}",
     "PARQUET_HEADER": r"^(?:LAM|AMAT|TEL|ASM)\s+\w+\s+PARQUET\s*-\s*DATA\s+OVERVIEW",
-
     # Vendor 3 (LAM) specific
     "LAM_RECIPE_ROW": r"^ROW\s+(?P<row_num>\d+)(?:\s*[:\-]\s*(?P<step_id>[^\(]+?))?(?:\s*\((?P<description>[^\)]+)\))?\s*$",
     "LAM_MODULE_KEYS": r"^\s*ModuleID:\s*%{MODULE_ID:module_id}",
     "LAM_KV_FLAT": r"^(?P<key>[A-Za-z][\w]+)\s*=\s*(?P<value>.+?)(?:\s+(?P<unit>[a-zA-Z/%]+))?\s*$",
-
     # Tabular recipe detail (Key | Value | Unit | Type)
     "RECIPE_DETAIL_ROW": r"^\s*(?P<index>\d+)\s+(?P<key>\w+)\s+(?P<value>\S+)\s+(?P<unit>\S*)\s+(?P<type>\w+)\s*$",
 }
@@ -106,7 +101,7 @@ for name, pat in COMPOUND_PATTERNS.items():
 class GrokMatch:
     pattern_name: str
     fields: dict[str, str]
-    confidence: float            # 0.0–1.0
+    confidence: float  # 0.0–1.0
     matched_text: str = ""
     remaining_text: str = ""
 
@@ -121,9 +116,7 @@ class GrokResult:
     def overall_confidence(self) -> float:
         if not self.matches:
             return 0.0
-        return sum(m.confidence for m in self.matches) / (
-            len(self.matches) + len(self.unmatched_lines)
-        )
+        return sum(m.confidence for m in self.matches) / (len(self.matches) + len(self.unmatched_lines))
 
 
 # ---------------------------------------------------------------------------
@@ -155,7 +148,7 @@ class GrokEngine:
                         fields=fields,
                         confidence=conf,
                         matched_text=m.group(0),
-                        remaining_text=line[m.end():].strip(),
+                        remaining_text=line[m.end() :].strip(),
                     )
         return best
 

@@ -237,12 +237,8 @@ export const schema = createSchema({
 	},
 });
 
-export type UploadLogFilesResponse = z.infer<
-	typeof uploadLogFilesResponseSchema
->;
-export type ClassificationResponse = z.infer<
-	typeof classificationResponseSchema
->;
+export type UploadLogFilesResponse = z.infer<typeof uploadLogFilesResponseSchema>;
+export type ClassificationResponse = z.infer<typeof classificationResponseSchema>;
 export type FileClassification = z.infer<typeof fileClassificationSchema>;
 export type ProcessResponse = z.infer<typeof processResponseSchema>;
 export type DashboardStats = z.infer<typeof dashboardStatsSchema>;
@@ -303,9 +299,7 @@ export const uploadLogFiles = async (id: string, files: File[]) => {
 	});
 
 	if (!response.ok) {
-		const body = (await response
-			.json()
-			.catch(() => ({ message: "Upload failed." }))) as {
+		const body = (await response.json().catch(() => ({ message: "Upload failed." }))) as {
 			message?: string;
 		};
 		throw new Error(body.message ?? "Upload failed.");
@@ -336,9 +330,7 @@ export const getStats = async () => {
 	return data!;
 };
 
-export const testParser = async (
-	files: File[],
-): Promise<import("./types").FileParseResult[]> => {
+export const testParser = async (files: File[]): Promise<import("./types").FileParseResult[]> => {
 	const formData = new FormData();
 	for (const file of files) {
 		formData.append("files", file);
@@ -351,9 +343,7 @@ export const testParser = async (
 	});
 
 	if (!response.ok) {
-		const body = (await response
-			.json()
-			.catch(() => ({ message: "Parse failed." }))) as {
+		const body = (await response.json().catch(() => ({ message: "Parse failed." }))) as {
 			message?: string;
 		};
 		throw new Error(body.message ?? "Parse failed.");
@@ -362,10 +352,7 @@ export const testParser = async (
 	return response.json() as Promise<import("./types").FileParseResult[]>;
 };
 
-export const downloadLogFile = async (
-	logGroupId: string,
-	fileId: string,
-): Promise<Blob> => {
+export const downloadLogFile = async (logGroupId: string, fileId: string): Promise<Blob> => {
 	const response = await fetch(
 		`${API_URL}/logs/${encodeURIComponent(logGroupId)}/files/${encodeURIComponent(fileId)}/download`,
 		{
@@ -375,9 +362,7 @@ export const downloadLogFile = async (
 	);
 
 	if (!response.ok) {
-		const body = (await response
-			.json()
-			.catch(() => ({ message: "Download failed." }))) as {
+		const body = (await response.json().catch(() => ({ message: "Download failed." }))) as {
 			message?: string;
 		};
 		throw new Error(body.message ?? "Download failed.");
@@ -402,9 +387,7 @@ export const getTableRows = async (
 	);
 
 	if (!response.ok) {
-		const body = (await response
-			.json()
-			.catch(() => ({ message: "Failed to load rows." }))) as {
+		const body = (await response.json().catch(() => ({ message: "Failed to load rows." }))) as {
 			message?: string;
 		};
 		throw new Error(body.message ?? "Failed to load rows.");

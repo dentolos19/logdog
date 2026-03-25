@@ -155,9 +155,7 @@ def _call_llm_for_structured_schema(
         return invocation.response
 
     return LlmStructuredSchemaResponse(
-        warnings=[invocation.warning]
-        if invocation.warning
-        else ["LLM enrichment returned no response."],
+        warnings=[invocation.warning] if invocation.warning else ["LLM enrichment returned no response."],
     )
 
 
@@ -195,8 +193,7 @@ def _reconcile_columns(
             ColumnDefinition(
                 name=safe_name,
                 sql_type=sql_type.value,
-                description=llm_col.description
-                or f"Column inferred by LLM from structured data.",
+                description=llm_col.description or f"Column inferred by LLM from structured data.",
                 nullable=llm_col.nullable,
             )
         )
@@ -263,10 +260,7 @@ def enrich_structured_schema(
         return heuristic_columns, warnings
 
     heuristic_summary = (
-        "\n".join(
-            f"  - {col.name} ({col.sql_type}): {col.description}"
-            for col in heuristic_columns
-        )
+        "\n".join(f"  - {col.name} ({col.sql_type}): {col.description}" for col in heuristic_columns)
         or "  (none detected)"
     )
 
@@ -301,9 +295,7 @@ def enrich_structured_schema(
     if llm_result.event_type_hint:
         for col in enriched:
             if col.name == "event_type" and not col.description:
-                col.description = (
-                    f"Event type hint from LLM: {llm_result.event_type_hint}"
-                )
+                col.description = f"Event type hint from LLM: {llm_result.event_type_hint}"
                 break
 
     return enriched, warnings

@@ -97,21 +97,42 @@ class Normalizer:
         self.matcher = fuzzy_matcher or FuzzyMatcher()
 
         self._timestamp_keys = [
-            "timestamp", "start_time", "end_time",
-            "CtrlJobStartTime", "WaferStartTime", "RecipeStartTime",
-            "CtrlJobEndTime", "WaferEndTime", "RecipeEndTime",
-            "DateTime", "datetime", "time", "ts",
+            "timestamp",
+            "start_time",
+            "end_time",
+            "CtrlJobStartTime",
+            "WaferStartTime",
+            "RecipeStartTime",
+            "CtrlJobEndTime",
+            "WaferEndTime",
+            "RecipeEndTime",
+            "DateTime",
+            "datetime",
+            "time",
+            "ts",
         ]
         self._source_keys = [
-            "equipment_id", "EquipmentID", "MachineID",
-            "source", "host", "hostname", "program",
+            "equipment_id",
+            "EquipmentID",
+            "MachineID",
+            "source",
+            "host",
+            "hostname",
+            "program",
         ]
         self._log_level_keys = [
-            "level", "log_level", "severity", "loglevel",
+            "level",
+            "log_level",
+            "severity",
+            "loglevel",
         ]
         self._message_keys = [
-            "message", "msg", "text", "description",
-            "RecipeStepName", "step_description",
+            "message",
+            "msg",
+            "text",
+            "description",
+            "RecipeStepName",
+            "step_description",
         ]
 
     def normalize(
@@ -281,8 +302,6 @@ class Normalizer:
                 parts.append(f"{key}={data[key]}")
 
         if not parts[1:]:
-            parts.append(
-                f"{len(extraction.fields)} fields extracted from {len(extraction.sections)} sections"
-            )
+            parts.append(f"{len(extraction.fields)} fields extracted from {len(extraction.sections)} sections")
 
         return " | ".join(parts)

@@ -19,59 +19,56 @@ from typing import Optional
 # ---------------------------------------------------------------------------
 CANONICAL_ALIASES: dict[str, list[str]] = {
     # Identifiers
-    "control_job_id":    ["CtrlJobID", "CJOB", "ctrl_job_id", "controlJobId", "cjob_id"],
-    "equipment_id":      ["EquipmentID", "EQP", "equip_id", "machineID", "MachineID", "eqp_id", "tool_id"],
-    "process_job_id":    ["PRJobID", "PRJOB", "pr_job_id", "processJobId", "prjob_id"],
-    "lot_id":            ["LotID", "LOT", "lot", "lotId", "lot_number"],
-    "wafer_id":          ["WaferID", "WFR", "wafer", "waferId", "wafer_number", "wfr_id"],
-    "module_id":         ["ModuleID", "MOD", "module", "moduleId", "mod_id"],
-    "recipe_id":         ["RecipeID", "RCP", "recipe", "recipeId", "rcp_id", "ModuleRecipeID"],
-    "recipe_step_id":    ["RecipeStepID", "step_id", "stepId", "step", "STEP"],
-    "sensor_id":         ["SensorID", "sensor", "sensorId", "SENSOR"],
-    "carrier_id":        ["CarrierID", "carrier", "carrierId", "CARRIER"],
-    "slot_id":           ["SlotID", "slot", "slotId", "SLOT"],
-    "port_id":           ["PortID", "port", "portId", "PORT"],
-    "site_id":           ["Site", "site", "siteId", "SITE"],
-    "customer_id":       ["Customer", "customer", "customerId", "CUST"],
-
+    "control_job_id": ["CtrlJobID", "CJOB", "ctrl_job_id", "controlJobId", "cjob_id"],
+    "equipment_id": ["EquipmentID", "EQP", "equip_id", "machineID", "MachineID", "eqp_id", "tool_id"],
+    "process_job_id": ["PRJobID", "PRJOB", "pr_job_id", "processJobId", "prjob_id"],
+    "lot_id": ["LotID", "LOT", "lot", "lotId", "lot_number"],
+    "wafer_id": ["WaferID", "WFR", "wafer", "waferId", "wafer_number", "wfr_id"],
+    "module_id": ["ModuleID", "MOD", "module", "moduleId", "mod_id"],
+    "recipe_id": ["RecipeID", "RCP", "recipe", "recipeId", "rcp_id", "ModuleRecipeID"],
+    "recipe_step_id": ["RecipeStepID", "step_id", "stepId", "step", "STEP"],
+    "sensor_id": ["SensorID", "sensor", "sensorId", "SENSOR"],
+    "carrier_id": ["CarrierID", "carrier", "carrierId", "CARRIER"],
+    "slot_id": ["SlotID", "slot", "slotId", "SLOT"],
+    "port_id": ["PortID", "port", "portId", "PORT"],
+    "site_id": ["Site", "site", "siteId", "SITE"],
+    "customer_id": ["Customer", "customer", "customerId", "CUST"],
     # Timestamps
-    "timestamp":         ["ts", "time", "datetime", "date_time", "log_time", "event_time"],
-    "start_time":        ["CtrlJobStartTime", "WaferStartTime", "RecipeStartTime",
-                          "startTime", "start_ts", "begin_time"],
-    "end_time":          ["CtrlJobEndTime", "WaferEndTime", "RecipeEndTime",
-                          "endTime", "end_ts", "finish_time"],
-
+    "timestamp": ["ts", "time", "datetime", "date_time", "log_time", "event_time"],
+    "start_time": ["CtrlJobStartTime", "WaferStartTime", "RecipeStartTime", "startTime", "start_ts", "begin_time"],
+    "end_time": ["CtrlJobEndTime", "WaferEndTime", "RecipeEndTime", "endTime", "end_ts", "finish_time"],
     # Process parameters
-    "duration":          ["Duration", "elapsed", "elapsed_time", "process_time", "ProcessTime"],
-    "pressure":          ["PressureSetpoint", "pressure_sp", "Pressure", "chamber_pressure"],
-    "temperature":       ["Temperature", "temp", "TemperatureSetpoint", "temp_sp"],
-    "rf_power":          ["HFPowerSetpoint", "LFPowerSetpoint", "rf_power", "RFPower",
-                          "StationRF", "Station1RF"],
-    "gas_flow":          ["N2_A", "N2_B", "Ar_B", "Ar_C", "SiH4_A", "NF3_C", "NH3_B",
-                          "He_B", "N2O_B", "N2_D", "N2_D2"],
-
+    "duration": ["Duration", "elapsed", "elapsed_time", "process_time", "ProcessTime"],
+    "pressure": ["PressureSetpoint", "pressure_sp", "Pressure", "chamber_pressure"],
+    "temperature": ["Temperature", "temp", "TemperatureSetpoint", "temp_sp"],
+    "rf_power": ["HFPowerSetpoint", "LFPowerSetpoint", "rf_power", "RFPower", "StationRF", "Station1RF"],
+    "gas_flow": ["N2_A", "N2_B", "Ar_B", "Ar_C", "SiH4_A", "NF3_C", "NH3_B", "He_B", "N2O_B", "N2_D", "N2_D2"],
     # Recipe metadata
-    "recipe_name":       ["RecipeStepName", "recipe_name", "recipeName", "step_name"],
-    "recipe_type":       ["RecipeType", "recipe_type", "recipeType", "FileType"],
-    "module_type":       ["ModuleType", "module_type", "moduleType", "chamber_type"],
-    "platform":          ["Platform", "platform", "tool_platform"],
-    "application":       ["PMApplication", "application", "app", "process_app"],
-
+    "recipe_name": ["RecipeStepName", "recipe_name", "recipeName", "step_name"],
+    "recipe_type": ["RecipeType", "recipe_type", "recipeType", "FileType"],
+    "module_type": ["ModuleType", "module_type", "moduleType", "chamber_type"],
+    "platform": ["Platform", "platform", "tool_platform"],
+    "application": ["PMApplication", "application", "app", "process_app"],
     # File / version metadata
-    "file_type":         ["FileType", "file_type", "fileType"],
-    "software_version":  ["FileGeneratorSoftwareVersion", "Version", "version",
-                          "sw_version", "software_ver", "DataFileVersion",
-                          "ParquetSchemaVersion", "JsonSchemaVersion"],
-
+    "file_type": ["FileType", "file_type", "fileType"],
+    "software_version": [
+        "FileGeneratorSoftwareVersion",
+        "Version",
+        "version",
+        "sw_version",
+        "software_ver",
+        "DataFileVersion",
+        "ParquetSchemaVersion",
+        "JsonSchemaVersion",
+    ],
     # Sensor data
-    "sensor_value":      ["SVID|Monitor|", "sensor_val", "reading", "measurement"],
-    "sensor_unit":       ["Unit", "unit", "units", "measurement_unit"],
-    "data_type":         ["DataType", "Type", "type", "data_type", "value_type"],
-
+    "sensor_value": ["SVID|Monitor|", "sensor_val", "reading", "measurement"],
+    "sensor_unit": ["Unit", "unit", "units", "measurement_unit"],
+    "data_type": ["DataType", "Type", "type", "data_type", "value_type"],
     # Log level / status
-    "log_level":         ["level", "severity", "loglevel", "log_level", "LEVEL"],
-    "source":            ["source", "origin", "src", "component", "service"],
-    "message":           ["message", "msg", "text", "description", "log_message"],
+    "log_level": ["level", "severity", "loglevel", "log_level", "LEVEL"],
+    "source": ["source", "origin", "src", "component", "service"],
+    "message": ["message", "msg", "text", "description", "log_message"],
 }
 
 # Build reverse lookup: alias → canonical
@@ -97,11 +94,13 @@ def _levenshtein(s1: str, s2: str) -> int:
         curr_row = [i + 1]
         for j, c2 in enumerate(s2):
             cost = 0 if c1 == c2 else 1
-            curr_row.append(min(
-                curr_row[j] + 1,
-                prev_row[j + 1] + 1,
-                prev_row[j] + cost,
-            ))
+            curr_row.append(
+                min(
+                    curr_row[j] + 1,
+                    prev_row[j + 1] + 1,
+                    prev_row[j] + cost,
+                )
+            )
         prev_row = curr_row
     return prev_row[-1]
 
@@ -144,10 +143,7 @@ def _jaro_similarity(s1: str, s2: str) -> float:
             transpositions += 1
         k += 1
 
-    return (
-        matches / len_s1 + matches / len_s2 +
-        (matches - transpositions / 2) / matches
-    ) / 3
+    return (matches / len_s1 + matches / len_s2 + (matches - transpositions / 2) / matches) / 3
 
 
 # ---------------------------------------------------------------------------
@@ -157,8 +153,8 @@ def _jaro_similarity(s1: str, s2: str) -> float:
 class FuzzyMatch:
     original_key: str
     canonical_key: str
-    similarity: float        # 0.0–1.0
-    match_method: str        # 'exact', 'alias', 'fuzzy'
+    similarity: float  # 0.0–1.0
+    match_method: str  # 'exact', 'alias', 'fuzzy'
 
 
 # ---------------------------------------------------------------------------

@@ -18,11 +18,7 @@ export const metadata: Metadata = {
 	title: "Logdog",
 };
 
-export default function RootLayout({
-	children,
-}: {
-	children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
 	return (
 		<html lang={"en"} suppressHydrationWarning>
 			<body className={cn(fontSans.variable, fontMono.variable, "antialiased")}>

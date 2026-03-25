@@ -122,9 +122,7 @@ def _sanitize(name: str) -> str:
     return s
 
 
-def _base_row(
-    filename: str, line_start: int, line_end: int, raw_text: str
-) -> dict[str, Any]:
+def _base_row(filename: str, line_start: int, line_end: int, raw_text: str) -> dict[str, Any]:
     return {
         "source": filename,
         "source_type": "file",
@@ -279,9 +277,7 @@ def _build_table_definition(
 
     all_cols = list(BASELINE_COLUMNS) + enriched_cols
     ddl = build_ddl(table_name, all_cols)
-    return TableDefinition(
-        table_name=table_name, columns=all_cols, sqlite_ddl=ddl
-    ), warnings
+    return TableDefinition(table_name=table_name, columns=all_cols, sqlite_ddl=ddl), warnings
 
 
 def _extract_json_records(lines: list[str], filename: str) -> list[dict[str, Any]]:
@@ -328,12 +324,7 @@ def _extract_json_records(lines: list[str], filename: str) -> list[dict[str, Any
                 row["log_level"] = level_m.group(1).upper()
 
             if "message" not in row:
-                msg_val = (
-                    obj.get("message")
-                    or obj.get("msg")
-                    or obj.get("text")
-                    or stripped[:500]
-                )
+                msg_val = obj.get("message") or obj.get("msg") or obj.get("text") or stripped[:500]
                 row["message"] = str(msg_val) if msg_val else stripped[:500]
 
             if "event_type" not in row:
@@ -407,9 +398,7 @@ def _extract_csv_records(content: str, filename: str) -> list[dict[str, Any]]:
                 else:
                     row_values[safe_k] = None
 
-            row = _base_row(
-                filename, line_num, line_num, ",".join(str(v) for v in raw_row.values())
-            )
+            row = _base_row(filename, line_num, line_num, ",".join(str(v) for v in raw_row.values()))
             row.update(row_values)
 
             raw_text = ",".join(str(v) for v in raw_row.values())
@@ -456,16 +445,8 @@ def _extract_syslog_records(lines: list[str], filename: str) -> list[dict[str, A
             p = int(priority)
             facility_idx = p >> 3
             severity_idx = p & 0x07
-            facility = (
-                SYSLOG_FACILITIES[facility_idx]
-                if facility_idx < len(SYSLOG_FACILITIES)
-                else str(facility_idx)
-            )
-            severity = (
-                SYSLOG_SEVERITIES[severity_idx]
-                if severity_idx < len(SYSLOG_SEVERITIES)
-                else str(severity_idx)
-            )
+            facility = SYSLOG_FACILITIES[facility_idx] if facility_idx < len(SYSLOG_FACILITIES) else str(facility_idx)
+            severity = SYSLOG_SEVERITIES[severity_idx] if severity_idx < len(SYSLOG_SEVERITIES) else str(severity_idx)
 
         ts_raw = f"{m.group('month')} {m.group('day')} {m.group('time')}"
         row = _base_row(filename, i + 1, i + 1, stripped)
@@ -489,16 +470,10 @@ def _extract_syslog_records(lines: list[str], filename: str) -> list[dict[str, A
     return records
 
 
-def _extract_clf_records(
-    lines: list[str], filename: str, format_hint: str
-) -> list[dict[str, Any]]:
+def _extract_clf_records(lines: list[str], filename: str, format_hint: str) -> list[dict[str, Any]]:
     """Extract records from Apache/Nginx CLF format."""
     records: list[dict[str, Any]] = []
-    event_type = (
-        "nginx_request"
-        if format_hint == DetectedFormat.NGINX_ACCESS.value
-        else "http_request"
-    )
+    event_type = "nginx_request" if format_hint == DetectedFormat.NGINX_ACCESS.value else "http_request"
 
     for i, line in enumerate(lines):
         stripped = line.strip()
@@ -674,11 +649,7 @@ def _extract_xml_records(content: str, filename: str) -> list[dict[str, Any]]:
     root_tag = root.tag
     if "}" in root_tag:
         root_tag = root_tag.split("}", 1)[1]
-    records.extend(
-        _element_to_row(child, root_tag)
-        for child in children
-        if isinstance(child.tag, str)
-    )
+    records.extend(_element_to_row(child, root_tag) for child in children if isinstance(child.tag, str))
 
     return records
 
@@ -753,11 +724,7 @@ def _extract_xml_records(content: str, filename: str) -> list[dict[str, Any]]:
     root_tag = root.tag
     if "}" in root_tag:
         root_tag = root_tag.split("}", 1)[1]
-    records.extend(
-        _element_to_row(child, root_tag)
-        for child in children
-        if isinstance(child.tag, str)
-    )
+    records.extend(_element_to_row(child, root_tag) for child in children if isinstance(child.tag, str))
 
     return records
 
@@ -789,16 +756,12 @@ class StructuredPipeline(ParserPipeline):
                 score = max(score, 0.92)
                 reasons.append("Valid XML payload detected.")
             except ET.ParseError:
-                reasons.append(
-                    "XML extension matched but content could not be parsed as XML."
-                )
+                reasons.append("XML extension matched but content could not be parsed as XML.")
 
         from lib.parsers.preprocessor import LogPreprocessorService
 
         detector = LogPreprocessorService(table_name="logs")
-        fmt, confidence = (
-            detector._detect_format(lines) if lines else (DetectedFormat.UNKNOWN, 0.0)
-        )
+        fmt, confidence = detector._detect_format(lines) if lines else (DetectedFormat.UNKNOWN, 0.0)
         if fmt in {
             DetectedFormat.JSON_LINES,
             DetectedFormat.CSV,
@@ -810,9 +773,7 @@ class StructuredPipeline(ParserPipeline):
         }:
             score = max(score, confidence)
             detected_format = detected_format or fmt.value
-            reasons.append(
-                f"Structured format '{fmt.value}' detected with confidence {confidence:.2f}."
-            )
+            reasons.append(f"Structured format '{fmt.value}' detected with confidence {confidence:.2f}.")
 
         if filename_lower.endswith((".json", ".csv")):
             score = max(score, 0.75)
@@ -842,22 +803,18 @@ class StructuredPipeline(ParserPipeline):
         total_confidence = 0.0
         processed = 0
 
-        fc_by_id = {
-            fc.file_id: fc for fc in classification.file_classifications if fc.file_id
-        }
+        fc_by_id = {fc.file_id: fc for fc in classification.file_classifications if fc.file_id}
         fc_by_name = {fc.filename: fc for fc in classification.file_classifications}
 
         for file_input in file_inputs:
-            fc = (
-                fc_by_id.get(file_input.file_id) if file_input.file_id else None
-            ) or fc_by_name.get(file_input.filename)
+            fc = (fc_by_id.get(file_input.file_id) if file_input.file_id else None) or fc_by_name.get(
+                file_input.filename
+            )
             fmt = fc.detected_format if fc else classification.dominant_format
             lines = file_input.content.splitlines()
 
             try:
-                file_records = self._extract(
-                    lines, file_input.content, file_input.filename, fmt
-                )
+                file_records = self._extract(lines, file_input.content, file_input.filename, fmt)
             except Exception as exc:
                 logger.warning(
                     "Structured extraction failed for '%s': %s",
@@ -897,9 +854,7 @@ class StructuredPipeline(ParserPipeline):
             confidence=round(min(overall_confidence, 1.0), 2),
         )
 
-    def _extract(
-        self, lines: list[str], content: str, filename: str, detected_format: str
-    ) -> list[dict[str, Any]]:
+    def _extract(self, lines: list[str], content: str, filename: str, detected_format: str) -> list[dict[str, Any]]:
         if detected_format == "xml":
             return _extract_xml_records(content, filename)
         if detected_format == DetectedFormat.JSON_LINES.value:

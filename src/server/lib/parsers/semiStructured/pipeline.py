@@ -51,11 +51,12 @@ logger = logging.getLogger(__name__)
 @dataclass
 class PipelineConfig:
     """Configuration for the semi-structured parsing pipeline."""
-    confidence_threshold: float = 0.5     # min confidence to skip AI fallback
+
+    confidence_threshold: float = 0.5  # min confidence to skip AI fallback
     ai_fallback_enabled: bool = True
     ai_config: Optional[AIFallbackConfig] = None
     log_group_id: str = "default"
-    fuzzy_threshold: float = 0.75         # fuzzy matcher similarity threshold
+    fuzzy_threshold: float = 0.75  # fuzzy matcher similarity threshold
 
 
 # ---------------------------------------------------------------------------
@@ -64,6 +65,7 @@ class PipelineConfig:
 @dataclass
 class PipelineResult:
     """Result of processing a log through the pipeline."""
+
     log_row: LogRow
     grok_result: Optional[GrokResult] = None
     extraction_result: Optional[ExtractionResult] = None
@@ -145,11 +147,14 @@ class SemiStructuredPipeline:
             # Merge into extraction result
             for kv in kv_pairs:
                 from .field_extractor import ExtractedField
-                extraction.fields.append(ExtractedField(
-                    key=kv.key,
-                    value=kv.value,
-                    source_section="delimiter_split",
-                ))
+
+                extraction.fields.append(
+                    ExtractedField(
+                        key=kv.key,
+                        value=kv.value,
+                        source_section="delimiter_split",
+                    )
+                )
             result.stages_executed.append("delimiter_splitting")
 
         # ─── Stage 4: Fuzzy Header Matching ───────────────────────────
@@ -160,13 +165,12 @@ class SemiStructuredPipeline:
         # Calculate overall confidence
         if extraction.fields:
             matched_ratio = len(fuzzy_matches) / len(extraction.fields)
-            result.confidence = (extraction.confidence * 0.6 + matched_ratio * 0.4)
+            result.confidence = extraction.confidence * 0.6 + matched_ratio * 0.4
         else:
             result.confidence = 0.0
 
         logger.debug(
-            f"Fuzzy: {len(fuzzy_matches)}/{len(raw_keys)} keys matched, "
-            f"overall_confidence={result.confidence:.2f}"
+            f"Fuzzy: {len(fuzzy_matches)}/{len(raw_keys)} keys matched, overall_confidence={result.confidence:.2f}"
         )
 
         # ─── Decision: AI Fallback or Normalize? ──────────────────────
@@ -194,10 +198,7 @@ class SemiStructuredPipeline:
                     log_group_id=self.config.log_group_id,
                     parse_confidence=result.confidence,
                 )
-                logger.info(
-                    f"AI fallback: success, cached={ai_result.cached}, "
-                    f"template_id={ai_result.template_id}"
-                )
+                logger.info(f"AI fallback: success, cached={ai_result.cached}, template_id={ai_result.template_id}")
             else:
                 # Even AI fallback failed — use whatever we have
                 result.log_row = self.normalizer.normalize(

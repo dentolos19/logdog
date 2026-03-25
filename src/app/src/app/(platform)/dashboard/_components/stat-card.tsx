@@ -14,33 +14,20 @@ interface StatCardProps {
 	className?: string;
 }
 
-export function StatCard({
-	title,
-	value,
-	description,
-	icon: Icon,
-	loading = false,
-	className,
-}: StatCardProps) {
+export function StatCard({ title, value, description, icon: Icon, loading = false, className }: StatCardProps) {
 	return (
 		<Card className={cn("min-h-[120px]", className)}>
 			<CardContent className="flex h-full flex-col justify-between gap-3">
 				<div className="flex items-start justify-between">
 					<div className="flex flex-col gap-1">
-						<span className="text-sm text-muted-foreground">{title}</span>
-						{loading ? (
-							<Skeleton className="h-8 w-20" />
-						) : (
-							<span className="text-3xl font-semibold">{value}</span>
-						)}
+						<span className="text-muted-foreground text-sm">{title}</span>
+						{loading ? <Skeleton className="h-8 w-20" /> : <span className="font-semibold text-3xl">{value}</span>}
 					</div>
 					<div className="rounded-lg bg-muted p-2">
 						<Icon className="size-5 text-muted-foreground" />
 					</div>
 				</div>
-				{description && (
-					<span className="text-xs text-muted-foreground">{description}</span>
-				)}
+				{description && <span className="text-muted-foreground text-xs">{description}</span>}
 			</CardContent>
 		</Card>
 	);

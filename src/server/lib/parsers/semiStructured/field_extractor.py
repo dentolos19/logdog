@@ -22,7 +22,7 @@ class ExtractedField:
     key: str
     value: Any
     unit: Optional[str] = None
-    data_type: Optional[str] = None   # string, float, int, bool, null
+    data_type: Optional[str] = None  # string, float, int, bool, null
     source_section: Optional[str] = None
 
 
@@ -52,19 +52,13 @@ class ExtractionResult:
 _SECTION_RE = re.compile(r"^---\s+(.+?)\s+---\s*$")
 _JSON_KV_RE = re.compile(r'^\s*"([^"]+)"\s*:\s*(.+?)\s*,?\s*$')
 _KV_EQUALS_RE = re.compile(r"^([A-Za-z_][\w\.]*)\s*=\s*(.+)$")
-_TABULAR_HEADER_RE = re.compile(
-    r"^\s*#\s+Key\s+Value\s+Unit\s+Type", re.IGNORECASE
-)
-_TABULAR_ROW_RE = re.compile(
-    r"^\s*(\d+)\s+([\w\.]+)\s+([\S]+)\s+([\w%/]*)\s+([\w]*)\s*$"
-)
+_TABULAR_HEADER_RE = re.compile(r"^\s*#\s+Key\s+Value\s+Unit\s+Type", re.IGNORECASE)
+_TABULAR_ROW_RE = re.compile(r"^\s*(\d+)\s+([\w\.]+)\s+([\S]+)\s+([\w%/]*)\s+([\w]*)\s*$")
 _FLAT_KV_WITH_UNIT_RE = re.compile(
     r"^([\w\.]+)\s*=\s*(.+?)(?:\s+(sccm|mtorr|watts|volts|count|s|%|AngstromPerMin|kHz|W|mTorr))\s*$",
     re.IGNORECASE,
 )
-_RECIPE_CONSTANTS_RE = re.compile(
-    r"RecipeConstants\s*\((\d+)\s+items?\)", re.IGNORECASE
-)
+_RECIPE_CONSTANTS_RE = re.compile(r"RecipeConstants\s*\((\d+)\s+items?\)", re.IGNORECASE)
 
 
 class FieldExtractor:
@@ -111,10 +105,7 @@ class FieldExtractor:
         except json.JSONDecodeError:
             return False
 
-    def _flatten_json(
-        self, obj: Any, result: ExtractionResult,
-        prefix: str = "", section: Optional[str] = None
-    ):
+    def _flatten_json(self, obj: Any, result: ExtractionResult, prefix: str = "", section: Optional[str] = None):
         """Recursively flatten JSON into ExtractedFields."""
         if isinstance(obj, dict):
             for k, v in obj.items():
@@ -150,10 +141,7 @@ class FieldExtractor:
                 continue
 
             # ROW headers
-            row_match = re.match(
-                r"^ROW\s+(\d+)\s*(?:[:\-]\s*(.+?))?(?:\s*\((.+)\))?\s*$",
-                line.strip(), re.IGNORECASE
-            )
+            row_match = re.match(r"^ROW\s+(\d+)\s*(?:[:\-]\s*(.+?))?(?:\s*\((.+)\))?\s*$", line.strip(), re.IGNORECASE)
             if row_match:
                 result.metadata["current_row"] = int(row_match.group(1))
                 if row_match.group(2):
@@ -193,9 +181,7 @@ class FieldExtractor:
         total = len(result.fields)
         result.confidence = min(total / 20.0, 1.0) if total > 0 else 0.0
 
-    def _parse_section_block(
-        self, section: str, lines: list[str]
-    ) -> list[ExtractedField]:
+    def _parse_section_block(self, section: str, lines: list[str]) -> list[ExtractedField]:
         """Parse lines within a section into fields."""
         fields: list[ExtractedField] = []
 
@@ -223,57 +209,65 @@ class FieldExtractor:
             jkv = _JSON_KV_RE.match(stripped)
             if jkv:
                 key, raw_val = jkv.group(1), jkv.group(2).strip().strip('"')
-                fields.append(ExtractedField(
-                    key=key,
-                    value=self._cast_value(raw_val),
-                    data_type=self._infer_type(self._cast_value(raw_val)),
-                    source_section=section,
-                ))
+                fields.append(
+                    ExtractedField(
+                        key=key,
+                        value=self._cast_value(raw_val),
+                        data_type=self._infer_type(self._cast_value(raw_val)),
+                        source_section=section,
+                    )
+                )
                 continue
 
             # Key = Value (with optional unit)
             fkv = _FLAT_KV_WITH_UNIT_RE.match(stripped)
             if fkv:
-                fields.append(ExtractedField(
-                    key=fkv.group(1),
-                    value=self._cast_value(fkv.group(2).strip()),
-                    unit=fkv.group(3),
-                    source_section=section,
-                ))
+                fields.append(
+                    ExtractedField(
+                        key=fkv.group(1),
+                        value=self._cast_value(fkv.group(2).strip()),
+                        unit=fkv.group(3),
+                        source_section=section,
+                    )
+                )
                 continue
 
             kv = _KV_EQUALS_RE.match(stripped)
             if kv:
-                fields.append(ExtractedField(
-                    key=kv.group(1),
-                    value=self._cast_value(kv.group(2).strip()),
-                    source_section=section,
-                ))
+                fields.append(
+                    ExtractedField(
+                        key=kv.group(1),
+                        value=self._cast_value(kv.group(2).strip()),
+                        source_section=section,
+                    )
+                )
                 continue
 
             # Tabular row: index Key Value Unit Type
             tr = _TABULAR_ROW_RE.match(stripped)
             if tr:
-                fields.append(ExtractedField(
-                    key=tr.group(2),
-                    value=self._cast_value(tr.group(3)),
-                    unit=tr.group(4) if tr.group(4) else None,
-                    data_type=tr.group(5) if tr.group(5) else None,
-                    source_section=section,
-                ))
+                fields.append(
+                    ExtractedField(
+                        key=tr.group(2),
+                        value=self._cast_value(tr.group(3)),
+                        unit=tr.group(4) if tr.group(4) else None,
+                        data_type=tr.group(5) if tr.group(5) else None,
+                        source_section=section,
+                    )
+                )
                 continue
 
             # Flat "Key   = Value   unit" lines (Vendor 3 recipe detail)
-            flat_match = re.match(
-                r"^([\w\.]+)\s+=\s+(.+?)(?:\s{2,}(\S+))?\s*$", stripped
-            )
+            flat_match = re.match(r"^([\w\.]+)\s+=\s+(.+?)(?:\s{2,}(\S+))?\s*$", stripped)
             if flat_match:
-                fields.append(ExtractedField(
-                    key=flat_match.group(1),
-                    value=self._cast_value(flat_match.group(2).strip()),
-                    unit=flat_match.group(3),
-                    source_section=section,
-                ))
+                fields.append(
+                    ExtractedField(
+                        key=flat_match.group(1),
+                        value=self._cast_value(flat_match.group(2).strip()),
+                        unit=flat_match.group(3),
+                        source_section=section,
+                    )
+                )
 
         return fields
 
@@ -287,10 +281,12 @@ class FieldExtractor:
                 continue
             kv = _KV_EQUALS_RE.match(stripped)
             if kv:
-                result.fields.append(ExtractedField(
-                    key=kv.group(1),
-                    value=self._cast_value(kv.group(2).strip()),
-                ))
+                result.fields.append(
+                    ExtractedField(
+                        key=kv.group(1),
+                        value=self._cast_value(kv.group(2).strip()),
+                    )
+                )
         result.confidence = min(len(result.fields) / 10.0, 1.0)
 
     # ---- Heuristic extraction (fallback) ----------------------------------
@@ -305,10 +301,12 @@ class FieldExtractor:
             if ":" in stripped and not stripped.startswith("http"):
                 parts = stripped.split(":", 1)
                 if len(parts) == 2 and len(parts[0].split()) <= 3:
-                    result.fields.append(ExtractedField(
-                        key=parts[0].strip(),
-                        value=self._cast_value(parts[1].strip()),
-                    ))
+                    result.fields.append(
+                        ExtractedField(
+                            key=parts[0].strip(),
+                            value=self._cast_value(parts[1].strip()),
+                        )
+                    )
         result.confidence = min(len(result.fields) / 10.0, 0.5)
 
     # ---- Helpers ----------------------------------------------------------

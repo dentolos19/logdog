@@ -36,18 +36,10 @@ def get_dashboard_stats(
     database: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    log_group_count = (
-        database.query(func.count(LogGroup.id))
-        .filter(LogGroup.user_id == current_user.id)
-        .scalar()
-        or 0
-    )
+    log_group_count = database.query(func.count(LogGroup.id)).filter(LogGroup.user_id == current_user.id).scalar() or 0
 
     total_files = (
-        database.query(func.count(LogGroupFile.id))
-        .filter(LogGroupFile.user_id == current_user.id)
-        .scalar()
-        or 0
+        database.query(func.count(LogGroupFile.id)).filter(LogGroupFile.user_id == current_user.id).scalar() or 0
     )
 
     process_counts = (
@@ -68,11 +60,7 @@ def get_dashboard_stats(
 
     total_rows = 0
     if log_group_count > 0:
-        log_groups = (
-            database.query(LogGroup.id)
-            .filter(LogGroup.user_id == current_user.id)
-            .all()
-        )
+        log_groups = database.query(LogGroup.id).filter(LogGroup.user_id == current_user.id).all()
         for (log_group_id,) in log_groups:
             try:
                 summaries = swarm.summarize_tables(str(log_group_id))

@@ -23,8 +23,7 @@ function normalizeApiUrl(value: string | undefined) {
 
 	const hostname = parsedUrl.hostname.toLowerCase();
 	const isLocalHost = LOCAL_API_HOSTS.has(hostname);
-	const isHttpsPage =
-		typeof window !== "undefined" && window.location.protocol === "https:";
+	const isHttpsPage = typeof window !== "undefined" && window.location.protocol === "https:";
 
 	// Prevent mixed-content calls in production/cross-site HTTPS pages.
 	if (protocol === "http:" && !isLocalHost && (isHttpsPage || isProduction)) {

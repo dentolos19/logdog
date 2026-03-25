@@ -633,9 +633,13 @@ class TestUnstructuredPipeline:
             file_classifications=[],
         )
         # Create lines where a rare field appears only once.
-        lines = SEMI_LOG_LINES + [
-            "2025-06-15 09:00:00 INFO rare_field=unique_value_xyz",
-        ] * 1  # Only 1 occurrence — below threshold.
+        lines = (
+            SEMI_LOG_LINES
+            + [
+                "2025-06-15 09:00:00 INFO rare_field=unique_value_xyz",
+            ]
+            * 1
+        )  # Only 1 occurrence — below threshold.
         file_input = FileInput(
             filename="test.log",
             content="\n".join(lines),

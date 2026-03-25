@@ -91,9 +91,7 @@ class TypeInferenceResult:
 
 
 PATTERNS: dict[SemanticType, re.Pattern[str]] = {
-    SemanticType.BOOLEAN_STRING: re.compile(
-        r"^(true|false|yes|no|on|off|1|0|y|n)$", re.IGNORECASE
-    ),
+    SemanticType.BOOLEAN_STRING: re.compile(r"^(true|false|yes|no|on|off|1|0|y|n)$", re.IGNORECASE),
     SemanticType.ISO_TIMESTAMP: re.compile(
         r"^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}"
         r"(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?$"
@@ -118,35 +116,23 @@ PATTERNS: dict[SemanticType, re.Pattern[str]] = {
     ),
     SemanticType.EMAIL: re.compile(r"^[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,}$"),
     SemanticType.URL: re.compile(r"^https?://[^\s]+$"),
-    SemanticType.UUID: re.compile(
-        r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-    ),
+    SemanticType.UUID: re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"),
     SemanticType.SEMVER: re.compile(r"^\d+\.\d+\.\d+(?:-[\w.]+)?(?:\+[\w.]+)?$"),
     SemanticType.HEX: re.compile(r"^0x[0-9a-fA-F]+$|^[0-9a-fA-F]+$"),
     SemanticType.DURATION: re.compile(r"^\d+(?:\.\d+)?(?:ms|s|m|h|d)?$"),
-    SemanticType.FILESIZE: re.compile(
-        r"^\d+(?:\.\d+)?\s*(?:B|KB|MB|GB|TB|PB|K|M|G|T|P)?$", re.IGNORECASE
-    ),
+    SemanticType.FILESIZE: re.compile(r"^\d+(?:\.\d+)?\s*(?:B|KB|MB|GB|TB|PB|K|M|G|T|P)?$", re.IGNORECASE),
     SemanticType.MD5: re.compile(r"^[0-9a-fA-F]{32}$"),
     SemanticType.SHA256: re.compile(r"^[0-9a-fA-F]{64}$"),
     SemanticType.BASE64: re.compile(r"^[A-Za-z0-9+/]+=*$"),
-    SemanticType.HTML: re.compile(
-        r"<[a-zA-Z][^>]*>.*?</[a-zA-Z][^>]*>|<[a-zA-Z][^>]*/?>"
-    ),
+    SemanticType.HTML: re.compile(r"<[a-zA-Z][^>]*>.*?</[a-zA-Z][^>]*>|<[a-zA-Z][^>]*/?>"),
     SemanticType.PATH: re.compile(r"^(?:/[^\s/]+)+/?$|^[a-zA-Z]:\\[^\s]+$"),
     SemanticType.HOSTNAME: re.compile(
         r"^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)"
         r"(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$"
     ),
-    SemanticType.PORT: re.compile(
-        r"^(?:\d{1,3}:)?\d{1,5}$|^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5}$"
-    ),
-    SemanticType.USER_AGENT: re.compile(
-        r"Mozilla/|Opera/|Chrome/|Safari/|Firefox/|Edge/|MSIE "
-    ),
-    SemanticType.HTTP_METHOD: re.compile(
-        r"^(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS|CONNECT|TRACE)$"
-    ),
+    SemanticType.PORT: re.compile(r"^(?:\d{1,3}:)?\d{1,5}$|^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5}$"),
+    SemanticType.USER_AGENT: re.compile(r"Mozilla/|Opera/|Chrome/|Safari/|Firefox/|Edge/|MSIE "),
+    SemanticType.HTTP_METHOD: re.compile(r"^(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS|CONNECT|TRACE)$"),
     SemanticType.HTTP_STATUS: re.compile(r"^[1-5]\d{2}$"),
     SemanticType.COUNTRY_CODE: re.compile(r"^[A-Z]{2}$|^[A-Z]{3}$"),
     SemanticType.CURRENCY_CODE: re.compile(r"^[A-Z]{3}$"),
@@ -334,9 +320,7 @@ def infer_type(column_name: str, examples: list[str]) -> TypeInferenceResult:
             description="No example values to infer type from.",
         )
 
-    filtered_examples = [
-        ex for ex in examples if ex is not None and str(ex).strip() != ""
-    ]
+    filtered_examples = [ex for ex in examples if ex is not None and str(ex).strip() != ""]
     if not filtered_examples:
         return TypeInferenceResult(
             sql_type=SqlType.TEXT,

@@ -71,8 +71,7 @@ def pdf_to_images(pdf_path: Path) -> list[str]:
         import fitz  # PyMuPDF
     except ImportError:
         print(
-            "Error: pymupdf is required for PDF extraction.\n"
-            "  Install with: uv add pymupdf",
+            "Error: pymupdf is required for PDF extraction.\n  Install with: uv add pymupdf",
             file=sys.stderr,
         )
         sys.exit(1)

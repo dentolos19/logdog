@@ -19,12 +19,12 @@ from typing import Any, Optional
 class CachedTemplate:
     template_id: str
     fingerprint: str
-    field_mapping: dict[str, Any]     # raw_key → {canonical_key, type, unit}
-    format_type: str                  # e.g. "LAM_PARQUET", "KEY_VALUE"
+    field_mapping: dict[str, Any]  # raw_key → {canonical_key, type, unit}
+    format_type: str  # e.g. "LAM_PARQUET", "KEY_VALUE"
     created_at: float = field(default_factory=time.time)
     hit_count: int = 0
     last_hit: float = 0.0
-    source: str = "ai_fallback"       # 'ai_fallback' or 'manual'
+    source: str = "ai_fallback"  # 'ai_fallback' or 'manual'
 
     def touch(self):
         self.hit_count += 1

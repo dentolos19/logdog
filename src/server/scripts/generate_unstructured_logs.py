@@ -34,38 +34,31 @@ TEMPLATES = [
     "NOTE from {op}: wafer {wafer} shows edge exclusion issue, possibly chuck alignment on {tool}. Will monitor next 3 runs.",
     "Shift handover - {op} to night shift. {tool} running recipe {recipe}, no issues. Particle counts nominal.",
     "{op} override: skipped Step {step} for {wafer} per engineering request #E-{eng_num}. Deviation form attached.",
-
     # Equipment alarms with no consistent format
     "*** ALARM *** {tool} pressure spike at {ts_short} -- chamber pressure jumped to {pressure}mTorr, interlock NOT tripped",
     "FAULT {tool}: RF matchbox tuning failure during {step}. Reflected power={reflected}W (limit 50W). Wafer {wafer} aborted mid-process.",
     "{tool} reported ERRCODE={errcode} at {ts_short}. Subsystem: gas delivery. Operator acknowledged.",
     "WARNING -- {tool} temp sensor reading {actual_temp}C on zone 3, expected {temp}C. Delta={delta}C. No corrective action taken yet.",
-
     # Maintenance logs (prose)
     "PM completed on {tool} by tech {op}. Replaced showerhead (P/N SH-{pn}), cleaned chamber walls, ran seasoning recipe x3. Particle qual: {particle_count} counts (spec <100).",
     "Scheduled downtime: {tool} offline for {downtime}hrs starting {ts_date}. Reason: quarterly preventive maintenance and RF generator calibration.",
     "Leak check results for {tool} loadlock: He rate = {leak_rate}E-9 atm-cc/s. PASS (spec < 1.0E-8).",
     "{tool} turbo pump vibration trending upward -- {vibration}mm/s RMS. Threshold=2.5mm/s. Ordering replacement (ETA 5 days).",
-
     # Metrology readouts with prose context
     "Post-dep measurement on {wafer} (lot {lot}): film thickness={thickness}nm across 49 sites, uniformity={uniformity}%, target was {target_thick}nm +/-5%.",
     "Metrology flag: {wafer} thickness out of spec at {thickness}nm (target {target_thick}nm). {tool} recipe {recipe} may need adjustment.",
     "Particle inspection {wafer}: {particle_count} adders >0.1um detected. Previous wafer had {prev_particles}. Possible chamber contamination on {tool}.",
-
     # Process logs without timestamps
     "Gas stabilization phase: {gas}={flow}sccm, total flow={total_flow}sccm, chamber pressure settling at {pressure}mTorr",
     "Endpoint detection triggered at {endpoint}s into {step} step. Emission intensity drop of {intensity_drop}% on {gas} line.",
     "Chuck temperature ramping: current={actual_temp}C target={temp}C rate=5C/min on {tool}",
-
     # Mixed format entries
     "Run #{run_num} | {tool} | {wafer} | {recipe} | {step} | result: {result} | thickness={thickness}nm",
     "[{ts_short}] {tool} >> process log: started {recipe} on {wafer}, lot={lot}, step={step}, RF={rf_power}W bias={bias}V",
     "{ts_long} --- Equipment event --- {tool}: door opened by operator {op}. Wafer {wafer} on chuck. Process PAUSED.",
-
     # Multiline alarm dumps
     "=== CRITICAL ALARM: {tool} ===\n  Timestamp: {ts_long}\n  Wafer: {wafer}\n  Error: vacuum loss in process chamber\n  Pressure: {pressure}mTorr (expected < 5mTorr)\n  Action: process aborted, wafer quarantined",
     "INCIDENT REPORT\n  Tool: {tool}\n  Date: {ts_date}\n  Operator: {op}\n  Description: {gas} mass flow controller stuck at {flow}sccm during {step}\n  Impact: wafer {wafer} scrapped, lot {lot} on hold",
-
     # Cryptic equipment messages
     "SYS:{tool}:MOD3:GAS_PANEL valve V-{valve_num} timeout after {timeout}ms. State=OPENING. Retry {retry}/3.",
     "DI water resistivity={resistivity}MOhm-cm (spec>17.5). Rinse cycle {wafer} complete.",
@@ -80,12 +73,14 @@ def _ts_short(base: datetime, offset: int) -> str:
 
 def _ts_long(base: datetime, offset: int) -> str:
     ts = base + timedelta(seconds=offset)
-    fmt = random.choice([
-        "%Y-%m-%d %H:%M:%S",
-        "%d-%b-%Y %H:%M:%S",
-        "%m/%d/%Y %H:%M:%S",
-        "%Y%m%dT%H%M%S",
-    ])
+    fmt = random.choice(
+        [
+            "%Y-%m-%d %H:%M:%S",
+            "%d-%b-%Y %H:%M:%S",
+            "%m/%d/%Y %H:%M:%S",
+            "%Y%m%dT%H%M%S",
+        ]
+    )
     return ts.strftime(fmt)
 
 

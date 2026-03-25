@@ -21,7 +21,7 @@ from typing import Any, Optional
 class KVPair:
     key: str
     value: Any
-    delimiter: str           # '=', ':', '\t', '|', 'json'
+    delimiter: str  # '=', ':', '\t', '|', 'json'
     raw_line: str = ""
 
 
@@ -30,11 +30,11 @@ class DelimiterSplitter:
 
     # Priority order: more specific → less specific
     _STRATEGIES = [
-        ("json",  re.compile(r'^\s*"([^"]+)"\s*:\s*"?([^",}\]]*)"?\s*,?\s*$')),
-        ("=",     re.compile(r"^([A-Za-z_][\w\.]*)\s*=\s*(.+)$")),
-        (":",     re.compile(r"^([A-Za-z_][\w\s]{0,30}?)\s*:\s+(.+)$")),
-        ("|",     re.compile(r"^([^|]+)\|(.+)$")),
-        ("\t",    re.compile(r"^([^\t]+)\t+(.+)$")),
+        ("json", re.compile(r'^\s*"([^"]+)"\s*:\s*"?([^",}\]]*)"?\s*,?\s*$')),
+        ("=", re.compile(r"^([A-Za-z_][\w\.]*)\s*=\s*(.+)$")),
+        (":", re.compile(r"^([A-Za-z_][\w\s]{0,30}?)\s*:\s+(.+)$")),
+        ("|", re.compile(r"^([^|]+)\|(.+)$")),
+        ("\t", re.compile(r"^([^\t]+)\t+(.+)$")),
     ]
 
     def split_line(self, line: str) -> Optional[KVPair]:
@@ -84,12 +84,14 @@ class DelimiterSplitter:
             seg = seg.strip()
             if "=" in seg:
                 k, _, v = seg.partition("=")
-                pairs.append(KVPair(
-                    key=k.strip(),
-                    value=self._cast(v.strip()),
-                    delimiter="=",
-                    raw_line=seg,
-                ))
+                pairs.append(
+                    KVPair(
+                        key=k.strip(),
+                        value=self._cast(v.strip()),
+                        delimiter="=",
+                        raw_line=seg,
+                    )
+                )
         return pairs
 
     @staticmethod

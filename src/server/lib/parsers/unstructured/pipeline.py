@@ -53,14 +53,22 @@ SCHEMA_VERSION = "1.0.0"
 # columns when detected in at least one record.
 # ---------------------------------------------------------------------------
 
-SEMICONDUCTOR_COLUMN_NAMES = frozenset({
-    "wafer_id", "tool_id", "recipe_id", "process_step",
-})
+SEMICONDUCTOR_COLUMN_NAMES = frozenset(
+    {
+        "wafer_id",
+        "tool_id",
+        "recipe_id",
+        "process_step",
+    }
+)
 
 # Template columns are always included when Drain3 mining runs.
-TEMPLATE_COLUMN_NAMES = frozenset({
-    "template", "template_cluster_id",
-})
+TEMPLATE_COLUMN_NAMES = frozenset(
+    {
+        "template",
+        "template_cluster_id",
+    }
+)
 
 # Known measurement field names → REAL type.
 # Imported from core.py to maintain a single source of truth.
@@ -99,15 +107,10 @@ def _compute_row_confidence(fields: dict[str, Any]) -> float:
     if fields.get("log_level"):
         score += 0.05
 
-    semi_count = sum(
-        1 for k in ("wafer_id", "tool_id", "recipe_id", "process_step")
-        if fields.get(k)
-    )
+    semi_count = sum(1 for k in ("wafer_id", "tool_id", "recipe_id", "process_step") if fields.get(k))
     score += min(semi_count * 0.05, 0.15)
 
-    measurement_count = sum(
-        1 for k in fields if k in MEASUREMENT_FIELD_NAMES
-    )
+    measurement_count = sum(1 for k in fields if k in MEASUREMENT_FIELD_NAMES)
     score += min(measurement_count * 0.05, 0.15)
 
     if fields.get("template"):
@@ -180,7 +183,7 @@ def _detect_fixed_width_fields(lines: list[str]) -> list[tuple[int, int, str]] |
     if len(lines) < 5:
         return None
 
-    sample = lines[:min(50, len(lines))]
+    sample = lines[: min(50, len(lines))]
     # Find lines of similar length (within 10 % of median).
     lengths = sorted(len(line) for line in sample if line.strip())
     if not lengths:
@@ -258,7 +261,7 @@ def _extract_fixed_width_fields(
     fields: dict[str, str] = {}
     for start, end, name in field_ranges:
         if start < len(text):
-            value = text[start:min(end, len(text))].strip()
+            value = text[start : min(end, len(text))].strip()
             if value:
                 fields[name] = value
     return fields
@@ -305,20 +308,14 @@ class UnstructuredPipeline(ParserPipeline):
             reasons.append(f"Detected {detected_format.value} content.")
         elif detected_format == DetectedFormat.KEY_VALUE and confidence < 0.6:
             score = max(score, 0.7)
-            reasons.append(
-                "Low-confidence key-value content handled better by heuristics."
-            )
+            reasons.append("Low-confidence key-value content handled better by heuristics.")
         else:
             score = max(score, 0.4)
-            reasons.append(
-                f"Structured hints detected ({detected_format.value}); available as fallback."
-            )
+            reasons.append(f"Structured hints detected ({detected_format.value}); available as fallback.")
 
         hex_count = sum(1 for line in non_empty[:100] if _up.is_hex_dump_line(line))
         if hex_count > 0:
-            score = max(
-                score, min(0.92, 0.65 + (hex_count / max(1, len(non_empty[:100]))))
-            )
+            score = max(score, min(0.92, 0.65 + (hex_count / max(1, len(non_empty[:100])))))
             reasons.append("Hex dump patterns detected and can be decoded.")
 
         if request.filename.lower().endswith((".bin", ".dat", ".blob")):
@@ -329,9 +326,7 @@ class UnstructuredPipeline(ParserPipeline):
         fw = _detect_fixed_width_fields(non_empty[:50])
         if fw:
             score = max(score, 0.8)
-            reasons.append(
-                f"Fixed-width columnar layout detected ({len(fw)} fields)."
-            )
+            reasons.append(f"Fixed-width columnar layout detected ({len(fw)} fields).")
 
         return ParserSupportResult(
             parser_key=self.parser_key,
@@ -356,9 +351,7 @@ class UnstructuredPipeline(ParserPipeline):
         for file_input in file_inputs:
             result = self._parse_single_file(file_input)
             if result is None:
-                warnings.append(
-                    f"'{file_input.filename}': no content after noise filtering, skipped."
-                )
+                warnings.append(f"'{file_input.filename}': no content after noise filtering, skipped.")
                 continue
 
             table_def, file_rows, file_warnings, file_confidence = result
@@ -400,9 +393,7 @@ class UnstructuredPipeline(ParserPipeline):
             if ascii_lines:
                 clean_lines = ascii_lines
             else:
-                file_warnings.append(
-                    f"'{file_input.filename}': hex-dump only, no ASCII content extractable."
-                )
+                file_warnings.append(f"'{file_input.filename}': hex-dump only, no ASCII content extractable.")
                 return None
 
         # Check for fixed-width columnar layout.
@@ -426,9 +417,7 @@ class UnstructuredPipeline(ParserPipeline):
                         fields[k] = v
 
             fields["template"] = template
-            fields["template_cluster_id"] = hashlib.md5(
-                template.encode(), usedforsecurity=False
-            ).hexdigest()[:12]
+            fields["template_cluster_id"] = hashlib.md5(template.encode(), usedforsecurity=False).hexdigest()[:12]
             all_fields.append(fields)
 
         if not all_fields:
@@ -439,9 +428,7 @@ class UnstructuredPipeline(ParserPipeline):
         extra_cols = self._infer_extra_columns(all_fields)
 
         # LLM enrichment (optional).
-        llm_cols = self._llm_enrich_columns(
-            clusters, extra_cols, file_input.filename, file_warnings
-        )
+        llm_cols = self._llm_enrich_columns(clusters, extra_cols, file_input.filename, file_warnings)
         if llm_cols:
             existing_names = {c.name for c in extra_cols}
             for col in llm_cols:
@@ -453,16 +440,18 @@ class UnstructuredPipeline(ParserPipeline):
         all_cols = list(BASELINE_COLUMNS) + extra_cols
         column_names = frozenset(c.name for c in all_cols)
 
-        table_name = make_table_name(
-            self.parser_key, file_input.file_id, file_input.filename
-        )
+        table_name = make_table_name(self.parser_key, file_input.file_id, file_input.filename)
         ddl = build_ddl(table_name, all_cols)
 
         # Build rows with overflow into additional_data.
         file_rows: list[dict[str, Any]] = []
         for (start, end, text), fields in zip(clusters, all_fields):
             row = _row_from_fields(
-                fields, file_input.filename, start, end, text,
+                fields,
+                file_input.filename,
+                start,
+                end,
+                text,
                 column_names,
             )
             file_rows.append(row)
@@ -470,15 +459,11 @@ class UnstructuredPipeline(ParserPipeline):
         # Heartbeat / noise suppression: remove rows whose template
         # accounts for >40 % of all records and carries no actionable
         # fields (no log_level other than INFO, no measurements, no errors).
-        file_rows, suppressed = _suppress_heartbeats(
-            file_rows, len(clusters), file_warnings
-        )
+        file_rows, suppressed = _suppress_heartbeats(file_rows, len(clusters), file_warnings)
 
         # Compute file-level confidence from row confidences.
         if file_rows:
-            avg_confidence = sum(
-                r.get("parse_confidence", 0.6) for r in file_rows
-            ) / len(file_rows)
+            avg_confidence = sum(r.get("parse_confidence", 0.6) for r in file_rows) / len(file_rows)
         else:
             avg_confidence = 0.0
 
@@ -486,9 +471,7 @@ class UnstructuredPipeline(ParserPipeline):
         if llm_cols:
             avg_confidence = min(avg_confidence + 0.10, 1.0)
 
-        table_def = TableDefinition(
-            table_name=table_name, columns=all_cols, sqlite_ddl=ddl
-        )
+        table_def = TableDefinition(table_name=table_name, columns=all_cols, sqlite_ddl=ddl)
         return table_def, file_rows, file_warnings, round(avg_confidence, 2)
 
     # ------------------------------------------------------------------
@@ -535,22 +518,27 @@ class UnstructuredPipeline(ParserPipeline):
         # Always include semiconductor columns if they appear in any record.
         for name in SEMICONDUCTOR_COLUMN_NAMES:
             if name in key_counts and name not in seen:
-                cols.append(ColumnDefinition(
-                    name=name,
-                    sql_type="TEXT",
-                    description="Semiconductor identifier extracted from log.",
-                ))
+                cols.append(
+                    ColumnDefinition(
+                        name=name,
+                        sql_type="TEXT",
+                        description="Semiconductor identifier extracted from log.",
+                    )
+                )
                 seen.add(name)
 
         # Always include template columns (Drain3 always runs in this pipeline).
         for name in TEMPLATE_COLUMN_NAMES:
             if name not in seen:
-                cols.append(ColumnDefinition(
-                    name=name,
-                    sql_type="TEXT",
-                    description="Drain3-mined log template." if name == "template"
-                    else "Hash identifying the Drain3 template cluster.",
-                ))
+                cols.append(
+                    ColumnDefinition(
+                        name=name,
+                        sql_type="TEXT",
+                        description="Drain3-mined log template."
+                        if name == "template"
+                        else "Hash identifying the Drain3 template cluster.",
+                    )
+                )
                 seen.add(name)
 
         # Frequency-based columns.
@@ -565,11 +553,13 @@ class UnstructuredPipeline(ParserPipeline):
             if k in MEASUREMENT_FIELD_NAMES or _all_numeric(examples):
                 sql_type = "REAL"
 
-            cols.append(ColumnDefinition(
-                name=k,
-                sql_type=sql_type,
-                description=f"Extracted from unstructured text ({count}/{len(all_fields)} records).",
-            ))
+            cols.append(
+                ColumnDefinition(
+                    name=k,
+                    sql_type=sql_type,
+                    description=f"Extracted from unstructured text ({count}/{len(all_fields)} records).",
+                )
+            )
             seen.add(k)
 
         return cols
@@ -604,18 +594,17 @@ class UnstructuredPipeline(ParserPipeline):
                 sql_type = SqlType.REAL
             elif col.sql_type.upper() == "INTEGER":
                 sql_type = SqlType.INTEGER
-            legacy_cols.append(InferredColumn(
-                name=col.name,
-                sql_type=sql_type,
-                description=col.description,
-                nullable=col.nullable,
-                kind=ColumnKind.DETECTED,
-            ))
+            legacy_cols.append(
+                InferredColumn(
+                    name=col.name,
+                    sql_type=sql_type,
+                    description=col.description,
+                    nullable=col.nullable,
+                    kind=ColumnKind.DETECTED,
+                )
+            )
 
-        sample_lines = [
-            text[:_up.MAX_LINE_LENGTH]
-            for _, _, text in clusters[:_up.MAX_SAMPLE_LINES]
-        ]
+        sample_lines = [text[: _up.MAX_LINE_LENGTH] for _, _, text in clusters[: _up.MAX_SAMPLE_LINES]]
 
         try:
             llm_result = _up.call_llm_for_unstructured(sample_lines, legacy_cols)
@@ -641,11 +630,13 @@ class UnstructuredPipeline(ParserPipeline):
             elif llm_field.sql_type.upper() in ("REAL", "FLOAT", "DOUBLE"):
                 sql_type = "REAL"
 
-            new_cols.append(ColumnDefinition(
-                name=safe_name,
-                sql_type=sql_type,
-                description=llm_field.description or f"LLM-inferred from {filename}.",
-            ))
+            new_cols.append(
+                ColumnDefinition(
+                    name=safe_name,
+                    sql_type=sql_type,
+                    description=llm_field.description or f"LLM-inferred from {filename}.",
+                )
+            )
             existing_names.add(safe_name)
 
         if new_cols:
