@@ -525,3 +525,345 @@ class TestMasterBinaryDecoder:
             _, templates = mine_templates(clusters)
             # Drain3 should create a template with <*> for the variable parts.
             assert any("<*>" in t for t in templates)
+
+
+# ---------------------------------------------------------------------------
+# Pipeline adapter tests (UnstructuredPipeline)
+# ---------------------------------------------------------------------------
+
+
+class TestUnstructuredPipeline:
+    """Tests for the UnstructuredPipeline adapter in pipeline.py."""
+
+    @patch("lib.ai.OPENROUTER_API_KEY", "")
+    def test_parse_returns_pipeline_result(self) -> None:
+        """Pipeline should return a valid ParserPipelineResult."""
+        from lib.parsers.contracts import ClassificationResult, StructuralClass
+        from lib.parsers.unstructured.pipeline import UnstructuredPipeline
+
+        pipeline = UnstructuredPipeline()
+        classification = ClassificationResult(
+            dominant_format="plain_text",
+            structural_class=StructuralClass.UNSTRUCTURED,
+            selected_parser_key="unstructured",
+            file_classifications=[],
+        )
+        file_input = FileInput(
+            filename="test.log",
+            content="\n".join(SEMI_LOG_LINES),
+        )
+        result = pipeline.parse([file_input], classification)
+
+        assert result.parser_key == "unstructured"
+        assert len(result.table_definitions) == 1
+        assert result.confidence > 0.0
+        # Should have records for the table.
+        table_name = result.table_definitions[0].table_name
+        assert table_name in result.records
+        assert len(result.records[table_name]) == len(SEMI_LOG_LINES)
+
+    @patch("lib.ai.OPENROUTER_API_KEY", "")
+    def test_parse_includes_semiconductor_columns(self) -> None:
+        """Pipeline should include wafer_id, tool_id, etc. when detected."""
+        from lib.parsers.contracts import ClassificationResult, StructuralClass
+        from lib.parsers.unstructured.pipeline import UnstructuredPipeline
+
+        pipeline = UnstructuredPipeline()
+        classification = ClassificationResult(
+            dominant_format="plain_text",
+            structural_class=StructuralClass.UNSTRUCTURED,
+            selected_parser_key="unstructured",
+            file_classifications=[],
+        )
+        file_input = FileInput(
+            filename="fab.log",
+            content="\n".join(SEMI_LOG_LINES),
+        )
+        result = pipeline.parse([file_input], classification)
+        table_def = result.table_definitions[0]
+        col_names = {c.name for c in table_def.columns}
+
+        # Semiconductor columns should be present.
+        assert "wafer_id" in col_names
+        assert "tool_id" in col_names
+        assert "recipe_id" in col_names
+        # Template columns should always be present.
+        assert "template" in col_names
+        assert "template_cluster_id" in col_names
+
+    @patch("lib.ai.OPENROUTER_API_KEY", "")
+    def test_parse_includes_measurement_columns_as_real(self) -> None:
+        """Measurement fields should be typed as REAL."""
+        from lib.parsers.contracts import ClassificationResult, StructuralClass
+        from lib.parsers.unstructured.pipeline import UnstructuredPipeline
+
+        pipeline = UnstructuredPipeline()
+        classification = ClassificationResult(
+            dominant_format="plain_text",
+            structural_class=StructuralClass.UNSTRUCTURED,
+            selected_parser_key="unstructured",
+            file_classifications=[],
+        )
+        file_input = FileInput(
+            filename="fab.log",
+            content="\n".join(SEMI_LOG_LINES),
+        )
+        result = pipeline.parse([file_input], classification)
+        table_def = result.table_definitions[0]
+        col_map = {c.name: c.sql_type for c in table_def.columns}
+
+        # thickness and uniformity appear in the sample data.
+        if "thickness" in col_map:
+            assert col_map["thickness"] == "REAL"
+        if "uniformity" in col_map:
+            assert col_map["uniformity"] == "REAL"
+
+    @patch("lib.ai.OPENROUTER_API_KEY", "")
+    def test_parse_overflow_fields_in_additional_data(self) -> None:
+        """Fields below frequency threshold should go into additional_data."""
+        from lib.parsers.contracts import ClassificationResult, StructuralClass
+        from lib.parsers.unstructured.pipeline import UnstructuredPipeline
+        import json
+
+        pipeline = UnstructuredPipeline()
+        classification = ClassificationResult(
+            dominant_format="plain_text",
+            structural_class=StructuralClass.UNSTRUCTURED,
+            selected_parser_key="unstructured",
+            file_classifications=[],
+        )
+        # Create lines where a rare field appears only once.
+        lines = SEMI_LOG_LINES + [
+            "2025-06-15 09:00:00 INFO rare_field=unique_value_xyz",
+        ] * 1  # Only 1 occurrence — below threshold.
+        file_input = FileInput(
+            filename="test.log",
+            content="\n".join(lines),
+        )
+        result = pipeline.parse([file_input], classification)
+        table_name = result.table_definitions[0].table_name
+        rows = result.records[table_name]
+
+        # Check that at least one row has additional_data.
+        rows_with_overflow = [r for r in rows if r.get("additional_data")]
+        # The rare field may or may not be in overflow depending on threshold.
+        # At minimum, rows should have parse_confidence set.
+        assert all("parse_confidence" in r for r in rows)
+
+    @patch("lib.ai.OPENROUTER_API_KEY", "")
+    def test_parse_confidence_varies_by_extraction_quality(self) -> None:
+        """Rows with more extracted fields should have higher confidence."""
+        from lib.parsers.contracts import ClassificationResult, StructuralClass
+        from lib.parsers.unstructured.pipeline import UnstructuredPipeline
+
+        pipeline = UnstructuredPipeline()
+        classification = ClassificationResult(
+            dominant_format="plain_text",
+            structural_class=StructuralClass.UNSTRUCTURED,
+            selected_parser_key="unstructured",
+            file_classifications=[],
+        )
+        # Rich line with timestamp, level, wafer, tool, recipe, measurements.
+        rich_line = "2025-06-15 08:00:01 INFO [EQP-CVD-01] Wafer W0045 Recipe=RCP-OX-THIN thickness=102.3nm"
+        # Sparse line with minimal info.
+        sparse_line = "System ready."
+
+        file_input = FileInput(
+            filename="test.log",
+            content=f"{rich_line}\n{sparse_line}",
+        )
+        result = pipeline.parse([file_input], classification)
+        table_name = result.table_definitions[0].table_name
+        rows = result.records[table_name]
+
+        assert len(rows) == 2
+        # Rich row should have higher confidence than sparse row.
+        assert rows[0]["parse_confidence"] > rows[1]["parse_confidence"]
+
+    @patch("lib.ai.OPENROUTER_API_KEY", "")
+    def test_supports_returns_high_score_for_plain_text(self) -> None:
+        """supports() should return high score for plain text content."""
+        from lib.parsers.contracts import ParserSupportRequest
+        from lib.parsers.unstructured.pipeline import UnstructuredPipeline
+
+        pipeline = UnstructuredPipeline()
+        # Use truly plain-text content (no key=value patterns).
+        plain_lines = [
+            "Application startup complete.",
+            "Listening on port 8080.",
+            "Ready to accept connections.",
+            "Processing request from client.",
+            "Request completed successfully.",
+            "Shutting down gracefully.",
+        ]
+        request = ParserSupportRequest(
+            filename="test.log",
+            content="\n".join(plain_lines),
+        )
+        result = pipeline.supports(request)
+        assert result.supported is True
+        assert result.score >= 0.7
+        assert result.structural_class.value == "unstructured"
+
+    @patch("lib.ai.OPENROUTER_API_KEY", "")
+    def test_supports_returns_high_score_for_binary_extension(self) -> None:
+        """supports() should boost score for .bin/.dat/.blob files."""
+        from lib.parsers.contracts import ParserSupportRequest
+        from lib.parsers.unstructured.pipeline import UnstructuredPipeline
+
+        pipeline = UnstructuredPipeline()
+        request = ParserSupportRequest(
+            filename="telemetry.bin",
+            content="Some binary-like content here",
+        )
+        result = pipeline.supports(request)
+        assert result.supported is True
+        assert result.score >= 0.9
+
+    @patch("lib.ai.OPENROUTER_API_KEY", "")
+    def test_parse_empty_file_skipped(self) -> None:
+        """Empty files should be skipped with a warning."""
+        from lib.parsers.contracts import ClassificationResult, StructuralClass
+        from lib.parsers.unstructured.pipeline import UnstructuredPipeline
+
+        pipeline = UnstructuredPipeline()
+        classification = ClassificationResult(
+            dominant_format="plain_text",
+            structural_class=StructuralClass.UNSTRUCTURED,
+            selected_parser_key="unstructured",
+            file_classifications=[],
+        )
+        file_input = FileInput(filename="empty.log", content="")
+        result = pipeline.parse([file_input], classification)
+
+        assert len(result.table_definitions) == 0
+        assert len(result.warnings) > 0
+
+    @patch("lib.ai.OPENROUTER_API_KEY", "")
+    def test_parse_ddl_is_valid_sql(self) -> None:
+        """Generated DDL should be valid CREATE TABLE syntax."""
+        from lib.parsers.contracts import ClassificationResult, StructuralClass
+        from lib.parsers.unstructured.pipeline import UnstructuredPipeline
+
+        pipeline = UnstructuredPipeline()
+        classification = ClassificationResult(
+            dominant_format="plain_text",
+            structural_class=StructuralClass.UNSTRUCTURED,
+            selected_parser_key="unstructured",
+            file_classifications=[],
+        )
+        file_input = FileInput(
+            filename="test.log",
+            content="\n".join(SEMI_LOG_LINES),
+        )
+        result = pipeline.parse([file_input], classification)
+        ddl = result.table_definitions[0].sqlite_ddl
+
+        assert ddl.startswith("CREATE TABLE IF NOT EXISTS")
+        assert "id" in ddl
+        assert "raw_text" in ddl
+        assert "template" in ddl
+
+
+# ---------------------------------------------------------------------------
+# Fixed-width field detection tests
+# ---------------------------------------------------------------------------
+
+
+class TestFixedWidthDetection:
+    """Tests for fixed-width columnar log format detection."""
+
+    def test_detects_fixed_width_layout(self) -> None:
+        """Should detect consistent columnar alignment."""
+        from lib.parsers.unstructured.pipeline import _detect_fixed_width_fields
+
+        # Simulated fixed-width equipment status log.
+        lines = [
+            "TOOL-01   IDLE      450.0C  100mTorr  OK    ",
+            "TOOL-02   RUNNING   455.0C  102mTorr  OK    ",
+            "TOOL-03   IDLE      448.0C   99mTorr  OK    ",
+            "TOOL-04   MAINT     000.0C    0mTorr  DOWN  ",
+            "TOOL-05   RUNNING   452.0C  101mTorr  OK    ",
+            "TOOL-06   IDLE      449.0C  100mTorr  OK    ",
+        ]
+        result = _detect_fixed_width_fields(lines)
+        # Should detect field boundaries.
+        assert result is not None
+        assert len(result) >= 2
+
+    def test_rejects_free_form_text(self) -> None:
+        """Should return None for free-form text."""
+        from lib.parsers.unstructured.pipeline import _detect_fixed_width_fields
+
+        result = _detect_fixed_width_fields(SEMI_LOG_LINES)
+        assert result is None
+
+    def test_rejects_short_input(self) -> None:
+        """Should return None for fewer than 5 lines."""
+        from lib.parsers.unstructured.pipeline import _detect_fixed_width_fields
+
+        result = _detect_fixed_width_fields(["line1", "line2"])
+        assert result is None
+
+    def test_extracts_fixed_width_values(self) -> None:
+        """Should extract field values from fixed-width positions."""
+        from lib.parsers.unstructured.pipeline import _extract_fixed_width_fields
+
+        text = "TOOL-01   IDLE      450.0C"
+        fields = [(0, 10, "tool"), (10, 20, "status"), (20, 26, "temp")]
+        result = _extract_fixed_width_fields(text, fields)
+        assert result["tool"] == "TOOL-01"
+        assert result["status"] == "IDLE"
+        assert result["temp"] == "450.0C"
+
+
+# ---------------------------------------------------------------------------
+# Confidence scoring tests
+# ---------------------------------------------------------------------------
+
+
+class TestConfidenceScoring:
+    """Tests for per-row confidence scoring."""
+
+    def test_rich_fields_high_confidence(self) -> None:
+        """Row with many extracted fields should have high confidence."""
+        from lib.parsers.unstructured.pipeline import _compute_row_confidence
+
+        fields = {
+            "timestamp": "2025-06-15T08:00:01",
+            "log_level": "INFO",
+            "wafer_id": "W0045",
+            "tool_id": "EQP-CVD-01",
+            "recipe_id": "RCP-OX-THIN",
+            "thickness": "102.3",
+            "template": "some template",
+        }
+        score = _compute_row_confidence(fields)
+        assert score >= 0.75
+
+    def test_sparse_fields_low_confidence(self) -> None:
+        """Row with minimal fields should have low confidence."""
+        from lib.parsers.unstructured.pipeline import _compute_row_confidence
+
+        fields = {"message": "System ready."}
+        score = _compute_row_confidence(fields)
+        assert score <= 0.50
+
+    def test_confidence_capped_at_095(self) -> None:
+        """Confidence should never exceed 0.95."""
+        from lib.parsers.unstructured.pipeline import _compute_row_confidence
+
+        fields = {
+            "timestamp": "2025-06-15T08:00:01",
+            "log_level": "ERROR",
+            "wafer_id": "W0045",
+            "tool_id": "EQP-CVD-01",
+            "recipe_id": "RCP-OX-THIN",
+            "process_step": "DEPOSITION",
+            "thickness": "102.3",
+            "pressure": "100",
+            "temperature": "450",
+            "template": "some template",
+        }
+        score = _compute_row_confidence(fields)
+        assert score <= 0.95

@@ -1,4 +1,4 @@
-# Logdog for Agents
+# Agent Instructions
 
 ## Tech Architecture
 
