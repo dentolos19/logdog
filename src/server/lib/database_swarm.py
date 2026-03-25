@@ -2,6 +2,7 @@ import json
 import os
 import re
 import sqlite3
+import threading
 from collections.abc import Sequence
 from contextlib import contextmanager
 from pathlib import Path
@@ -42,6 +43,8 @@ class LogDatabaseSwarm:
         self.root_directory = root_directory
         self.production_mode = IS_PRODUCTION
         self._engine_cache: dict[str, Engine] = {}
+        self._credential_cache: dict[str, LogGroupSwarmCredential] = {}
+        self._cache_lock = threading.Lock()
 
     def database_path(self, log_group_id: str) -> Path:
         return self.root_directory / f"{log_group_id}.sqlite3"
@@ -80,7 +83,6 @@ class LogDatabaseSwarm:
         """Execute a CREATE TABLE DDL statement against the log group's swarm database."""
 
         if self.production_mode:
-            self.ensure_database(log_group_id)
             engine = self._get_remote_engine(log_group_id)
 
             try:
@@ -138,7 +140,6 @@ class LogDatabaseSwarm:
             return value  # type: ignore[return-value]
 
         if self.production_mode:
-            self.ensure_database(log_group_id)
             engine = self._get_remote_engine(log_group_id)
 
             try:
@@ -203,7 +204,6 @@ class LogDatabaseSwarm:
             return value  # type: ignore[return-value]
 
         if self.production_mode:
-            self.ensure_database(log_group_id)
             engine = self._get_remote_engine(log_group_id)
 
             try:
@@ -333,32 +333,11 @@ class LogDatabaseSwarm:
 
     def list_tables(self, log_group_id: str) -> list[dict[str, Any]]:
         if self.production_mode:
-            self.ensure_database(log_group_id)
             engine = self._get_remote_engine(log_group_id)
 
             try:
                 with engine.connect() as connection:
-                    table_rows = (
-                        connection.exec_driver_sql(
-                            """
-                        SELECT name
-                        FROM sqlite_master
-                        WHERE type = 'table'
-                          AND name NOT LIKE 'sqlite_%'
-                        ORDER BY name ASC
-                        """
-                        )
-                        .mappings()
-                        .all()
-                    )
-
-                    return [
-                        {
-                            "name": str(row["name"]),
-                            "columns": self._get_columns_remote(connection, str(row["name"])),
-                        }
-                        for row in table_rows
-                    ]
+                    return self._list_tables_remote(connection)
             except SQLAlchemyError as exc:
                 raise LogDatabaseError(str(exc)) from exc
 
@@ -390,12 +369,11 @@ class LogDatabaseSwarm:
         """Return each table's name, columns, and row count without loading preview rows."""
 
         if self.production_mode:
-            self.ensure_database(log_group_id)
             engine = self._get_remote_engine(log_group_id)
 
             try:
                 with engine.connect() as connection:
-                    tables = self.list_tables(log_group_id)
+                    tables = self._list_tables_remote(connection)
                     summaries: list[dict[str, Any]] = []
 
                     for table in tables:
@@ -443,12 +421,11 @@ class LogDatabaseSwarm:
 
     def explore_database(self, log_group_id: str, preview_limit: int = PREVIEW_ROW_LIMIT) -> list[dict[str, Any]]:
         if self.production_mode:
-            self.ensure_database(log_group_id)
             engine = self._get_remote_engine(log_group_id)
 
             try:
                 with engine.connect() as connection:
-                    tables = self.list_tables(log_group_id)
+                    tables = self._list_tables_remote(connection)
                     explored_tables: list[dict[str, Any]] = []
 
                     for table in tables:
@@ -520,7 +497,6 @@ class LogDatabaseSwarm:
         """
 
         if self.production_mode:
-            self.ensure_database(log_group_id)
             engine = self._get_remote_engine(log_group_id)
             safe_table = self._quote_identifier(table_name)
             offset = (page - 1) * page_size
@@ -601,7 +577,6 @@ class LogDatabaseSwarm:
         self._validate_query_prefix(normalized_sql)
 
         if self.production_mode:
-            self.ensure_database(log_group_id)
             engine = self._get_remote_engine(log_group_id)
 
             try:
@@ -666,6 +641,29 @@ class LogDatabaseSwarm:
                 "primary_key": bool(row["pk"]),
             }
             for row in column_rows
+        ]
+
+    def _list_tables_remote(self, connection: Connection) -> list[dict[str, Any]]:
+        """List tables and their columns using an existing remote connection."""
+        table_rows = (
+            connection.exec_driver_sql(
+                """
+                SELECT name
+                FROM sqlite_master
+                WHERE type = 'table'
+                  AND name NOT LIKE 'sqlite_%'
+                ORDER BY name ASC
+                """
+            )
+            .mappings()
+            .all()
+        )
+        return [
+            {
+                "name": str(row["name"]),
+                "columns": self._get_columns_remote(connection, str(row["name"])),
+            }
+            for row in table_rows
         ]
 
     def _get_columns_remote(self, connection: Connection, table_name: str) -> list[dict[str, Any]]:
@@ -787,6 +785,8 @@ class LogDatabaseSwarm:
         engine = self._engine_cache.pop(log_group_id, None)
         if engine is not None:
             engine.dispose()
+        with self._cache_lock:
+            self._credential_cache.pop(log_group_id, None)
 
     def _normalize_turso_database_url(self, database_url: str) -> str:
         normalized = database_url.strip()
@@ -820,13 +820,21 @@ class LogDatabaseSwarm:
                 # Fallback for invalid/detached sessions.
                 pass
 
+        cached = self._credential_cache.get(log_group_id)
+        if cached is not None:
+            return cached
+
         scoped_session = SessionLocal()
         try:
-            return (
+            credential = (
                 scoped_session.query(LogGroupSwarmCredential)
                 .filter(LogGroupSwarmCredential.log_id == log_group_id)
                 .first()
             )
+            if credential is not None:
+                with self._cache_lock:
+                    self._credential_cache.setdefault(log_group_id, credential)
+            return credential
         finally:
             scoped_session.close()
 

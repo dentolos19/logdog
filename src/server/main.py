@@ -1,3 +1,4 @@
+import asyncio
 import os
 from contextlib import asynccontextmanager
 
@@ -19,7 +20,7 @@ ALLOWED_ORIGIN = os.getenv("APP_URL", "http://localhost:3000")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    create_all_tables()
+    await asyncio.to_thread(create_all_tables)
     from lib.parsers.orchestrator import register_pipelines
 
     register_pipelines()
