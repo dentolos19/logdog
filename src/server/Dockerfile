@@ -13,6 +13,8 @@ COPY . .
 RUN adduser -u 5678 --disabled-password --gecos "" app && chown -R app /app
 USER app
 
+WORKDIR /app/src
+
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 

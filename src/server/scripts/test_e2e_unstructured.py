@@ -18,8 +18,8 @@ import sys
 import tempfile
 from pathlib import Path
 
-# Ensure we can import lib/
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+# Ensure we can import lib/ from the source root.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from dotenv import load_dotenv
 

@@ -19,11 +19,7 @@
       "type": "debugpy",
       "cwd": "${workspaceFolder}/src/server",
       "module": "fastapi",
-      "args": ["dev", "main.py"],
-      "jinja": true,
-      "autoReload": {
-        "enable": true
-      },
+      "args": ["dev", "src/main.py"],
       "env": {
         "PYDEVD_USE_SYS_MONITORING": "FALSE"
       }
