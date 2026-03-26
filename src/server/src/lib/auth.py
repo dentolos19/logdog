@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 import bcrypt
-from fastapi import Cookie, Depends, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 from jose import JWTError, jwt
 from lib.database import get_db
 from lib.models import User
@@ -66,11 +66,23 @@ def decode_token(token: str, expected_type: str) -> str:
         raise invalid
 
 
+def extract_bearer_token(authorization: str | None) -> str | None:
+    if authorization is None:
+        return None
+
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or token.strip() == "":
+        return None
+
+    return token.strip()
+
+
 def get_current_user(
-    access_token: str | None = Cookie(default=None),
+    authorization: str | None = Header(default=None),
     db: Session = Depends(get_db),
 ) -> User:
-    """FastAPI dependency that resolves the authenticated user from the access-token cookie."""
+    """FastAPI dependency that resolves the authenticated user from a bearer access token."""
+    access_token = extract_bearer_token(authorization)
     if access_token is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

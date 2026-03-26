@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useState } from "react";
 import { $fetch } from "@/lib/api";
 import type { User } from "@/lib/api/types";
+import { clearAuthSession, getRefreshToken, setAuthSession } from "@/lib/auth-session";
 
 interface AuthContextValue {
   user: User | null;
@@ -21,21 +22,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   const fetchMe = useCallback(async (): Promise<User | null> => {
-    const { data } = await $fetch("/auth/me");
-    return data ?? null;
+    const { data, error } = await $fetch("/auth/me");
+    if (error || data === undefined) {
+      return null;
+    }
+
+    return data;
   }, []);
 
-  // On mount, attempt to restore the session. If the access token is expired,
-  // try the refresh endpoint before giving up.
+  const refreshSession = useCallback(async (): Promise<User | null> => {
+    const refreshToken = getRefreshToken();
+    if (refreshToken === null) {
+      return null;
+    }
+
+    const { data, error } = await $fetch("/auth/refresh", {
+      body: { refresh_token: refreshToken },
+    });
+
+    if (error || data === undefined) {
+      clearAuthSession();
+      return null;
+    }
+
+    setAuthSession({
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token,
+    });
+
+    return data.user;
+  }, []);
+
   useEffect(() => {
     const restore = async () => {
-      let me = await fetchMe();
+      const me = (await fetchMe()) ?? (await refreshSession());
 
       if (me === null) {
-        const { error } = await $fetch("/auth/refresh");
-        if (!error) {
-          me = await fetchMe();
-        }
+        clearAuthSession();
       }
 
       setUser(me);
@@ -43,15 +66,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     restore();
-  }, [fetchMe]);
+  }, [fetchMe, refreshSession]);
 
   const signIn = useCallback(async (email: string, password: string): Promise<void> => {
     const { data, error } = await $fetch("/auth/login", {
       body: { email, password },
     });
 
-    if (error) throw new Error(error.message ?? "Sign-in failed.");
-    setUser(data!);
+    if (error || data === undefined) {
+      throw new Error(error?.message ?? "Sign-in failed.");
+    }
+
+    setAuthSession({
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token,
+    });
+    setUser(data.user);
   }, []);
 
   const signUp = useCallback(async (email: string, password: string): Promise<void> => {
@@ -59,12 +89,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       body: { email, password },
     });
 
-    if (error) throw new Error(error.message ?? "Sign-up failed.");
-    setUser(data!);
+    if (error || data === undefined) {
+      throw new Error(error?.message ?? "Sign-up failed.");
+    }
+
+    setAuthSession({
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token,
+    });
+    setUser(data.user);
   }, []);
 
   const signOut = useCallback(async (): Promise<void> => {
-    await $fetch("/auth/logout");
+    await $fetch("/auth/logout").catch(() => undefined);
+    clearAuthSession();
     setUser(null);
   }, []);
 

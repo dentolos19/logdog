@@ -1,6 +1,7 @@
 import { createFetch, createSchema } from "@better-fetch/fetch";
 import z from "zod";
 import { API_URL } from "@/environment";
+import { getAccessToken } from "@/lib/auth-session";
 
 const logTableColumnSchema = z.object({
   name: z.string(),
@@ -71,24 +72,6 @@ const sampleRecordSchema = z.object({
   line_start: z.number(),
   line_end: z.number(),
   fields: z.record(z.string(), z.unknown()),
-});
-
-const preprocessResultSchema = z.object({
-  id: z.string(),
-  log_id: z.string(),
-  schema_summary: z.string(),
-  schema_version: z.string(),
-  table_name: z.string(),
-  sqlite_ddl: z.string(),
-  columns: z.array(inferredColumnSchema),
-  generated_tables: z.array(generatedTableSchema),
-  segmentation: segmentationResultSchema,
-  sample_records: z.array(sampleRecordSchema),
-  file_observations: z.array(fileObservationSchema),
-  warnings: z.array(z.string()),
-  assumptions: z.array(z.string()),
-  confidence: z.number(),
-  created_at: z.string(),
 });
 
 const fileClassificationSchema = z.object({
@@ -166,6 +149,17 @@ const dashboardStatsSchema = z.object({
   processes: processStatusCountSchema,
 });
 
+const authUserSchema = z.object({
+  id: z.string(),
+  email: z.string().email(),
+});
+
+const authSessionSchema = z.object({
+  user: authUserSchema,
+  access_token: z.string(),
+  refresh_token: z.string(),
+});
+
 export const schema = createSchema({
   "/auth/login": {
     method: "post",
@@ -173,10 +167,7 @@ export const schema = createSchema({
       email: z.string().email(),
       password: z.string(),
     }),
-    output: z.object({
-      id: z.string(),
-      email: z.string().email(),
-    }),
+    output: authSessionSchema,
   },
   "/auth/register": {
     method: "post",
@@ -184,20 +175,18 @@ export const schema = createSchema({
       email: z.string().email(),
       password: z.string(),
     }),
-    output: z.object({
-      id: z.string(),
-      email: z.string().email(),
-    }),
+    output: authSessionSchema,
   },
   "/auth/me": {
     method: "get",
-    output: z.object({
-      id: z.string(),
-      email: z.string().email(),
-    }),
+    output: authUserSchema,
   },
   "/auth/refresh": {
     method: "post",
+    input: z.object({
+      refresh_token: z.string(),
+    }),
+    output: authSessionSchema,
   },
   "/auth/logout": {
     method: "post",
@@ -247,9 +236,23 @@ export const errorSchema = z.object({
   message: z.string(),
 });
 
+function buildAuthHeaders(init?: HeadersInit) {
+  const headers = new Headers(init);
+  const accessToken = getAccessToken();
+  if (accessToken !== null) {
+    headers.set("authorization", `Bearer ${accessToken}`);
+  }
+
+  return headers;
+}
+
 export const $fetch = createFetch({
   baseURL: API_URL,
-  credentials: "include",
+  onRequest: (context) => {
+    const headers = buildAuthHeaders(context.headers);
+    context.headers = headers;
+    return context;
+  },
   schema,
   errorSchema,
 });
@@ -257,19 +260,22 @@ export const $fetch = createFetch({
 export const getLogs = async () => {
   const { data, error } = await $fetch("@get/logs");
   if (error) throw new Error(error.message ?? "Request failed.");
-  return data!;
+  if (data === undefined) throw new Error("Request failed.");
+  return data;
 };
 
 export const getLog = async (id: string) => {
   const { data, error } = await $fetch("@get/logs/:id", { params: { id } });
   if (error) throw new Error(error.message ?? "Request failed.");
-  return data!;
+  if (data === undefined) throw new Error("Request failed.");
+  return data;
 };
 
 export const createLog = async (name: string) => {
   const { data, error } = await $fetch("@post/logs", { body: { name } });
   if (error) throw new Error(error.message ?? "Request failed.");
-  return data!;
+  if (data === undefined) throw new Error("Request failed.");
+  return data;
 };
 
 export const updateLog = async (id: string, name: string) => {
@@ -278,11 +284,12 @@ export const updateLog = async (id: string, name: string) => {
     params: { id },
   });
   if (error) throw new Error(error.message ?? "Request failed.");
-  return data!;
+  if (data === undefined) throw new Error("Request failed.");
+  return data;
 };
 
 export const deleteLog = async (id: string) => {
-  const { data, error } = await $fetch("@delete/logs/:id", { params: { id } });
+  const { error } = await $fetch("@delete/logs/:id", { params: { id } });
   if (error) throw new Error(error.message ?? "Request failed.");
 };
 
@@ -294,7 +301,7 @@ export const uploadLogFiles = async (id: string, files: File[]) => {
 
   const response = await fetch(`${API_URL}/logs/${encodeURIComponent(id)}`, {
     method: "POST",
-    credentials: "include",
+    headers: buildAuthHeaders(),
     body: formData,
   });
 
@@ -313,7 +320,8 @@ export const getLogProcesses = async (id: string) => {
     params: { id },
   });
   if (error) throw new Error(error.message ?? "Request failed.");
-  return data!;
+  if (data === undefined) throw new Error("Request failed.");
+  return data;
 };
 
 export const getLogFiles = async (id: string) => {
@@ -321,13 +329,15 @@ export const getLogFiles = async (id: string) => {
     params: { id },
   });
   if (error) throw new Error(error.message ?? "Request failed.");
-  return data!;
+  if (data === undefined) throw new Error("Request failed.");
+  return data;
 };
 
 export const getStats = async () => {
   const { data, error } = await $fetch("@get/stats");
   if (error) throw new Error(error.message ?? "Request failed.");
-  return data!;
+  if (data === undefined) throw new Error("Request failed.");
+  return data;
 };
 
 export const testParser = async (files: File[]): Promise<import("./types").FileParseResult[]> => {
@@ -338,7 +348,7 @@ export const testParser = async (files: File[]): Promise<import("./types").FileP
 
   const response = await fetch(`${API_URL}/parser/test`, {
     method: "POST",
-    credentials: "include",
+    headers: buildAuthHeaders(),
     body: formData,
   });
 
@@ -357,7 +367,7 @@ export const downloadLogFile = async (logGroupId: string, fileId: string): Promi
     `${API_URL}/logs/${encodeURIComponent(logGroupId)}/files/${encodeURIComponent(fileId)}/download`,
     {
       method: "GET",
-      credentials: "include",
+      headers: buildAuthHeaders(),
     },
   );
 
@@ -383,7 +393,7 @@ export const getTableRows = async (
   });
   const response = await fetch(
     `${API_URL}/logs/${encodeURIComponent(logGroupId)}/tables/${encodeURIComponent(tableName)}/rows?${params}`,
-    { method: "GET", credentials: "include" },
+    { method: "GET", headers: buildAuthHeaders() },
   );
 
   if (!response.ok) {
@@ -399,7 +409,7 @@ export const getTableRows = async (
 export const getLogChatMessages = async (logGroupId: string): Promise<import("./types").ChatMessage[]> => {
   const response = await fetch(`${API_URL}/logs/${encodeURIComponent(logGroupId)}/chat/messages`, {
     method: "GET",
-    credentials: "include",
+    headers: buildAuthHeaders(),
   });
 
   if (!response.ok) {
@@ -419,10 +429,7 @@ export const replaceLogChatMessages = async (
 ): Promise<number> => {
   const response = await fetch(`${API_URL}/logs/${encodeURIComponent(logGroupId)}/chat/messages`, {
     method: "PUT",
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: buildAuthHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ messages }),
   });
 

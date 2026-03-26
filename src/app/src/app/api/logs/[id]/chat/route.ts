@@ -8,7 +8,6 @@ import {
   toModelMessages,
 } from "@/lib/ai";
 
-const MAX_DURATION_SECONDS = 45;
 interface RouteContext {
   params: Promise<{ id: string }> | { id: string };
 }
@@ -17,7 +16,7 @@ export const maxDuration = 45;
 
 export async function POST(request: Request, context: RouteContext) {
   const { id: logGroupId } = await context.params;
-  const cookieHeader = request.headers.get("cookie") ?? "";
+  const authorizationHeader = request.headers.get("authorization") ?? "";
 
   const body = (await request.json()) as {
     messages?: UIMessage[];
@@ -34,7 +33,7 @@ export async function POST(request: Request, context: RouteContext) {
 
   let contextBlock = "No table context is currently available for this log group.";
   try {
-    contextBlock = await buildLogDataContext(logGroupId, cookieHeader);
+    contextBlock = await buildLogDataContext(logGroupId, authorizationHeader);
   } catch (error) {
     console.error("Failed to build log data context for chat route.", error);
   }
@@ -53,7 +52,7 @@ export async function POST(request: Request, context: RouteContext) {
       originalMessages: body.messages,
       onFinish: async ({ messages }) => {
         try {
-          await persistMessages(logGroupId, messages, cookieHeader);
+          await persistMessages(logGroupId, messages, authorizationHeader);
         } catch (error) {
           console.error("Failed to persist chat messages.", error);
         }

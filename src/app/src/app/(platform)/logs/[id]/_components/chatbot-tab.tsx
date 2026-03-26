@@ -17,6 +17,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
 import { getLogChatMessages } from "@/lib/api";
 import type { ChatMessage } from "@/lib/api/types";
+import { getBearerAuthHeaders } from "@/lib/auth-session";
 
 interface ChatbotTabProps {
   logGroupId: string;
@@ -90,7 +91,7 @@ export function ChatbotTab({ logGroupId, tableNames }: ChatbotTabProps) {
     id: `log-group-${logGroupId}`,
     transport: new DefaultChatTransport({
       api: `/api/logs/${encodeURIComponent(logGroupId)}/chat`,
-      credentials: "include",
+      headers: getBearerAuthHeaders(),
     }),
   });
 

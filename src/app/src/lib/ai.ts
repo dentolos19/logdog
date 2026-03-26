@@ -48,12 +48,12 @@ export function getOpenRouterClient() {
 
 export async function fetchBackendJson<T>(
   path: string,
-  cookieHeader: string,
+  authorizationHeader: string,
   init: Omit<RequestInit, "headers"> = {},
 ): Promise<T> {
   const headers = new Headers(init.body ? { "Content-Type": "application/json" } : undefined);
-  if (cookieHeader.length > 0) {
-    headers.set("Cookie", cookieHeader);
+  if (authorizationHeader.length > 0) {
+    headers.set("authorization", authorizationHeader);
   }
 
   const response = await fetch(`${API_URL}${path}`, {
@@ -80,8 +80,11 @@ function truncateJson(value: unknown, maxLength: number) {
   return `${serialized.slice(0, maxLength)}...`;
 }
 
-export async function buildLogDataContext(logGroupId: string, cookieHeader: string) {
-  const logGroup = await fetchBackendJson<LogGroupResponse>(`/logs/${encodeURIComponent(logGroupId)}`, cookieHeader);
+export async function buildLogDataContext(logGroupId: string, authorizationHeader: string) {
+  const logGroup = await fetchBackendJson<LogGroupResponse>(
+    `/logs/${encodeURIComponent(logGroupId)}`,
+    authorizationHeader,
+  );
 
   if (logGroup.tables.length === 0) {
     return `Log group name: ${logGroup.name}\nNo parsed tables are available yet.`;
@@ -93,7 +96,7 @@ export async function buildLogDataContext(logGroupId: string, cookieHeader: stri
       try {
         const preview = await fetchBackendJson<TableRowsResponse>(
           `/logs/${encodeURIComponent(logGroupId)}/tables/${encodeURIComponent(table.name)}/rows?page=1&page_size=${ROW_PREVIEW_LIMIT}`,
-          cookieHeader,
+          authorizationHeader,
         );
         return {
           tableName: table.name,
@@ -143,10 +146,10 @@ export function buildSystemPrompt(contextBlock: string) {
   ].join("\n");
 }
 
-export async function persistMessages(logGroupId: string, messages: UIMessage[], cookieHeader: string) {
+export async function persistMessages(logGroupId: string, messages: UIMessage[], authorizationHeader: string) {
   await fetchBackendJson<{ saved_messages: number }>(
     `/logs/${encodeURIComponent(logGroupId)}/chat/messages`,
-    cookieHeader,
+    authorizationHeader,
     {
       method: "PUT",
       body: JSON.stringify({ messages }),
