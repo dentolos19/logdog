@@ -7,11 +7,12 @@
   },
   "formatter": {
     "enabled": true,
-    "indentStyle": "space",
-    "lineWidth": 120
+    "lineWidth": 120,
+    "indentStyle": "space"
   },
   "linter": {
     "enabled": true,
+    "includes": ["!src/components/ui/**"],
     "rules": {
       "recommended": true,
       "suspicious": {
