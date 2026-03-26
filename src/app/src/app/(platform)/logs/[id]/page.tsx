@@ -34,6 +34,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { deleteLog, getLog, getLogFiles, getLogProcesses, updateLog } from "@/lib/api";
 import type { LogGroup, LogGroupFile, LogProcess } from "@/lib/api/types";
+import { ChatbotTab } from "./_components/chatbot-tab";
 import { FilesTab } from "./_components/files-tab";
 import { ProcessesTab } from "./_components/processes-tab";
 import { TablesTab } from "./_components/tables-tab";
@@ -222,6 +223,7 @@ export default function LogGroupPage({ params }: { params: Promise<{ id: string 
           <Tabs className={"flex flex-col gap-4"} onValueChange={setActiveTab} value={activeTab}>
             <TabsList className={"w-fit"}>
               <TabsTrigger value={"data"}>Data</TabsTrigger>
+              <TabsTrigger value={"chatbot"}>Chatbot</TabsTrigger>
               <TabsTrigger value={"processes"}>Processes</TabsTrigger>
               <TabsTrigger value={"files"}>Files</TabsTrigger>
             </TabsList>
@@ -246,7 +248,17 @@ export default function LogGroupPage({ params }: { params: Promise<{ id: string 
               <ProcessesTab error={processesError} isLoading={processesLoading} processes={processes} />
             </TabsContent>
 
-            {/* Tab 3: Files */}
+            {/* Tab 3: Chatbot */}
+            <TabsContent className={"flex flex-col gap-3"} value={"chatbot"}>
+              <div className={"flex items-center gap-2"}>
+                <h2 className={"font-semibold text-sm"}>Chatbot</h2>
+              </div>
+              {activeTab === "chatbot" ? (
+                <ChatbotTab logGroupId={id} tableNames={logGroup.tables.map((table) => table.name)} />
+              ) : null}
+            </TabsContent>
+
+            {/* Tab 4: Files */}
             <TabsContent className={"flex flex-col gap-3"} value={"files"}>
               <div className={"flex items-center gap-2"}>
                 <h2 className={"font-semibold text-sm"}>Files</h2>

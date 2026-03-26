@@ -395,3 +395,44 @@ export const getTableRows = async (
 
   return response.json() as Promise<import("./types").TableRowsResponse>;
 };
+
+export const getLogChatMessages = async (logGroupId: string): Promise<import("./types").ChatMessage[]> => {
+  const response = await fetch(`${API_URL}/logs/${encodeURIComponent(logGroupId)}/chat/messages`, {
+    method: "GET",
+    credentials: "include",
+  });
+
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({ message: "Failed to load chat history." }))) as {
+      message?: string;
+    };
+    throw new Error(body.message ?? "Failed to load chat history.");
+  }
+
+  const payload = (await response.json()) as import("./types").ChatMessagesResponse;
+  return payload.messages;
+};
+
+export const replaceLogChatMessages = async (
+  logGroupId: string,
+  messages: import("./types").ChatMessage[],
+): Promise<number> => {
+  const response = await fetch(`${API_URL}/logs/${encodeURIComponent(logGroupId)}/chat/messages`, {
+    method: "PUT",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ messages }),
+  });
+
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({ message: "Failed to save chat history." }))) as {
+      message?: string;
+    };
+    throw new Error(body.message ?? "Failed to save chat history.");
+  }
+
+  const payload = (await response.json()) as import("./types").ReplaceChatMessagesResponse;
+  return payload.saved_messages;
+};

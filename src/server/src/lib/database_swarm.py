@@ -3,6 +3,7 @@ import os
 import re
 import sqlite3
 import threading
+import uuid
 from collections.abc import Sequence
 from contextlib import contextmanager
 from pathlib import Path
@@ -20,11 +21,23 @@ from sqlalchemy.orm import Session
 STORE_DIR = Path("store")
 QUERY_ROW_LIMIT = 200
 PREVIEW_ROW_LIMIT = 25
+MESSAGE_HISTORY_LIMIT = 500
 ALLOWED_QUERY_PREFIXES = ("select", "with", "pragma", "explain")
 TURSO_API_BASE_URL = "https://api.turso.tech"
 DATABASE_NAME_MAX_LENGTH = 64
 DATABASE_NAME_PATTERN = re.compile(r"[^a-z0-9-]+")
 IS_PRODUCTION = bool(os.getenv("DATABASE_URL", "").strip() and os.getenv("DATABASE_TOKEN", "").strip())
+MESSAGES_TABLE_NAME = "messages"
+SYSTEM_TABLE_NAMES = frozenset({MESSAGES_TABLE_NAME})
+MESSAGES_TABLE_DDL = f'''
+CREATE TABLE IF NOT EXISTS "{MESSAGES_TABLE_NAME}" (
+    id TEXT PRIMARY KEY,
+    role TEXT NOT NULL,
+    content TEXT NOT NULL DEFAULT '',
+    payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
+)
+'''.strip()
 
 JsonScalar = str | int | float | bool | None
 QueryParameters = dict[str, JsonScalar] | list[JsonScalar] | tuple[JsonScalar, ...] | None
@@ -66,6 +79,13 @@ class LogDatabaseSwarm:
 
                 self._create_remote_database_credential(log_group_id=log_group_id, database=database)
 
+            engine = self._get_remote_engine(log_group_id)
+            try:
+                with engine.begin() as connection:
+                    connection.exec_driver_sql(MESSAGES_TABLE_DDL)
+            except SQLAlchemyError as exc:
+                raise LogDatabaseError(str(exc)) from exc
+
             return Path(f"{log_group_id}.turso")
 
         try:
@@ -74,6 +94,8 @@ class LogDatabaseSwarm:
 
             with self._connect(database_path) as connection:
                 connection.execute("PRAGMA journal_mode=WAL")
+                connection.execute(MESSAGES_TABLE_DDL)
+                connection.commit()
 
             return database_path
         except (OSError, sqlite3.DatabaseError) as exc:
@@ -361,6 +383,7 @@ class LogDatabaseSwarm:
                         "columns": self._get_columns(connection, row["name"]),
                     }
                     for row in table_rows
+                    if not self._is_system_table(str(row["name"]))
                 ]
         except sqlite3.DatabaseError as exc:
             raise LogDatabaseError(str(exc)) from exc
@@ -480,6 +503,82 @@ class LogDatabaseSwarm:
                     )
 
                 return explored_tables
+        except sqlite3.DatabaseError as exc:
+            raise LogDatabaseError(str(exc)) from exc
+
+    def list_messages(self, log_group_id: str, limit: int = MESSAGE_HISTORY_LIMIT) -> list[dict[str, Any]]:
+        self.ensure_database(log_group_id)
+        safe_messages_table = self._quote_identifier(MESSAGES_TABLE_NAME)
+        bounded_limit = max(1, min(limit, 2000))
+        select_sql = (
+            f"SELECT id, role, content, payload, created_at FROM {safe_messages_table} "
+            "ORDER BY datetime(created_at) ASC, rowid ASC LIMIT ?"
+        )
+
+        if self.production_mode:
+            engine = self._get_remote_engine(log_group_id)
+
+            try:
+                with engine.connect() as connection:
+                    rows = connection.exec_driver_sql(select_sql, (bounded_limit,)).mappings().all()
+                    return [
+                        self._deserialize_message_payload(
+                            payload=str(row["payload"]),
+                            message_id=str(row["id"]),
+                            role=str(row["role"]),
+                            content=str(row["content"]),
+                        )
+                        for row in rows
+                    ]
+            except SQLAlchemyError as exc:
+                raise LogDatabaseError(str(exc)) from exc
+
+        database_path = self.ensure_database(log_group_id)
+
+        try:
+            with self._connect(database_path) as connection:
+                rows = connection.execute(select_sql, (bounded_limit,)).fetchall()
+                return [
+                    self._deserialize_message_payload(
+                        payload=str(row["payload"]),
+                        message_id=str(row["id"]),
+                        role=str(row["role"]),
+                        content=str(row["content"]),
+                    )
+                    for row in rows
+                ]
+        except sqlite3.DatabaseError as exc:
+            raise LogDatabaseError(str(exc)) from exc
+
+    def replace_messages(self, log_group_id: str, messages: list[dict[str, Any]]) -> int:
+        self.ensure_database(log_group_id)
+        safe_messages_table = self._quote_identifier(MESSAGES_TABLE_NAME)
+        delete_sql = f"DELETE FROM {safe_messages_table}"
+        insert_sql = f"INSERT OR REPLACE INTO {safe_messages_table} (id, role, content, payload) VALUES (?, ?, ?, ?)"
+
+        prepared_messages = [self._prepare_message_record(message) for message in messages]
+
+        if self.production_mode:
+            engine = self._get_remote_engine(log_group_id)
+
+            try:
+                with engine.begin() as connection:
+                    connection.exec_driver_sql(delete_sql)
+                    for prepared in prepared_messages:
+                        connection.exec_driver_sql(insert_sql, prepared)
+                return len(prepared_messages)
+            except SQLAlchemyError as exc:
+                raise LogDatabaseError(str(exc)) from exc
+
+        database_path = self.ensure_database(log_group_id)
+
+        try:
+            with self._connect(database_path) as connection:
+                connection.execute(delete_sql)
+                for prepared in prepared_messages:
+                    connection.execute(insert_sql, prepared)
+                connection.commit()
+                return len(prepared_messages)
         except sqlite3.DatabaseError as exc:
             raise LogDatabaseError(str(exc)) from exc
 
@@ -664,6 +763,7 @@ class LogDatabaseSwarm:
                 "columns": self._get_columns_remote(connection, str(row["name"])),
             }
             for row in table_rows
+            if not self._is_system_table(str(row["name"]))
         ]
 
     def _get_columns_remote(self, connection: Connection, table_name: str) -> list[dict[str, Any]]:
@@ -718,6 +818,61 @@ class LogDatabaseSwarm:
 
     def _quote_identifier(self, identifier: str) -> str:
         return '"' + identifier.replace('"', '""') + '"'
+
+    def _is_system_table(self, table_name: str) -> bool:
+        return table_name.lower() in SYSTEM_TABLE_NAMES
+
+    def _prepare_message_record(self, message: dict[str, Any]) -> tuple[str, str, str, str]:
+        if not isinstance(message, dict):
+            raise LogDatabaseError("Each message must be an object.")
+
+        message_id = str(message.get("id") or f"msg_{uuid.uuid4().hex}")
+        role = str(message.get("role") or "assistant")
+        content = self._extract_message_content(message)
+        payload = json.dumps(message)
+        return message_id, role, content, payload
+
+    def _extract_message_content(self, message: dict[str, Any]) -> str:
+        parts = message.get("parts")
+        if isinstance(parts, list):
+            text_parts = [
+                part["text"]
+                for part in parts
+                if isinstance(part, dict)
+                and part.get("type") == "text"
+                and isinstance(part.get("text"), str)
+                and part["text"].strip()
+            ]
+            if text_parts:
+                return "\n".join(text_parts)
+
+        content = message.get("content")
+        if isinstance(content, str):
+            return content
+
+        return ""
+
+    def _deserialize_message_payload(
+        self,
+        payload: str,
+        message_id: str,
+        role: str,
+        content: str,
+    ) -> dict[str, Any]:
+        try:
+            parsed = json.loads(payload)
+            if isinstance(parsed, dict):
+                parsed.setdefault("id", message_id)
+                parsed.setdefault("role", role)
+                return parsed
+        except json.JSONDecodeError:
+            pass
+
+        return {
+            "id": message_id,
+            "role": role,
+            "parts": [{"type": "text", "text": content}],
+        }
 
     def _authorizer(
         self,

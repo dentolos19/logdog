@@ -49,11 +49,13 @@ app.add_middleware(
 )
 
 from routes.auth import router as auth_router
+from routes.chat import router as chat_router
 from routes.logs import router as logs_router
 from routes.parser import router as parser_router
 from routes.stats import router as stats_router
 
 app.include_router(auth_router)
+app.include_router(chat_router)
 app.include_router(logs_router)
 app.include_router(parser_router)
 app.include_router(stats_router)

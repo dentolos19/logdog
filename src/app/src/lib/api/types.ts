@@ -204,3 +204,20 @@ export interface TableRowsResponse {
   page_size: number;
   total_pages: number;
 }
+
+export interface ChatMessage {
+  id: string;
+  role: string;
+  content?: string;
+  parts?: Array<Record<string, unknown>>;
+  metadata?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+export interface ChatMessagesResponse {
+  messages: ChatMessage[];
+}
+
+export interface ReplaceChatMessagesResponse {
+  saved_messages: number;
+}
