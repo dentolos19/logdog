@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useState } from "react";
 import { $fetch } from "@/lib/api";
 import type { User } from "@/lib/api/types";
-import { clearAuthSession, getRefreshToken, setAuthSession } from "@/lib/auth-session";
+import { clearAuthSession, getRefreshToken, setAuthSession } from "@/lib/auth";
 
 interface AuthContextValue {
   user: User | null;

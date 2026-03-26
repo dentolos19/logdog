@@ -8,16 +8,14 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
 import { getLogChatMessages } from "@/lib/api";
 import type { ChatMessage } from "@/lib/api/types";
-import { getBearerAuthHeaders } from "@/lib/auth-session";
+import { getBearerAuthHeaders } from "@/lib/auth";
 
 interface ChatbotTabProps {
   logGroupId: string;
@@ -143,15 +141,8 @@ export function ChatbotTab({ logGroupId, tableNames }: ChatbotTabProps) {
   };
 
   return (
-    <Card className={"h-[70vh] min-h-[30rem]"}>
-      <CardHeader className={"gap-3"}>
-        <CardTitle>Chatbot</CardTitle>
-        <CardDescription>
-          Ask questions about this log group. Responses are grounded in your log tables and stored history.
-        </CardDescription>
-      </CardHeader>
-
-      <CardContent className={"flex min-h-0 flex-1 flex-col gap-4"}>
+    <Card className={"relative border-0 bg-transparent shadow-none"}>
+      <CardContent className={"flex flex-col gap-4 px-0 pb-0"}>
         {hydrateError !== null && (
           <Alert variant={"destructive"}>
             <AlertCircleIcon />
@@ -160,13 +151,13 @@ export function ChatbotTab({ logGroupId, tableNames }: ChatbotTabProps) {
           </Alert>
         )}
 
-        <ScrollArea className={"flex-1 rounded-lg border"}>
+        <div className={"flex-1"}>
           {isHydrating ? (
             <div className={"flex items-center justify-center py-12"}>
               <Spinner />
             </div>
           ) : messages.length === 0 ? (
-            <div className={"p-4"}>
+            <div className={"pb-4"}>
               <Empty className={"border"}>
                 <EmptyHeader>
                   <EmptyMedia variant={"icon"}>
@@ -178,16 +169,18 @@ export function ChatbotTab({ logGroupId, tableNames }: ChatbotTabProps) {
               </Empty>
             </div>
           ) : (
-            <div className={"flex flex-col gap-3 p-4"}>
+            <div className={"flex flex-col gap-4 pb-4"}>
               {messages.map((message) => {
                 const isUser = message.role === "user";
                 const text = renderMessageText(message);
 
                 return (
                   <div className={isUser ? "flex justify-end" : "flex justify-start"} key={message.id}>
-                    <div className={"max-w-[85%] rounded-lg border bg-card px-3 py-2"}>
+                    <div
+                      className={`max-w-[85%] rounded-lg px-4 py-3 ${isUser ? "bg-primary text-primary-foreground" : "border bg-card text-card-foreground"}`}
+                    >
                       <div className={"mb-2 flex items-center gap-2"}>
-                        <Badge variant={isUser ? "default" : "secondary"}>{isUser ? "You" : "Assistant"}</Badge>
+                        <div className={"font-medium text-xs opacity-80"}>{isUser ? "You" : "Assistant"}</div>
                       </div>
                       <div className={"text-sm leading-relaxed"}>{renderMarkdown(text)}</div>
                     </div>
@@ -196,10 +189,10 @@ export function ChatbotTab({ logGroupId, tableNames }: ChatbotTabProps) {
               })}
             </div>
           )}
-        </ScrollArea>
+        </div>
 
         {error != null && (
-          <Alert variant={"destructive"}>
+          <Alert className="mb-4" variant={"destructive"}>
             <AlertCircleIcon />
             <AlertTitle>Chat request failed</AlertTitle>
             <AlertDescription>
@@ -208,66 +201,81 @@ export function ChatbotTab({ logGroupId, tableNames }: ChatbotTabProps) {
           </Alert>
         )}
 
-        <div className={"flex flex-wrap gap-2"}>
-          {suggestions.map((suggestion) => (
-            <Button
-              disabled={isStreaming}
-              key={suggestion}
-              onClick={() => {
-                if (isStreaming) return;
-                sendMessage({ text: suggestion });
-              }}
-              size={"sm"}
-              type={"button"}
-              variant={"outline"}
-            >
-              {suggestion}
-            </Button>
-          ))}
-        </div>
-
-        <form
-          className={"flex flex-col gap-3"}
-          onSubmit={(event) => {
-            event.preventDefault();
-            submitMessage();
-          }}
+        <div
+          className={
+            "sticky bottom-0 z-10 -mx-4 bg-background/95 px-4 pt-2 pb-4 backdrop-blur supports-backdrop-filter:bg-background/60 sm:-mx-6 sm:px-6"
+          }
         >
-          <InputGroup>
-            <InputGroupTextarea
-              disabled={isStreaming}
-              onChange={(event) => setDraftMessage(event.currentTarget.value)}
-              placeholder={"Ask about anomalies, trends, or table insights..."}
-              rows={3}
-              value={draftMessage}
-            />
-            <InputGroupAddon align={"inline-end"}>
-              <InputGroupButton
+          <div className={"mb-4 flex flex-wrap gap-2"}>
+            {suggestions.map((suggestion) => (
+              <Button
+                className={"rounded-full"}
                 disabled={isStreaming}
-                onClick={submitMessage}
+                key={suggestion}
+                onClick={() => {
+                  if (isStreaming) return;
+                  sendMessage({ text: suggestion });
+                }}
                 size={"sm"}
                 type={"button"}
                 variant={"secondary"}
               >
-                <SendHorizontalIcon data-icon={"inline-end"} />
-                Send
-              </InputGroupButton>
-            </InputGroupAddon>
-          </InputGroup>
-
-          {isStreaming && (
-            <div className={"flex items-center justify-between gap-2"}>
-              <div className={"flex items-center gap-2 text-muted-foreground text-sm"}>
-                <Spinner />
-                Generating response...
-              </div>
-              <Button onClick={() => stop()} size={"sm"} type={"button"} variant={"outline"}>
-                <SquareIcon data-icon={"inline-start"} />
-                Stop
+                {suggestion}
               </Button>
-            </div>
-          )}
-        </form>
+            ))}
+          </div>
+
+          <form
+            className={"flex flex-col gap-3"}
+            onSubmit={(event) => {
+              event.preventDefault();
+              submitMessage();
+            }}
+          >
+            <InputGroup className="bg-background shadow-sm">
+              <InputGroupTextarea
+                className="min-h-[3rem] resize-none py-3"
+                disabled={isStreaming}
+                onChange={(event) => setDraftMessage(event.currentTarget.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    submitMessage();
+                  }
+                }}
+                placeholder={"Ask about anomalies, trends, or table insights..."}
+                rows={1}
+                value={draftMessage}
+              />
+              <InputGroupAddon align={"inline-end"}>
+                <InputGroupButton
+                  className="mr-1 size-8 rounded-full"
+                  disabled={isStreaming || !draftMessage.trim()}
+                  onClick={submitMessage}
+                  size={"icon-sm"}
+                  type={"button"}
+                  variant={"default"}
+                >
+                  <SendHorizontalIcon />
+                  <span className="sr-only">Send</span>
+                </InputGroupButton>
+              </InputGroupAddon>
+            </InputGroup>
+
+            {isStreaming && (
+              <div className={"flex items-center justify-between gap-2"}>
+                <div className={"flex items-center gap-2 text-muted-foreground text-sm"}>
+                  <Spinner />
+                  Generating response...
+                </div>
+                <Button onClick={() => stop()} size={"sm"} type={"button"} variant={"outline"}>
+                  <SquareIcon data-icon={"inline-start"} />
+                  Stop
+                </Button>
+              </div>
+            )}
+          </form>
+        </div>
       </CardContent>
     </Card>
   );

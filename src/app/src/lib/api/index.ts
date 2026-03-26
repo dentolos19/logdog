@@ -1,7 +1,7 @@
 import { createFetch, createSchema } from "@better-fetch/fetch";
 import z from "zod";
 import { API_URL } from "@/environment";
-import { getAccessToken } from "@/lib/auth-session";
+import { getAccessToken } from "@/lib/auth";
 
 const logTableColumnSchema = z.object({
   name: z.string(),

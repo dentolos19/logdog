@@ -250,9 +250,6 @@ export default function LogGroupPage({ params }: { params: Promise<{ id: string 
 
             {/* Tab 3: Chatbot */}
             <TabsContent className={"flex flex-col gap-3"} value={"chatbot"}>
-              <div className={"flex items-center gap-2"}>
-                <h2 className={"font-semibold text-sm"}>Chatbot</h2>
-              </div>
               {activeTab === "chatbot" ? (
                 <ChatbotTab logGroupId={id} tableNames={logGroup.tables.map((table) => table.name)} />
               ) : null}
