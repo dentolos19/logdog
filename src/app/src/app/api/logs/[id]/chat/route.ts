@@ -13,7 +13,7 @@ interface RouteContext {
   params: Promise<{ id: string }> | { id: string };
 }
 
-export const maxDuration = MAX_DURATION_SECONDS;
+export const maxDuration = 45;
 
 export async function POST(request: Request, context: RouteContext) {
   const { id: logGroupId } = await context.params;
