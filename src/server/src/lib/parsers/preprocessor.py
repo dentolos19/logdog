@@ -1259,41 +1259,11 @@ class LogPreprocessorService:
 
         sample_text = "\n".join(sample_lines[:MAX_SAMPLE_LINES])
 
-        system_prompt = (
-            "You are an expert log analyst and database schema designer. "
-            "Your task is to analyze raw log samples and propose a flat tabular schema "
-            "suitable for a SQLite table. Focus on:\n"
-            "1. Confirming or correcting the heuristic-detected columns.\n"
-            "2. Adding any new columns justified by patterns in the log data.\n"
-            "3. Writing a clear, LLM-friendly description for each column so that "
-            "a downstream LLM parser can correctly extract values.\n"
-            "4. Providing a brief summary of the schema.\n\n"
-            "Rules:\n"
-            "- Column names must be lowercase snake_case, valid SQLite identifiers.\n"
-            "- Only add columns that are well-justified by the sample data.\n"
-            "- sql_type must be one of: TEXT, INTEGER, REAL.\n"
-            "- Do NOT include baseline columns (id, timestamp, timestamp_raw, source, "
-            "source_type, log_level, event_type, message, raw_text, record_group_id, "
-            "line_start, line_end, parse_confidence, schema_version, additional_data) — "
-            "those are always present and managed separately.\n"
-        )
-
-        user_prompt = (
-            f"Detected format: {detected_format.value}\n\n"
-            f"Heuristic-detected columns:\n{heuristic_summary}\n\n"
-            f"Sample log lines:\n```\n{sample_text}\n```\n\n"
-            "Please analyze these samples and return your schema suggestion."
-        )
-
-        messages = [
-            ("system", system_prompt),
-            ("human", user_prompt),
-        ]
-
-        invocation = ai.invoke_structured_openrouter(
-            messages,
-            ai.LlmSchemaResponse,
-            context="LLM schema inference",
+        invocation = ai.infer_structured_schema(
+            detected_format=detected_format.value,
+            sample_text=sample_text,
+            sample_line_count=min(len(sample_lines), MAX_SAMPLE_LINES),
+            heuristic_summary=heuristic_summary,
         )
         if invocation.warning:
             raise RuntimeError(invocation.warning)

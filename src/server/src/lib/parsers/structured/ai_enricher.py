@@ -8,10 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass
 from typing import Any
-
-from pydantic import BaseModel, Field
 
 from lib import ai
 from lib.parsers.contracts import ColumnDefinition
@@ -25,25 +22,6 @@ logger = logging.getLogger(__name__)
 
 MAX_SAMPLE_LINES = 50
 MAX_TOTAL_CHARS = 8000
-
-
-class LlmStructuredColumn(BaseModel):
-    """A column suggested by the LLM for structured data."""
-
-    name: str
-    sql_type: str = "TEXT"
-    description: str = ""
-    nullable: bool = True
-    examples: list[str] = Field(default_factory=list)
-
-
-class LlmStructuredSchemaResponse(BaseModel):
-    """Structured response from the LLM for schema inference on structured data."""
-
-    columns: list[LlmStructuredColumn] = Field(default_factory=list)
-    summary: str = ""
-    event_type_hint: str = ""
-    warnings: list[str] = Field(default_factory=list)
 
 
 def has_openrouter_api_key(api_key: str | None = None) -> bool:
@@ -71,7 +49,7 @@ def _call_llm_for_structured_schema(
     heuristic_summary: str,
     api_key: str | None = None,
     model: str | None = None,
-) -> LlmStructuredSchemaResponse:
+) -> ai.LlmStructuredSchemaResponse:
     """Call the LLM to enrich the schema with semantic understanding for structured data.
 
     Args:
@@ -86,82 +64,36 @@ def _call_llm_for_structured_schema(
         LlmStructuredSchemaResponse with LLM-inferred columns
     """
     if not has_openrouter_api_key(api_key):
-        return LlmStructuredSchemaResponse(
+        return ai.LlmStructuredSchemaResponse(
             warnings=["OPENROUTER_API_KEY not set; LLM enrichment skipped."],
         )
 
     sample_text = _build_sample_content(sample_lines, detected_format)
     if not sample_text.strip():
-        return LlmStructuredSchemaResponse(
+        return ai.LlmStructuredSchemaResponse(
             warnings=["No sample content available for LLM analysis."],
         )
 
-    format_descriptions = {
-        "json": "JSON Lines (newline-delimited JSON objects)",
-        "xml": "XML (Extensible Markup Language)",
-        "csv": "CSV (Comma-Separated Values)",
-        "syslog": "Syslog (RFC 3164)",
-        "apache_access": "Apache Combined Log Format",
-        "nginx_access": "Nginx Access Log",
-        "logfmt": "Logfmt (key=value pairs)",
-        "key_value": "Key-Value pairs",
-    }
-
-    format_desc = format_descriptions.get(detected_format, detected_format)
-
-    system_prompt = (
-        "You are an expert log analyst and database schema designer specializing in structured data.\n"
-        "Your task is to analyze raw structured data samples and propose a flat tabular schema\n"
-        "suitable for a SQLite table. Focus on:\n"
-        "1. Confirming or correcting the heuristic-detected columns.\n"
-        "2. Adding any new columns justified by patterns in the data.\n"
-        "3. Inferring semantic types (IP addresses, URLs, timestamps, etc.) when evident.\n"
-        "4. Writing clear descriptions for each column.\n\n"
-        "Rules:\n"
-        "- Column names must be lowercase snake_case, valid SQLite identifiers.\n"
-        "- Only add columns that are well-justified by the sample data.\n"
-        "- sql_type must be one of: TEXT, INTEGER, REAL.\n"
-        "- Do NOT include baseline columns (id, timestamp, timestamp_raw, source,\n"
-        "  source_type, log_level, event_type, message, raw_text, record_group_id,\n"
-        "  line_start, line_end, parse_confidence, schema_version, additional_data).\n"
-        "- Provide 2-3 example values for each column when available.\n"
-        "- Suggest a brief event_type_hint if the data represents a known event category.\n"
-    )
-
-    user_prompt = (
-        f"Detected format: {format_desc}\n\n"
-        f"Heuristic-detected columns:\n{heuristic_summary or '  (none detected)'}\n\n"
-        f"Sample data (first {min(len(sample_lines), MAX_SAMPLE_LINES)} lines):\n"
-        f"```\n{sample_text}\n```\n\n"
-        "Please analyze these samples and return your schema suggestion as JSON."
-    )
-
-    messages = [
-        ("system", system_prompt),
-        ("human", user_prompt),
-    ]
-
-    invocation = ai.invoke_structured_openrouter(
-        messages,
-        LlmStructuredSchemaResponse,
-        context="LLM structured schema inference",
+    invocation = ai.infer_structured_schema(
+        detected_format=detected_format,
+        sample_text=sample_text,
+        sample_line_count=min(len(sample_lines), MAX_SAMPLE_LINES),
+        heuristic_summary=heuristic_summary,
         model=model,
         api_key=api_key,
-        temperature=0.0,
-        max_tokens=4096,
     )
 
     if invocation.response is not None:
         return invocation.response
 
-    return LlmStructuredSchemaResponse(
+    return ai.LlmStructuredSchemaResponse(
         warnings=[invocation.warning] if invocation.warning else ["LLM enrichment returned no response."],
     )
 
 
 def _reconcile_columns(
     heuristic_columns: list[ColumnDefinition],
-    llm_columns: list[LlmStructuredColumn],
+    llm_columns: list[ai.LlmStructuredColumn],
 ) -> list[ColumnDefinition]:
     """Reconcile heuristic and LLM columns, preferring LLM where there's overlap.
 
@@ -279,18 +211,7 @@ def enrich_structured_schema(
     if not llm_result.columns:
         return heuristic_columns, warnings
 
-    llm_columns = [
-        LlmStructuredColumn(
-            name=col.name,
-            sql_type=col.sql_type,
-            description=col.description,
-            nullable=col.nullable,
-            examples=col.examples,
-        )
-        for col in llm_result.columns
-    ]
-
-    enriched = _reconcile_columns(heuristic_columns, llm_columns)
+    enriched = _reconcile_columns(heuristic_columns, llm_result.columns)
 
     if llm_result.event_type_hint:
         for col in enriched:

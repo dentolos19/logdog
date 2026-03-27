@@ -4,13 +4,7 @@ from typing import Optional, Tuple, List
 from dataclasses import dataclass
 from enum import Enum
 
-try:
-    from openai import OpenAI
-    from dotenv import load_dotenv
-
-    load_dotenv()
-except ImportError:
-    OpenAI = None
+from lib import ai
 
 try:
     from Evtx.Evtx import Evtx
@@ -455,121 +449,91 @@ class AIClient:
         ),
     ]
 
-    def __init__(self, api_key: Optional[str] = None, model: str = "anthropic/claude-3.5-sonnet"):
-        self.api_key = api_key or os.getenv("OPENROUTER_API_KEY")
-        self.model = os.getenv("OPENROUTER_MODEL") or model
-        self.client = None
+    def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
+        self.api_key = ai.resolve_openrouter_api_key(api_key)
+        self.model = ai.resolve_keoni_model(model)
+        self.enabled = ai.has_openrouter_api_key(self.api_key)
         self.baseline_columns = self.BASELINE_COLS
 
-        if not self.api_key:
+        if not self.enabled:
             print("[ERROR] OPENROUTER_API_KEY not set")
             return
-        if not OpenAI:
-            print("[ERROR] openai not installed")
-            return
-        try:
-            self.client = OpenAI(
-                api_key=self.api_key,
-                base_url="https://openrouter.ai/api/v1",
-                default_headers={
-                    "HTTP-Referer": "http://localhost",
-                    "X-Title": "Log Pipeline",
-                },
-            )
-            print(f"[AI] Connected (model: {self.model})")
-        except Exception as e:
-            print(f"[ERROR] {e}")
+        print(f"[AI] Connected (model: {self.model})")
 
     def generate_comment(self, record: dict) -> str:
         """Generate AI comment about a log record."""
-        if not self.client or not record:
+        if not self.enabled or not record:
             return ""
-        try:
-            msg = record.get("message", "")
-            level = record.get("log_level", "INFO")
-            event = record.get("event_type", "")
-            prompt = f"Log Level: {level}\nEvent Type: {event}\nMessage: {msg}\n\nBriefly comment (1 line) on this log entry."
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=100,
-                temperature=0.1,
-            )
-            return response.choices[0].message.content.strip()
-        except:
+
+        invocation = ai.comment_keoni_record(
+            message=record.get("message", ""),
+            log_level=record.get("log_level", "INFO"),
+            event_type=record.get("event_type", ""),
+            api_key=self.api_key,
+            model=self.model,
+        )
+        if invocation.response is None:
             return ""
+        return invocation.response.comment.strip()
 
     def process_chunk(self, content: str, metadata: dict, line_num: int = 1) -> Optional[dict]:
-        if not self.client:
+        if not self.enabled:
             return None
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": f"Analyze log:\n{content}\n\nReturn JSON with: timestamp, log_level, event_type, message, parse_confidence (0-1)",
-                    }
-                ],
-                max_tokens=300,
-                temperature=0.1,
+
+        invocation = ai.analyze_keoni_record(
+            content=content,
+            api_key=self.api_key,
+            model=self.model,
+        )
+        if invocation.response is None:
+            return None
+
+        ai_data = invocation.response.model_dump()
+        extra_data = {
+            k: v
+            for k, v in ai_data.items()
+            if k
+            not in [
+                "timestamp",
+                "log_level",
+                "event_type",
+                "message",
+                "parse_confidence",
+            ]
+        }
+
+        return {
+            col.name: (
+                ai_data.get("timestamp")
+                if col.name == "timestamp"
+                else content[:50]
+                if col.name == "timestamp_raw"
+                else metadata.get("source", "unknown")
+                if col.name == "source"
+                else metadata.get("type", "unknown")
+                if col.name == "source_type"
+                else ai_data.get("log_level", "INFO")
+                if col.name == "log_level"
+                else ai_data.get("event_type", "log")
+                if col.name == "event_type"
+                else ai_data.get("message", content[:200])
+                if col.name == "message"
+                else content
+                if col.name == "raw_text"
+                else line_num
+                if col.name == "line_start"
+                else line_num
+                if col.name == "line_end"
+                else ai_data.get("parse_confidence", 0.5)
+                if col.name == "parse_confidence"
+                else "1.0"
+                if col.name == "schema_version"
+                else json.dumps(extra_data)
+                if col.name == "additional_data"
+                else None
             )
-            text = response.choices[0].message.content.strip()
-            try:
-                ai_data = json.loads(text)
-            except:
-                import re
-
-                json_str = re.search(r"\{.*\}", text, re.DOTALL)
-                ai_data = json.loads(json_str.group()) if json_str else {}
-
-            extra_data = {
-                k: v
-                for k, v in ai_data.items()
-                if k
-                not in [
-                    "timestamp",
-                    "log_level",
-                    "event_type",
-                    "message",
-                    "parse_confidence",
-                ]
-            }
-
-            return {
-                col.name: (
-                    ai_data.get("timestamp")
-                    if col.name == "timestamp"
-                    else content[:50]
-                    if col.name == "timestamp_raw"
-                    else metadata.get("source", "unknown")
-                    if col.name == "source"
-                    else metadata.get("type", "unknown")
-                    if col.name == "source_type"
-                    else ai_data.get("log_level", "INFO")
-                    if col.name == "log_level"
-                    else ai_data.get("event_type", "log")
-                    if col.name == "event_type"
-                    else ai_data.get("message", content[:200])
-                    if col.name == "message"
-                    else content
-                    if col.name == "raw_text"
-                    else line_num
-                    if col.name == "line_start"
-                    else line_num
-                    if col.name == "line_end"
-                    else ai_data.get("parse_confidence", 0.5)
-                    if col.name == "parse_confidence"
-                    else "1.0"
-                    if col.name == "schema_version"
-                    else json.dumps(extra_data)
-                    if col.name == "additional_data"
-                    else None
-                )
-                for col in self.BASELINE_COLS
-            }
-        except:
-            return None
+            for col in self.BASELINE_COLS
+        }
 
 
 def process_log_file(file_path: str, max_records: int = 10) -> List[dict]:
@@ -586,7 +550,7 @@ def process_log_file(file_path: str, max_records: int = 10) -> List[dict]:
     chunks = split_by_type(content_str, file_path)
 
     ai = AIClient()
-    if not ai.client:
+    if not ai.enabled:
         return []
 
     results = []

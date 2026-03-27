@@ -847,35 +847,9 @@ def call_llm_for_unstructured(
 
     sample_text = "\n".join(line[:MAX_LINE_LENGTH] for line in sample_lines[:MAX_SAMPLE_LINES])
 
-    system_prompt = (
-        "You are an expert log analyst specializing in unstructured and semi-structured logs.\n"
-        "Analyze the provided raw log samples and identify additional fields that can be\n"
-        "extracted into table columns. Focus on:\n"
-        "1. Domain-specific identifiers (wafer IDs, tool names, recipe names, etc.)\n"
-        "2. Repeated key-value patterns not yet captured.\n"
-        "3. Numeric measurements or counters.\n"
-        "4. A suggested event_type classification for this log source.\n\n"
-        "Rules:\n"
-        "- Column names must be lowercase snake_case.\n"
-        "- sql_type must be TEXT, INTEGER, or REAL.\n"
-        "- Do NOT repeat baseline columns (id, timestamp, timestamp_raw, source,\n"
-        "  source_type, log_level, event_type, message, raw_text, record_group_id,\n"
-        "  line_start, line_end, parse_confidence, schema_version, additional_data).\n"
-        "- Do NOT repeat columns already detected by heuristics.\n"
-    )
-
-    user_prompt = (
-        f"Already-detected columns:\n{heuristic_summary}\n\n"
-        f"Sample unstructured log lines:\n```\n{sample_text}\n```\n\n"
-        "Identify any additional extractable fields."
-    )
-
-    messages = [("system", system_prompt), ("human", user_prompt)]
-
-    invocation = ai.invoke_structured_openrouter(
-        messages,
-        ai.LlmUnstructuredResponse,
-        context="LLM unstructured enrichment",
+    invocation = ai.infer_unstructured_fields(
+        sample_text=sample_text,
+        heuristic_summary=heuristic_summary,
     )
     if invocation.response is not None:
         return invocation.response

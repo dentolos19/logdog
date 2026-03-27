@@ -16,50 +16,35 @@ import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
-from langchain_openrouter import ChatOpenRouter
-from pydantic import SecretStr
+
+SERVER_SRC = Path(__file__).resolve().parents[1] / "src"
+if str(SERVER_SRC) not in sys.path:
+    sys.path.insert(0, str(SERVER_SRC))
+
+from lib import ai
 
 load_dotenv()
 
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
-# Use a vision-capable model for OCR.
-VISION_MODEL = os.getenv("OPENROUTER_VISION_MODEL", "anthropic/claude-sonnet-4")
+VISION_MODEL = ai.resolve_openrouter_vision_model()
 
 
 def extract_text_from_page(page_image_b64: str, page_num: int) -> str:
     """Send a single page image to the LLM for text extraction."""
-    if not OPENROUTER_API_KEY:
+    if not ai.has_openrouter_api_key():
         print("Error: OPENROUTER_API_KEY not set in environment.", file=sys.stderr)
         sys.exit(1)
 
-    model = ChatOpenRouter(
+    invocation = ai.extract_text_from_image(
+        page_image_b64=page_image_b64,
+        page_num=page_num,
         model=VISION_MODEL,
-        api_key=SecretStr(OPENROUTER_API_KEY),
-        temperature=0.0,
-        max_tokens=4096,
     )
+    if invocation.response is None:
+        warning = invocation.warning or "Unknown OCR failure."
+        print(f"Error: {warning}", file=sys.stderr)
+        sys.exit(1)
 
-    messages = [
-        (
-            "system",
-            "You are an OCR assistant. Extract ALL text from the provided image exactly "
-            "as it appears, preserving line breaks, spacing, and formatting. Do not add "
-            "any commentary — output only the raw extracted text.",
-        ),
-        (
-            "human",
-            [
-                {"type": "text", "text": f"Extract all text from page {page_num}:"},
-                {
-                    "type": "image_url",
-                    "image_url": {"url": f"data:image/png;base64,{page_image_b64}"},
-                },
-            ],
-        ),
-    ]
-
-    response = model.invoke(messages)
-    return str(response.content)
+    return invocation.response
 
 
 def pdf_to_images(pdf_path: Path) -> list[str]:

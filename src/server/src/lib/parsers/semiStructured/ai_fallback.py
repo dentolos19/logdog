@@ -21,43 +21,10 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from lib import ai
-from pydantic import BaseModel, Field
 
 from .template_cache import TemplateCache, CachedTemplate
 
 logger = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# System prompt for field extraction
-# ---------------------------------------------------------------------------
-SYSTEM_PROMPT = """\
-You are a log parsing assistant for semiconductor manufacturing equipment.
-Your job is to extract structured fields from unknown or semi-structured log formats.
-
-Given a raw log text snippet, extract ALL identifiable fields as a flat JSON object.
-
-Rules:
-1. Return ONLY valid JSON — no markdown, no explanations.
-2. Use snake_case keys (e.g., "ctrl_job_id", "wafer_start_time").
-3. Preserve original values — do not transform or convert them.
-4. For nested structures, flatten with dot notation (e.g., "events.start_name").
-5. If a field has a unit, include it as a separate key with suffix "_unit"
-   (e.g., "pressure": 500.0, "pressure_unit": "mtorr").
-6. Include a "_format_type" field indicating the detected format
-   (e.g., "lam_parquet", "key_value", "tabular", "custom").
-7. Include a "_section_map" field listing detected sections and their field counts
-   (e.g., {"ControlJobKeys": 2, "ProcessJobAttributes": 15}).
-
-Common semiconductor log fields to look for:
-- Equipment/tool identifiers (EquipmentID, ModuleID, etc.)
-- Job identifiers (CtrlJobID, PRJobID, LotID, WaferID)
-- Timestamps (start/end times in ISO 8601)
-- Recipe parameters (gas flows, pressures, RF power, temperatures)
-- Recipe step metadata (step names, step IDs, durations)
-- Sensor readings (SensorID, values, units)
-- Events and state transitions
-"""
 
 
 # ---------------------------------------------------------------------------
@@ -138,14 +105,6 @@ class CostTracker:
             "cache_misses": self.cache_misses,
             "avg_cost_per_call": round(self.total_cost_usd / max(self.total_calls, 1), 6),
         }
-
-
-class LlmSemiStructuredResponse(BaseModel):
-    """Structured response for semi-structured fallback extraction."""
-
-    fields: dict[str, Any] = Field(default_factory=dict)
-    format_type: str = "unknown"
-    section_map: dict[str, int] = Field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -266,35 +225,12 @@ class AIFallback:
         # Build the prompt payload.
         truncated = raw_text[: self.config.max_input_tokens * 4]  # rough char limit
         context_json = json.dumps(context or {}, ensure_ascii=True)
-        budget = self._thinking_budget(thinking_level)
-
-        system_prompt = (
-            f"{SYSTEM_PROMPT}\n\n"
-            "Return JSON matching this schema exactly:\n"
-            "- fields: object containing extracted flat key/value pairs\n"
-            "- format_type: short format identifier\n"
-            "- section_map: object of section_name -> field_count\n"
-            "Do not include prose or markdown."
-        )
-        user_prompt = (
-            f"Thinking level: {thinking_level} (budget={budget}).\n"
-            f"Context JSON: {context_json}\n\n"
-            "Extract structured fields from this log:\n\n"
-            f"{truncated}"
-        )
-        messages = [
-            ("system", system_prompt),
-            ("human", user_prompt),
-        ]
-
-        invocation = ai.invoke_structured_openrouter(
-            messages,
-            LlmSemiStructuredResponse,
-            context="Semi-structured AI fallback",
+        invocation = ai.extract_semi_structured_fields(
+            raw_text=truncated,
+            thinking_level=thinking_level,
+            context_json=context_json,
             model=self.config.model,
             api_key=resolved_api_key,
-            temperature=0.1,
-            max_tokens=4096,
         )
         if invocation.response is None:
             if invocation.warning:
@@ -327,10 +263,6 @@ class AIFallback:
                 + est_output_tokens / 1_000_000 * self.config.output_price_per_m
             ),
         )
-
-    def _thinking_budget(self, level: str) -> int:
-        """Map thinking level to token budget."""
-        return {"low": 128, "medium": 512, "high": 2048}.get(level, 256)
 
     # ---- Local fallback (for when API is unavailable) ---------------------
 
@@ -427,52 +359,3 @@ class AIFallback:
             return int(val)
         except ValueError:
             return val
-
-
-# ---------------------------------------------------------------------------
-# Gemini API request builder (for reference / production use)
-# ---------------------------------------------------------------------------
-def build_gemini_request(
-    raw_text: str,
-    thinking_level: str = "low",
-    model: str = "gemini-3.1-flash-lite-preview",
-) -> dict:
-    """
-    Build the complete Gemini API request payload.
-    Can be used directly with the google-genai SDK or REST API.
-
-    Usage with REST:
-        POST https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={API_KEY}
-
-    Usage with google-genai SDK:
-        from google import genai
-        client = genai.Client(api_key=API_KEY)
-        response = client.models.generate_content(
-            model=model,
-            contents=raw_text,
-            config=genai.types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
-                response_mime_type="application/json",
-                thinking_config=genai.types.ThinkingConfig(
-                    thinking_budget=budget
-                ),
-            )
-        )
-    """
-    budget = {"low": 128, "medium": 512, "high": 2048}.get(thinking_level, 256)
-
-    return {
-        "model": model,
-        "contents": [
-            {
-                "role": "user",
-                "parts": [{"text": f"Extract structured fields from this log:\n\n{raw_text}"}],
-            }
-        ],
-        "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
-        "generationConfig": {
-            "responseMimeType": "application/json",
-            "temperature": 0.1,
-            "thinkingConfig": {"thinkingBudget": budget},
-        },
-    }

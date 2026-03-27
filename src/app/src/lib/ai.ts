@@ -1,6 +1,6 @@
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import type { ModelMessage, UIMessage } from "ai";
-import { API_URL } from "@/environment";
+import { API_URL, OPENROUTER_API_KEY, OPENROUTER_REFERER, OPENROUTER_TITLE } from "@/environment";
 
 const TABLE_PREVIEW_LIMIT = 4;
 const ROW_PREVIEW_LIMIT = 3;
@@ -32,7 +32,7 @@ export function getOpenRouterModel() {
 }
 
 export function getOpenRouterClient() {
-  const apiKey = process.env.OPENROUTER_API_KEY;
+  const apiKey = OPENROUTER_API_KEY;
   if (!apiKey) {
     throw new Error("Missing OPENROUTER_API_KEY environment variable.");
   }
@@ -40,8 +40,8 @@ export function getOpenRouterClient() {
   return createOpenRouter({
     apiKey,
     headers: {
-      "X-Title": "Logdog",
-      "X-Referer": "https://logdog.dennise.me",
+      "X-OpenRouter-Title": OPENROUTER_TITLE,
+      "HTTP-Referer": OPENROUTER_REFERER,
     },
   });
 }

@@ -36,3 +36,6 @@ function normalizeApiUrl(value: string | undefined) {
 }
 
 export const API_URL = normalizeApiUrl(process.env.NEXT_PUBLIC_API_URL);
+export const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY as string;
+export const OPENROUTER_TITLE = process.env.OPENROUTER_TITLE as string;
+export const OPENROUTER_REFERER = process.env.OPENROUTER_REFERER as string;
