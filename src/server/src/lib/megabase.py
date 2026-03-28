@@ -84,13 +84,14 @@ def _parse_column(col_def: dict) -> Column:
 
     if col_def.get("primary_key"):
         return Column(
+            col_name,
             UUID(as_uuid=True) if col_type == "uuid" else sqla_type,
             primary_key=True,
             nullable=False,
             default=uuid.uuid4,
         )
 
-    return Column(sqla_type, **kwargs)
+    return Column(col_name, sqla_type, **kwargs)
 
 
 def _table_from_schema(table_name: str, schema: dict) -> Table:
@@ -150,7 +151,6 @@ def add_column(session: Session, table_name: str, column_def: dict) -> Table:
     if table_name not in metadata.tables:
         raise ValueError(f"Table '{table_name}' not registered in metadata")
 
-    table = metadata.tables[table_name]
     new_column = _parse_column(column_def)
 
     try:
@@ -180,8 +180,6 @@ def add_column(session: Session, table_name: str, column_def: dict) -> Table:
 def remove_column(session: Session, table_name: str, column_name: str) -> Table:
     if table_name not in metadata.tables:
         raise ValueError(f"Table '{table_name}' not registered in metadata")
-
-    table = metadata.tables[table_name]
 
     try:
         session.execute(text(f"ALTER TABLE {table_name} DROP COLUMN {column_name}"))
@@ -229,13 +227,13 @@ def insert_record(session: Session, table_name: str, data: dict) -> uuid.UUID:
 
     table = metadata.tables[table_name]
 
-    if "id" not in data:
+    if "id" not in data and "id" in table.c:
         data["id"] = uuid.uuid4()
 
     session.execute(table.insert().values(**data))
     session.commit()
 
-    return data["id"]
+    return data.get("id", uuid.uuid4())
 
 
 def get_record(session: Session, table_name: str, record_id: uuid.UUID) -> dict | None:

@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, func
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import declarative_base, relationship
 
@@ -60,6 +60,9 @@ class LogEntry(Base):
 
     user = relationship("User", back_populates="entries")
     files = relationship("LogFile", back_populates="entry")
+    tables = relationship("LogTable", back_populates="entry")
+    messages = relationship("LogMessage", back_populates="entry")
+    parse_processes = relationship("LogParseProcess", back_populates="entry")
 
 
 class LogFile(Base):
@@ -82,6 +85,25 @@ class LogFile(Base):
     entry = relationship("LogEntry", back_populates="files")
 
 
+class LogTable(Base):
+    __tablename__ = "log_tables"
+
+    id = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        index=True,
+        nullable=False,
+        default=uuid.uuid4,
+    )
+    entry_id = Column(UUID(as_uuid=True), ForeignKey("log_entries.id"), nullable=False)
+    name = Column(String, nullable=False)
+    table = Column(String, nullable=False)  # From the megabase
+    schema = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    entry = relationship("LogEntry", back_populates="tables")
+
+
 class LogMessage(Base):
     __tablename__ = "log_messages"
 
@@ -99,3 +121,24 @@ class LogMessage(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     entry = relationship("LogEntry", back_populates="messages")
+
+
+class LogParseProcess(Base):
+    __tablename__ = "log_parse_processes"
+
+    id = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        index=True,
+        nullable=False,
+        default=uuid.uuid4,
+    )
+    entry_id = Column(UUID(as_uuid=True), ForeignKey("log_entries.id"), nullable=False, index=True)
+    status = Column(String, nullable=False, default="queued")
+    classification = Column(Text, nullable=True)
+    result = Column(Text, nullable=True)
+    error = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+    entry = relationship("LogEntry", back_populates="parse_processes")
