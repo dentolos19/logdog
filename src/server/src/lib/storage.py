@@ -25,15 +25,15 @@ def _get_s3_client():
     return _s3_client
 
 
-def _get_s3_key(asset_id: uuid.UUID, filename: str) -> str:
+def _get_s3_key(asset_id: uuid.UUID) -> str:
     prefix = BUCKET_PREFIX.get_secret_value()
-    return f"{prefix}/{asset_id}/{filename}"
+    return f"{prefix}/{asset_id}"
 
 
 def upload_file(file_data: bytes, filename: str, content_type: str, db: Session = Depends(get_database)) -> Asset:
     asset_id = uuid.uuid4()
     file_hash = hashlib.sha256(file_data).hexdigest()
-    s3_key = _get_s3_key(asset_id, filename)
+    s3_key = _get_s3_key(asset_id)
 
     client = _get_s3_client()
     client.put_object(
@@ -61,7 +61,7 @@ def download_file(asset_id: uuid.UUID, db: Session = Depends(get_database)) -> b
     if not asset:
         return None
 
-    s3_key = _get_s3_key(asset_id, asset.name)
+    s3_key = _get_s3_key(asset_id)
     client = _get_s3_client()
 
     try:
@@ -83,7 +83,7 @@ def delete_file(asset_id: uuid.UUID, db: Session = Depends(get_database)) -> boo
     if not asset:
         return False
 
-    s3_key = _get_s3_key(asset_id, asset.name)
+    s3_key = _get_s3_key(asset_id)
     client = _get_s3_client()
 
     try:
