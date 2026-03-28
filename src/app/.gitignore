@@ -3,18 +3,18 @@
 .idea/
 
 # Environment files
-.next/
-.open-next/
 .wrangler/
+.tanstack/
 node_modules/
 dist/
-build/
 *.d*
-*.tsbuildinfo
 
 # User files
 .env*
 !.env*.template
+
+# Project files
+/src/routeTree.gen.ts
 
 # Miscellaneous files
 .DS_Store

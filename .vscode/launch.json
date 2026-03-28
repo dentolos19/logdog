@@ -12,24 +12,6 @@
         "uriFormat": "%s",
         "action": "openExternally"
       }
-    },
-    {
-      "name": "Server",
-      "request": "launch",
-      "type": "debugpy",
-      "cwd": "${workspaceFolder}/src/server",
-      "module": "fastapi",
-      "args": ["dev", "src/main.py"],
-      "env": {
-        "PYDEVD_USE_SYS_MONITORING": "FALSE"
-      }
-    }
-  ],
-  "compounds": [
-    {
-      "name": "App + Server",
-      "configurations": ["App", "Server"],
-      "stopAll": true
     }
   ]
 }

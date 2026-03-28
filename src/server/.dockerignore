@@ -16,9 +16,6 @@ dist/
 .env*
 !.env*.template
 
-# Project files
-/store/
-
 # Miscellaneous files
 .DS_Store
 Desktop.ini

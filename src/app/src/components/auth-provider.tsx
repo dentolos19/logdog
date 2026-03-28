@@ -1,108 +1,82 @@
-"use client";
-
-import { useRouter } from "next/navigation";
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useState } from "react";
-import { $fetch } from "@/lib/api";
-import type { User } from "@/lib/api/types";
-import { clearAuthSession, getRefreshToken, setAuthSession } from "@/lib/auth";
+import { clearAuthTokens, getMe, login, logout, refreshTokens, register } from "#/lib/server";
 
-interface AuthContextValue {
-  user: User | null;
+type AuthUser = {
+  id: string;
+  email: string;
+  created_at: string;
+};
+
+type AuthContextValue = {
+  user: AuthUser | null;
   isLoading: boolean;
   isAuthenticated: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
-}
+  refreshSession: () => Promise<AuthUser | null>;
+};
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const fetchMe = useCallback(async (): Promise<User | null> => {
-    const { data, error } = await $fetch("/auth/me");
-    if (error || data === undefined) {
+  const fetchCurrentUser = useCallback(async () => {
+    try {
+      const me = await getMe();
+      setUser(me);
+      return me;
+    } catch {
       return null;
     }
-
-    return data;
   }, []);
 
-  const refreshSession = useCallback(async (): Promise<User | null> => {
-    const refreshToken = getRefreshToken();
-    if (refreshToken === null) {
+  const refreshSession = useCallback(async () => {
+    try {
+      await refreshTokens();
+    } catch {
+      clearAuthTokens();
+      setUser(null);
       return null;
     }
 
-    const { data, error } = await $fetch("/auth/refresh", {
-      body: { refresh_token: refreshToken },
-    });
-
-    if (error || data === undefined) {
-      clearAuthSession();
-      return null;
-    }
-
-    setAuthSession({
-      accessToken: data.access_token,
-      refreshToken: data.refresh_token,
-    });
-
-    return data.user;
-  }, []);
+    return fetchCurrentUser();
+  }, [fetchCurrentUser]);
 
   useEffect(() => {
     const restore = async () => {
-      const me = (await fetchMe()) ?? (await refreshSession());
-
+      const me = (await fetchCurrentUser()) ?? (await refreshSession());
       if (me === null) {
-        clearAuthSession();
+        clearAuthTokens();
+        setUser(null);
       }
-
-      setUser(me);
       setIsLoading(false);
     };
 
     restore();
-  }, [fetchMe, refreshSession]);
+  }, [fetchCurrentUser, refreshSession]);
 
-  const signIn = useCallback(async (email: string, password: string): Promise<void> => {
-    const { data, error } = await $fetch("/auth/login", {
-      body: { email, password },
-    });
-
-    if (error || data === undefined) {
-      throw new Error(error?.message ?? "Sign-in failed.");
-    }
-
-    setAuthSession({
-      accessToken: data.access_token,
-      refreshToken: data.refresh_token,
-    });
-    setUser(data.user);
+  const signIn = useCallback(async (email: string, password: string) => {
+    await login({ email, password });
+    const me = await getMe();
+    setUser(me);
   }, []);
 
-  const signUp = useCallback(async (email: string, password: string): Promise<void> => {
-    const { data, error } = await $fetch("/auth/register", {
-      body: { email, password },
-    });
-
-    if (error || data === undefined) {
-      throw new Error(error?.message ?? "Sign-up failed.");
-    }
-
-    setAuthSession({
-      accessToken: data.access_token,
-      refreshToken: data.refresh_token,
-    });
-    setUser(data.user);
+  const signUp = useCallback(async (email: string, password: string) => {
+    await register({ email, password });
+    await login({ email, password });
+    const me = await getMe();
+    setUser(me);
   }, []);
 
-  const signOut = useCallback(async (): Promise<void> => {
-    await $fetch("/auth/logout").catch(() => undefined);
-    clearAuthSession();
+  const signOut = useCallback(async () => {
+    try {
+      await logout();
+    } catch {
+      clearAuthTokens();
+    }
     setUser(null);
   }, []);
 
@@ -115,6 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signIn,
         signUp,
         signOut,
+        refreshSession,
       }}
     >
       {children}
@@ -122,23 +97,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 }
 
-export const useAuth = () => {
-  const ctx = useContext(AuthContext);
-  if (ctx === null) {
+export function useAuth() {
+  const context = useContext(AuthContext);
+  if (context === null) {
     throw new Error("useAuth must be used inside <AuthProvider>.");
   }
-  return ctx;
-};
-
-export const useRequireAuth = (redirectTo = "/login") => {
-  const { user, isLoading } = useAuth();
-  const router = useRouter();
-
-  useEffect(() => {
-    if (!isLoading && user === null) {
-      router.push(redirectTo);
-    }
-  }, [isLoading, user, redirectTo, router]);
-
-  return { user, isLoading };
-};
+  return context;
+}

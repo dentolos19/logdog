@@ -9,20 +9,13 @@ dependencies = [
   "drain3",
   "fastapi[standard]",
   "langchain-openrouter",
-  "pydantic>=2.0.0,<2.12",
   "psycopg2-binary",
+  "pydantic>=2.0.0,<2.12",
   "python-dotenv",
   "python-jose[cryptography]",
   "sqlalchemy",
-  "sqlalchemy-libsql",
   "uvicorn",
 ]
-
-[dependency-groups]
-dev = ["pytest", "httpx"]
-
-[tool.pytest.ini_options]
-pythonpath = ["src"]
 
 [tool.ruff]
 line-length = 120

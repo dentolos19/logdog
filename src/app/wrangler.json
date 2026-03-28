@@ -1,9 +1,9 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "logdog",
-  "main": ".open-next/worker.js",
+  "main": "src/server.ts",
   "compatibility_date": "2026-01-01",
-  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "compatibility_flags": ["nodejs_compat"],
   "keep_vars": true,
   "observability": {
     "logs": {
@@ -13,14 +13,32 @@
       "enabled": true
     }
   },
-  "assets": {
-    "binding": "ASSETS",
-    "directory": ".open-next/assets"
-  },
   "routes": [
     {
       "pattern": "logdog.dennise.me",
       "custom_domain": true
+    }
+  ],
+  "containers": [
+    {
+      "class_name": "Server",
+      "image": "../server/Dockerfile",
+      "max_instances": 1,
+      "instance_type": "basic"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "SERVER",
+        "class_name": "Server"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["Server"]
     }
   ]
 }
