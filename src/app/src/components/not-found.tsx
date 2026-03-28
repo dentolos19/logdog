@@ -11,7 +11,7 @@ export default function NotFound() {
           <EmptyDescription>The resource you are looking for does not exist.</EmptyDescription>
         </EmptyHeader>
         <EmptyContent>
-          <Button>
+          <Button asChild>
             <Link to={"/"}>Home</Link>
           </Button>
         </EmptyContent>
