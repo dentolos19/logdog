@@ -1,4 +1,4 @@
-import { $fetch } from "#/lib/server";
+import { $fetch } from "#/lib/server/fetcher";
 
 export const getRoot = () => {
   return $fetch("/").then((res) => res.text());
