@@ -1,5 +1,5 @@
-import { $fetch } from "#/lib/server/fetcher";
-import { clearAuthTokens, getRefreshToken, setAuthTokens } from "#/lib/server/token-store";
+import { clearAuthTokens, getRefreshToken, setAuthTokens } from "#/lib/server/store";
+import { $fetch } from "#/lib/server/utils";
 
 type RegisterPayload = {
   email: string;

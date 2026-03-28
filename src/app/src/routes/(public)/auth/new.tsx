@@ -7,16 +7,17 @@ import { Field, FieldContent, FieldError, FieldGroup, FieldLabel } from "#/compo
 import { Input } from "#/components/ui/input";
 import { Spinner } from "#/components/ui/spinner";
 
-export const Route = createFileRoute("/(public)/auth/")({
-  component: LoginPage,
+export const Route = createFileRoute("/(public)/auth/new")({
+  component: RegisterPage,
 });
 
-function LoginPage() {
+function RegisterPage() {
   const navigate = useNavigate();
-  const { signIn, isAuthenticated, isLoading } = useAuth();
+  const { signUp, isAuthenticated, isLoading } = useAuth();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [serverError, setServerError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -28,11 +29,14 @@ function LoginPage() {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
       return "Please enter a valid email address.";
     }
-    if (!password) {
-      return "Password is required.";
+    if (password.length < 8) {
+      return "Password must be at least 8 characters.";
+    }
+    if (password !== confirmPassword) {
+      return "Passwords do not match.";
     }
     return null;
-  }, [email, password]);
+  }, [confirmPassword, email, password]);
 
   useEffect(() => {
     if (!isLoading && isAuthenticated) {
@@ -51,7 +55,7 @@ function LoginPage() {
 
     setIsSubmitting(true);
     try {
-      await signIn(email.trim(), password);
+      await signUp(email.trim(), password);
       await navigate({ to: "/dashboard" });
     } catch (error) {
       setServerError(error instanceof Error ? error.message : "Something went wrong.");
@@ -64,8 +68,8 @@ function LoginPage() {
     <div className={"flex min-h-screen items-center justify-center p-4"}>
       <Card className={"w-full max-w-sm"}>
         <CardHeader>
-          <CardTitle className={"text-xl"}>Sign in</CardTitle>
-          <CardDescription>Enter your credentials to access your account.</CardDescription>
+          <CardTitle className={"text-xl"}>Create an account</CardTitle>
+          <CardDescription>Enter your details below to get started.</CardDescription>
         </CardHeader>
 
         <CardContent>
@@ -89,7 +93,7 @@ function LoginPage() {
                 <FieldLabel htmlFor={"password"}>Password</FieldLabel>
                 <FieldContent>
                   <Input
-                    autoComplete={"current-password"}
+                    autoComplete={"new-password"}
                     id={"password"}
                     onChange={(event) => setPassword(event.target.value)}
                     type={"password"}
@@ -98,19 +102,32 @@ function LoginPage() {
                 </FieldContent>
               </Field>
 
+              <Field>
+                <FieldLabel htmlFor={"confirm-password"}>Confirm password</FieldLabel>
+                <FieldContent>
+                  <Input
+                    autoComplete={"new-password"}
+                    id={"confirm-password"}
+                    onChange={(event) => setConfirmPassword(event.target.value)}
+                    type={"password"}
+                    value={confirmPassword}
+                  />
+                </FieldContent>
+              </Field>
+
               {serverError !== null && <FieldError>{serverError}</FieldError>}
 
               <Button className={"w-full"} disabled={isSubmitting} type={"submit"}>
-                {isSubmitting ? <Spinner /> : "Sign in"}
+                {isSubmitting ? <Spinner /> : "Create account"}
               </Button>
             </FieldGroup>
           </form>
         </CardContent>
 
         <CardFooter className={"justify-center text-muted-foreground text-sm"}>
-          Don't have an account?&nbsp;
-          <Link className={"text-foreground underline-offset-4 hover:underline"} to={"/auth/new"}>
-            Sign up
+          Already have an account?&nbsp;
+          <Link className={"text-foreground underline-offset-4 hover:underline"} to={"/auth"}>
+            Sign in
           </Link>
         </CardFooter>
       </Card>

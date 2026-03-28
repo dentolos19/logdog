@@ -1,0 +1,387 @@
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { MoreHorizontalIcon, PencilIcon, Trash2Icon } from "lucide-react";
+import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "#/components/ui/alert-dialog";
+import { Button } from "#/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "#/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "#/components/ui/dropdown-menu";
+import { Field, FieldContent, FieldError, FieldGroup, FieldLabel } from "#/components/ui/field";
+import { Input } from "#/components/ui/input";
+import { Skeleton } from "#/components/ui/skeleton";
+import { Spinner } from "#/components/ui/spinner";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "#/components/ui/tabs";
+import {
+  createLogProcess,
+  deleteLogEntry,
+  getLogEntry,
+  type LogEntry,
+  type LogFile,
+  type LogProcess,
+  listLogFiles,
+  listLogProcesses,
+  updateLogEntry,
+} from "#/lib/server";
+import { PageHeader } from "#/routes/(platform)/_components/-page-header";
+import { ChatbotTab } from "#/routes/(platform)/logs/_components/-chatbot-tab";
+import { FilesTab } from "#/routes/(platform)/logs/_components/-files-tab";
+import { ProcessesTab } from "#/routes/(platform)/logs/_components/-processes-tab";
+import { TablesTab } from "#/routes/(platform)/logs/_components/-tables-tab";
+import { UploadSection } from "#/routes/(platform)/logs/_components/-upload-section";
+
+export const Route = createFileRoute("/(platform)/logs/$id")({
+  component: LogEntryPage,
+});
+
+function LogEntryPage() {
+  const { id } = Route.useParams();
+  const navigate = useNavigate();
+
+  const [entry, setEntry] = useState<LogEntry | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
+  const [processes, setProcesses] = useState<LogProcess[]>([]);
+  const [processesLoading, setProcessesLoading] = useState(false);
+  const [processesError, setProcessesError] = useState<string | null>(null);
+
+  const [files, setFiles] = useState<LogFile[]>([]);
+  const [filesLoading, setFilesLoading] = useState(false);
+  const [filesError, setFilesError] = useState<string | null>(null);
+
+  const [activeTab, setActiveTab] = useState("data");
+
+  const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
+  const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [renameName, setRenameName] = useState("");
+  const [renameError, setRenameError] = useState<string | null>(null);
+  const [isRenaming, setIsRenaming] = useState(false);
+
+  const fetchEntry = useCallback(async () => {
+    setFetchError(null);
+    try {
+      const data = await getLogEntry(id);
+      setEntry(data);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to load log entry.";
+      const notFound = message.includes("404") || message.toLowerCase().includes("not found");
+      if (notFound) {
+        await navigate({ to: "/logs" });
+        return;
+      }
+      setFetchError(message);
+    }
+  }, [id, navigate]);
+
+  const fetchProcesses = useCallback(async () => {
+    setProcessesLoading(true);
+    setProcessesError(null);
+    try {
+      const data = await listLogProcesses(id);
+      setProcesses(data);
+    } catch (error) {
+      setProcessesError(error instanceof Error ? error.message : "Failed to load processes.");
+    } finally {
+      setProcessesLoading(false);
+    }
+  }, [id]);
+
+  const fetchFiles = useCallback(async () => {
+    setFilesLoading(true);
+    setFilesError(null);
+    try {
+      const data = await listLogFiles(id);
+      setFiles(data);
+    } catch (error) {
+      setFilesError(error instanceof Error ? error.message : "Failed to load files.");
+    } finally {
+      setFilesLoading(false);
+    }
+  }, [id]);
+
+  const onUploadSuccess = useCallback(async () => {
+    await Promise.all([fetchEntry(), fetchProcesses(), fetchFiles()]);
+  }, [fetchEntry, fetchFiles, fetchProcesses]);
+
+  useEffect(() => {
+    void fetchEntry();
+    void fetchProcesses();
+    void fetchFiles();
+  }, [fetchEntry, fetchFiles, fetchProcesses]);
+
+  useEffect(() => {
+    if (activeTab !== "processes") {
+      return;
+    }
+
+    const hasActiveProcesses = processes.some(
+      (process) => process.status === "queued" || process.status === "processing",
+    );
+    if (!hasActiveProcesses) {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      void fetchProcesses();
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [activeTab, processes, fetchProcesses]);
+
+  const openRenameDialog = () => {
+    setRenameName(entry?.name ?? "");
+    setRenameError(null);
+    setIsRenameDialogOpen(true);
+  };
+
+  const localRenameValidation = useMemo(() => {
+    if (!renameName.trim()) {
+      return "Name is required.";
+    }
+    if (renameName.trim().length > 255) {
+      return "Name must be 255 characters or less.";
+    }
+    return null;
+  }, [renameName]);
+
+  const onRename = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setRenameError(null);
+
+    if (localRenameValidation !== null) {
+      setRenameError(localRenameValidation);
+      return;
+    }
+
+    setIsRenaming(true);
+    try {
+      const updated = await updateLogEntry(id, { name: renameName.trim() });
+      setEntry(updated);
+      setIsRenameDialogOpen(false);
+    } catch (error) {
+      setRenameError(error instanceof Error ? error.message : "Failed to rename log entry.");
+    } finally {
+      setIsRenaming(false);
+    }
+  };
+
+  const onDelete = async () => {
+    setIsDeleting(true);
+    try {
+      await deleteLogEntry(id);
+      await navigate({ to: "/logs" });
+    } catch (error) {
+      setIsDeleting(false);
+      setFetchError(error instanceof Error ? error.message : "Failed to delete log entry.");
+      setIsDeleteAlertOpen(false);
+    }
+  };
+
+  const onReprocessAll = async () => {
+    try {
+      await createLogProcess(id);
+      await fetchProcesses();
+      setActiveTab("processes");
+    } catch (error) {
+      setProcessesError(error instanceof Error ? error.message : "Failed to create process.");
+      setActiveTab("processes");
+    }
+  };
+
+  const tableNames = useMemo(() => {
+    const names = new Set<string>();
+    for (const process of processes) {
+      const result = process.result;
+      if (
+        result !== null &&
+        typeof result === "object" &&
+        Array.isArray((result as Record<string, unknown>).table_definitions)
+      ) {
+        for (const table of (result as Record<string, unknown>).table_definitions as Array<Record<string, unknown>>) {
+          const tableName = table.table_name;
+          if (typeof tableName === "string") {
+            names.add(tableName);
+          }
+        }
+      }
+    }
+    return [...names];
+  }, [processes]);
+
+  return (
+    <div className={"flex h-full flex-col"}>
+      <PageHeader
+        breadcrumbs={
+          entry
+            ? [{ label: "Logs", href: "/logs" }, { label: entry.name }]
+            : fetchError
+              ? [{ label: "Logs", href: "/logs" }]
+              : undefined
+        }
+        loading={entry === null && fetchError === null}
+      >
+        {entry !== null && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button aria-label={"Options"} size={"icon-sm"} variant={"ghost"}>
+                <MoreHorizontalIcon />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align={"end"}>
+              <DropdownMenuItem onClick={openRenameDialog}>
+                <PencilIcon />
+                Rename
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setIsDeleteAlertOpen(true)} variant={"destructive"}>
+                <Trash2Icon />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </PageHeader>
+
+      <main className={"flex flex-1 flex-col gap-6 overflow-auto"}>
+        {entry === null && fetchError === null && (
+          <div className={"flex flex-col gap-6"}>
+            <Skeleton className={"h-28 w-full rounded-lg"} />
+            <Skeleton className={"h-48 w-full rounded-lg"} />
+          </div>
+        )}
+
+        {fetchError !== null && (
+          <div className={"flex flex-col items-center gap-4 py-12 text-center"}>
+            <p className={"text-destructive text-sm"}>{fetchError}</p>
+            <Button onClick={() => void fetchEntry()} size={"sm"} variant={"outline"}>
+              Try again
+            </Button>
+          </div>
+        )}
+
+        {entry !== null && (
+          <Tabs className={"gap-0"} onValueChange={setActiveTab} value={activeTab}>
+            <TabsList className={"w-full border-b bg-sidebar"}>
+              <TabsTrigger value={"data"}>Data</TabsTrigger>
+              <TabsTrigger value={"chatbot"}>Chatbot</TabsTrigger>
+              <TabsTrigger value={"processes"}>Processes</TabsTrigger>
+              <TabsTrigger value={"files"}>Files</TabsTrigger>
+            </TabsList>
+
+            <TabsContent className={"flex flex-col gap-6 p-4"} value={"data"}>
+              <UploadSection logEntryId={id} onUploadSuccess={onUploadSuccess} />
+
+              <section className={"flex items-center justify-between gap-3"}>
+                <h2 className={"font-semibold text-sm"}>Processes</h2>
+                <Button onClick={() => void onReprocessAll()} size={"sm"} variant={"outline"}>
+                  Reprocess All Files
+                </Button>
+              </section>
+
+              <section className={"flex flex-col gap-3"}>
+                <div className={"flex items-center gap-2"}>
+                  <h2 className={"font-semibold text-sm"}>Tables</h2>
+                </div>
+                <TablesTab files={files} processes={processes} />
+              </section>
+            </TabsContent>
+
+            <TabsContent className={"flex flex-col gap-3 p-4"} value={"processes"}>
+              <div className={"flex items-center gap-2"}>
+                <h2 className={"font-semibold text-sm"}>Processes</h2>
+              </div>
+              <ProcessesTab error={processesError} isLoading={processesLoading} processes={processes} />
+            </TabsContent>
+
+            <TabsContent className={"flex flex-col gap-3 p-4"} value={"chatbot"}>
+              <ChatbotTab entryId={id} tableNames={tableNames} />
+            </TabsContent>
+
+            <TabsContent className={"flex flex-col gap-3 p-4"} value={"files"}>
+              <div className={"flex items-center gap-2"}>
+                <h2 className={"font-semibold text-sm"}>Files</h2>
+              </div>
+              <FilesTab
+                entryId={id}
+                error={filesError}
+                files={files}
+                isLoading={filesLoading}
+                onFilesChanged={() => void fetchFiles()}
+              />
+            </TabsContent>
+          </Tabs>
+        )}
+      </main>
+
+      <Dialog onOpenChange={setIsRenameDialogOpen} open={isRenameDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename Log Group</DialogTitle>
+            <DialogDescription>Enter a new name for this log group.</DialogDescription>
+          </DialogHeader>
+
+          <form className={"flex flex-col gap-4"} onSubmit={onRename}>
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor={"rename-log-group"}>Name</FieldLabel>
+                <FieldContent>
+                  <Input
+                    autoComplete={"off"}
+                    id={"rename-log-group"}
+                    onChange={(event) => setRenameName(event.target.value)}
+                    placeholder={"e.g. Production API Logs"}
+                    value={renameName}
+                  />
+                </FieldContent>
+              </Field>
+
+              {renameError !== null && <FieldError>{renameError}</FieldError>}
+
+              <div className={"flex justify-end gap-2"}>
+                <Button onClick={() => setIsRenameDialogOpen(false)} type={"button"} variant={"outline"}>
+                  Cancel
+                </Button>
+                <Button disabled={isRenaming} type={"submit"}>
+                  {isRenaming ? <Spinner /> : "Rename"}
+                </Button>
+              </div>
+            </FieldGroup>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog onOpenChange={setIsDeleteAlertOpen} open={isDeleteAlertOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete log group?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete <strong className={"text-foreground"}>{entry?.name}</strong> and all
+              associated data. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction disabled={isDeleting} onClick={() => void onDelete()} variant={"destructive"}>
+              {isDeleting ? <Spinner /> : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}

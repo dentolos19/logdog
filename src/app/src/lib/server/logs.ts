@@ -1,13 +1,13 @@
-import { $fetch } from "#/lib/server/fetcher";
+import { $fetch } from "#/lib/server/utils";
 
-type LogEntry = {
+export type LogEntry = {
   id: string;
   user_id: string;
   name: string;
   created_at: string;
 };
 
-type LogFile = {
+export type LogFile = {
   id: string;
   entry_id: string;
   asset_id: string;
@@ -17,7 +17,7 @@ type LogFile = {
   created_at: string;
 };
 
-type LogProcess = {
+export type LogProcess = {
   id: string;
   entry_id: string;
   status: string;
@@ -28,13 +28,13 @@ type LogProcess = {
   updated_at: string;
 };
 
-type UploadFilesResponse = {
+export type UploadFilesResponse = {
   process_id: string;
   status: string;
   files: LogFile[];
 };
 
-type ProcessEnqueuedResponse = {
+export type ProcessEnqueuedResponse = {
   process_id: string;
   status: string;
 };
