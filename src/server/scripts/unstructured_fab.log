@@ -1,0 +1,70 @@
+TOOL-CMP-04 turbo pump vibration trending upward -- 1.7mm/s RMS. Threshold=2.5mm/s. Ordering replacement (ETA 5 days).
+SYS:TOOL-CMP-04:MOD3:GAS_PANEL valve V-6 timeout after 3006ms. State=OPENING. Retry 2/3.
+*** ALARM *** EQP-ETCH-03 pressure spike at 06:03:16 -- chamber pressure jumped to 295mTorr, interlock NOT tripped
+Chuck temperature ramping: current=322C target=883C rate=5C/min on CHAMBER-PVD-01
+FAULT EQP-ETCH-03: RF matchbox tuning failure during PRE_CLEAN. Reflected power=95W (limit 50W). Wafer W0045 aborted mid-process.
+Shift handover - sliu to night shift. TOOL-CMP-04 running recipe RECIPE-NITRIDE-200, no issues. Particle counts nominal.
+Scheduled downtime: EQP-ETCH-03 offline for 4hrs starting 2026-03-07. Reason: quarterly preventive maintenance and RF generator calibration.
+Run #4953 | EQP-ETCH-03 | W0200 | RCP-POLY-ETCH | POST_CLEAN | result: PASS | thickness=260.2nm
+Scheduled downtime: EQP-CVD-01 offline for 28hrs starting 2026-03-07. Reason: quarterly preventive maintenance and RF generator calibration.
+Shift handover - sliu to night shift. EQP-CVD-01 running recipe RECIPE-NITRIDE-200, no issues. Particle counts nominal.
+FAULT TOOL-CMP-04: RF matchbox tuning failure during DEPOSITION. Reflected power=61W (limit 50W). Wafer W0200 aborted mid-process.
+EQP-ETCH-03 self-test sequence: chuck vacuum OK, He backside 6.0Torr OK, lift pins OK, clamp OK. Ready.
+CHAMBER-PVD-01 turbo pump vibration trending upward -- 2.7mm/s RMS. Threshold=2.5mm/s. Ordering replacement (ETA 5 days).
+EQP-CVD-01 turbo pump vibration trending upward -- 0.8mm/s RMS. Threshold=2.5mm/s. Ordering replacement (ETA 5 days).
+PM completed on TOOL-CMP-04 by tech sliu. Replaced showerhead (P/N SH-934-96), cleaned chamber walls, ran seasoning recipe x3. Particle qual: 35 counts (spec <100).
+EQP-ETCH-03 reported ERRCODE=CHK_01 at 06:21:30. Subsystem: gas delivery. Operator acknowledged.
+Leak check results for EQP-CVD-01 loadlock: He rate = 9.5E-9 atm-cc/s. PASS (spec < 1.0E-8).
+Scheduled downtime: TOOL-CMP-04 offline for 7hrs starting 2026-03-07. Reason: quarterly preventive maintenance and RF generator calibration.
+FAULT EQP-ETCH-03: RF matchbox tuning failure during INSPECTION. Reflected power=72W (limit 50W). Wafer W0200 aborted mid-process.
+Metrology flag: W0012 thickness out of spec at 60.4nm (target 226.1nm). CHAMBER-PVD-01 recipe RCP-POLY-ETCH may need adjustment.
+DI water resistivity=18.1MOhm-cm (spec>17.5). Rinse cycle W0113 complete.
+PM completed on TOOL-CMP-04 by tech akumar. Replaced showerhead (P/N SH-282-57), cleaned chamber walls, ran seasoning recipe x3. Particle qual: 130 counts (spec <100).
+NOTE from jchen: wafer W0045 shows edge exclusion issue, possibly chuck alignment on EQP-CVD-01. Will monitor next 3 runs.
+mwilliams override: skipped Step INSPECTION for W0012 per engineering request #E-5257. Deviation form attached.
+Scheduled downtime: TOOL-CMP-04 offline for 21hrs starting 2026-03-07. Reason: quarterly preventive maintenance and RF generator calibration.
+CHAMBER-PVD-01 self-test sequence: chuck vacuum OK, He backside 13.0Torr OK, lift pins OK, clamp OK. Ready.
+[06:50:16] EQP-ETCH-03 >> process log: started RCP-OX-THIN on W0113, lot=LOT-A2024, step=DEPOSITION, RF=2780W bias=460V
+Post-dep measurement on W0200 (lot FOUP-X012): film thickness=144.2nm across 49 sites, uniformity=90.5%, target was 102.5nm +/-5%.
+PM completed on TOOL-CMP-04 by tech sliu. Replaced showerhead (P/N SH-617-10), cleaned chamber walls, ran seasoning recipe x3. Particle qual: 157 counts (spec <100).
+*** ALARM *** TOOL-CMP-04 pressure spike at 06:46:53 -- chamber pressure jumped to 50mTorr, interlock NOT tripped
+Chuck temperature ramping: current=632C target=799C rate=5C/min on TOOL-CMP-04
+Run #6109 | TOOL-CMP-04 | W0045 | RCP-OX-THIN | PRE_CLEAN | result: MARGINAL | thickness=479.3nm
+CHAMBER-PVD-01 reported ERRCODE=RF_33 at 06:16:32. Subsystem: gas delivery. Operator acknowledged.
+03/07/2026 07:00:30 --- Equipment event --- TOOL-CMP-04: door opened by operator mwilliams. Wafer W0012 on chuck. Process PAUSED.
+PM completed on TOOL-CMP-04 by tech sliu. Replaced showerhead (P/N SH-749-60), cleaned chamber walls, ran seasoning recipe x3. Particle qual: 114 counts (spec <100).
+SYS:TOOL-CMP-04:MOD3:GAS_PANEL valve V-2 timeout after 2367ms. State=OPENING. Retry 1/3.
+TOOL-CMP-04 self-test sequence: chuck vacuum OK, He backside 13.5Torr OK, lift pins OK, clamp OK. Ready.
+Post-dep measurement on W0012 (lot LOT-B3019): film thickness=373.0nm across 49 sites, uniformity=96.1%, target was 204.0nm +/-5%.
+Particle inspection W0200: 188 adders >0.1um detected. Previous wafer had 32. Possible chamber contamination on CHAMBER-PVD-01.
+NOTE from sliu: wafer W0200 shows edge exclusion issue, possibly chuck alignment on EQP-ETCH-03. Will monitor next 3 runs.
+INCIDENT REPORT
+  Tool: EQP-CVD-01
+  Date: 2026-03-07
+  Operator: sliu
+  Description: Ar mass flow controller stuck at 213sccm during POST_CLEAN
+  Impact: wafer W0113 scrapped, lot LOT-A2024 on hold
+DI water resistivity=15.5MOhm-cm (spec>17.5). Rinse cycle W0078 complete.
+Operator akumar logged chamber condition: slight discoloration on showerhead, scheduled cleaning after lot LOT-B3019 completes
+2026-03-07 06:43:00 --- Equipment event --- CHAMBER-PVD-01: door opened by operator sliu. Wafer W0113 on chuck. Process PAUSED.
+NOTE from akumar: wafer W0078 shows edge exclusion issue, possibly chuck alignment on EQP-ETCH-03. Will monitor next 3 runs.
+Gas stabilization phase: SiH4=356sccm, total flow=401sccm, chamber pressure settling at 187mTorr
+akumar override: skipped Step DEPOSITION for W0045 per engineering request #E-9752. Deviation form attached.
+INCIDENT REPORT
+  Tool: EQP-ETCH-03
+  Date: 2026-03-07
+  Operator: akumar
+  Description: Ar mass flow controller stuck at 223sccm during INSPECTION
+  Impact: wafer W0113 scrapped, lot LOT-B3019 on hold
+[06:24:00] EQP-CVD-01 >> process log: started RCP-OX-THIN on W0200, lot=LOT-A2024, step=POST_CLEAN, RF=1407W bias=499V
+Endpoint detection triggered at 253s into PRE_CLEAN step. Emission intensity drop of 10.3% on Ar line.
+Leak check results for EQP-ETCH-03 loadlock: He rate = 4.4E-9 atm-cc/s. PASS (spec < 1.0E-8).
+TOOL-CMP-04 reported ERRCODE=CHK_01 at 07:04:36. Subsystem: gas delivery. Operator acknowledged.
+Run #3080 | TOOL-CMP-04 | W0045 | RCP-POLY-ETCH | PRE_CLEAN | result: FAIL | thickness=8.5nm
+FAULT TOOL-CMP-04: RF matchbox tuning failure during POST_CLEAN. Reflected power=94W (limit 50W). Wafer W0012 aborted mid-process.
+FAULT EQP-CVD-01: RF matchbox tuning failure during PRE_CLEAN. Reflected power=92W (limit 50W). Wafer W0200 aborted mid-process.
+*** ALARM *** EQP-CVD-01 pressure spike at 06:12:50 -- chamber pressure jumped to 98mTorr, interlock NOT tripped
+07-Mar-2026 06:10:16 --- Equipment event --- EQP-ETCH-03: door opened by operator akumar. Wafer W0113 on chuck. Process PAUSED.
+Post-dep measurement on W0045 (lot FOUP-X012): film thickness=56.9nm across 49 sites, uniformity=95.8%, target was 82.3nm +/-5%.
+Post-dep measurement on W0113 (lot FOUP-X012): film thickness=150.4nm across 49 sites, uniformity=99.1%, target was 204.7nm +/-5%.
+akumar override: skipped Step ETCH for W0012 per engineering request #E-7928. Deviation form attached.

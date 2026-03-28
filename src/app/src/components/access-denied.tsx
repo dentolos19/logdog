@@ -11,7 +11,9 @@ export default function AccessDenied() {
           <EmptyDescription>You do not have permission to access this resource.</EmptyDescription>
         </EmptyHeader>
         <EmptyContent>
-          <Button render={<Link to={"/"}>Home</Link>}></Button>
+          <Button asChild>
+            <Link to={"/"}>Home</Link>
+          </Button>
         </EmptyContent>
       </Empty>
     </div>

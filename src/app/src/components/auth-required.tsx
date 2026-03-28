@@ -11,7 +11,9 @@ export default function AuthRequired() {
           <EmptyDescription>You need to be signed in to access this resource.</EmptyDescription>
         </EmptyHeader>
         <EmptyContent>
-          <Button render={<Link to={"/auth"}>Login</Link>}></Button>
+          <Button>
+            <Link to={"/auth"}>Login</Link>
+          </Button>
         </EmptyContent>
       </Empty>
     </div>

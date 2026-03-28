@@ -1,0 +1,27 @@
+[project]
+name = "logdog-server"
+version = "1.0.0"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+  "bcrypt",
+  "boto3",
+  "chardet",
+  "drain3",
+  "fastapi[standard]",
+  "langchain-openrouter",
+  "pydantic>=2.0.0,<2.12",
+  "psycopg2-binary",
+  "python-dotenv",
+  "python-jose[cryptography]",
+  "sqlalchemy",
+  "uvicorn",
+]
+
+[dependency-groups]
+dev = ["pytest", "httpx"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]

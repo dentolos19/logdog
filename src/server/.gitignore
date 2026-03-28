@@ -1,0 +1,22 @@
+# Editor configurations
+.vs/
+.idea/
+*.iml
+
+# Environment files
+.venv/
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+build/
+dist/
+
+# User files
+.env*
+!.env*.template
+
+# Miscellaneous files
+.DS_Store
+Desktop.ini
+Thumbs.db
+!.gitkeep
