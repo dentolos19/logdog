@@ -75,7 +75,7 @@ export function ProcessesTab({ processes, isLoading, error }: ProcessesTabProps)
 function ProcessRow({ process, onViewDetails }: { process: LogProcess; onViewDetails?: () => void }) {
   const formattedDate = format(new Date(process.created_at), "MMM d, yyyy 'at' h:mm a");
   const parsedResult = asRecord(process.result);
-  const generatedTables = asArray(parsedResult.generated_tables);
+  const generatedTables = parsedResult !== null ? asArray(parsedResult.generated_tables) : [];
   const generatedTableCount = generatedTables.length;
   const isInProgress = process.status === "queued" || process.status === "processing";
 
@@ -219,7 +219,7 @@ function ProcessDetailsDialog({ process, onClose }: { process: LogProcess; onClo
                 <span className={"font-medium text-muted-foreground text-xs"}>Files ({fileObservations.length})</span>
                 <div className={"flex flex-col divide-y rounded-md border"}>
                   {fileObservations.map((observation, index) => {
-                    const row = asRecord(observation);
+                    const row = asRecord(observation) ?? {};
                     return (
                       <div
                         className={"flex items-center gap-3 px-3 py-2"}
@@ -247,7 +247,7 @@ function ProcessDetailsDialog({ process, onClose }: { process: LogProcess; onClo
               </span>
               <div className={"flex flex-col divide-y rounded-md border"}>
                 {generatedTables.map((table, index) => {
-                  const row = asRecord(table);
+                  const row = asRecord(table) ?? {};
                   const fileName = asNullableString(row.file_name);
                   const isNormalized = Boolean(row.is_normalized);
                   return (
@@ -287,7 +287,7 @@ function ProcessDetailsDialog({ process, onClose }: { process: LogProcess; onClo
                   <AccordionContent>
                     <div className={"flex flex-col divide-y"}>
                       {columns.map((column, index) => {
-                        const row = asRecord(column);
+                        const row = asRecord(column) ?? {};
                         return (
                           <div
                             className={"flex items-start gap-3 px-3 py-2"}
@@ -386,10 +386,14 @@ function ProcessFileList({
         <AccordionContent>
           <div className={"flex flex-col divide-y rounded-md border"}>
             {fileObservations.map((observation, index) => {
-              const row = asRecord(observation);
+              const row = asRecord(observation) ?? {};
               const filename = asString(row.filename, "unknown");
               const matched = generatedTables.find((table) => {
                 const tableRecord = asRecord(table);
+                if (tableRecord === null) {
+                  return false;
+                }
+
                 return asString(tableRecord.file_name, "") === filename;
               });
               const matchedRecord = matched ? asRecord(matched) : null;
