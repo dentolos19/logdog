@@ -62,7 +62,7 @@ class LogEntry(Base):
     files = relationship("LogFile", back_populates="entry")
     tables = relationship("LogTable", back_populates="entry")
     messages = relationship("LogMessage", back_populates="entry")
-    parse_processes = relationship("LogParseProcess", back_populates="entry")
+    parse_processes = relationship("LogProcess", back_populates="entry")
 
 
 class LogFile(Base):
@@ -123,8 +123,8 @@ class LogMessage(Base):
     entry = relationship("LogEntry", back_populates="messages")
 
 
-class LogParseProcess(Base):
-    __tablename__ = "log_parse_processes"
+class LogProcess(Base):
+    __tablename__ = "log_processes"
 
     id = Column(
         UUID(as_uuid=True),

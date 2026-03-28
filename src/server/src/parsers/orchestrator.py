@@ -14,7 +14,7 @@ from src.lib.megabase import (
     init_megabase,
     insert_record as megabase_insert_record,
 )
-from src.lib.models import Asset, LogEntry, LogFile, LogParseProcess, LogTable
+from src.lib.models import Asset, LogEntry, LogFile, LogProcess, LogTable
 from src.lib.storage import download_file
 from src.parsers.contracts import ClassificationResult, ParserPipelineResult
 from src.parsers.preprocessor import FileInput, LogPreprocessorService
@@ -44,7 +44,7 @@ def create_parse_process(
             classification = LogPreprocessorService(table_name="logs").classify(file_inputs)
             classification_json = classification.model_dump_json()
 
-        process = LogParseProcess(
+        process = LogProcess(
             entry_id=_uuid_or_raw(entry_id),
             status="queued",
             classification=classification_json,
@@ -102,9 +102,7 @@ def run_parse_job(
     try:
         register_pipelines()
 
-        process = (
-            db.query(LogParseProcess).filter_by(id=_uuid_or_raw(process_id), entry_id=_uuid_or_raw(entry_id)).first()
-        )
+        process = db.query(LogProcess).filter_by(id=_uuid_or_raw(process_id), entry_id=_uuid_or_raw(entry_id)).first()
         if process is None:
             logger.error("run_parse_job: process %s not found for entry %s", process_id, entry_id)
             return
@@ -141,7 +139,7 @@ def run_parse_job(
         logger.info("run_parse_job: process=%s completed", process_id)
     except Exception as error:  # noqa: BLE001
         logger.exception("run_parse_job: unhandled error for process %s", process_id)
-        process = db.query(LogParseProcess).filter_by(id=_uuid_or_raw(process_id)).first()
+        process = db.query(LogProcess).filter_by(id=_uuid_or_raw(process_id)).first()
         _fail(db, process, str(error))
     finally:
         megabase_db.close()
@@ -376,7 +374,7 @@ def _uuid_or_raw(value: str) -> Any:
         return value
 
 
-def _fail(db: Session, process: LogParseProcess | None, message: str) -> None:
+def _fail(db: Session, process: LogProcess | None, message: str) -> None:
     if process is None:
         return
     try:
