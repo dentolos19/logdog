@@ -1,7 +1,7 @@
 import { createFileRoute, notFound } from "@tanstack/react-router";
 import { isDevelopment } from "#/environment";
-import { PageHeader } from "#/routes/(platform)/_components/-page-header";
-import { ParserTesterButton } from "#/routes/(platform)/dashboard/_components/-parser-tester";
+import { PageHeader } from "#/routes/(platform)/-components/page-header";
+import { ParserTesterButton } from "#/routes/(platform)/dashboard/-components/parser-tester";
 
 export const Route = createFileRoute("/(platform)/development/")({
   component: DevelopmentPage,

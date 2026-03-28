@@ -1,4 +1,4 @@
-import { clearAuthTokens, getRefreshToken, setAuthTokens } from "#/lib/server/store";
+import { clearAuthTokens, getRefreshToken, setAuthTokens } from "#/lib/server/auth-tokens";
 import { $fetch } from "#/lib/server/utils";
 
 type RegisterPayload = {

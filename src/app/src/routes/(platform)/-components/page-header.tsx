@@ -1,6 +1,6 @@
 import { type ReactNode, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { type BreadcrumbItem, usePageHeaderContext } from "#/routes/(platform)/_components/-page-header-context";
+import { type BreadcrumbItem, usePageHeaderContext } from "#/routes/(platform)/-components/page-header-context";
 
 type PageHeaderProps = {
   breadcrumbs?: BreadcrumbItem[];

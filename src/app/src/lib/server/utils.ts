@@ -1,4 +1,4 @@
-import { getAccessToken } from "#/lib/server/store";
+import { getAccessToken } from "#/lib/server/auth-tokens";
 
 const API_BASE_PATH = "/api";
 

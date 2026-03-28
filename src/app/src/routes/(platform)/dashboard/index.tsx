@@ -2,8 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { ActivityIcon, FileIcon, FolderOpenIcon, RowsIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { listLogEntries, listLogFiles, listLogProcesses } from "#/lib/server";
-import { PageHeader } from "#/routes/(platform)/_components/-page-header";
-import { StatCard } from "#/routes/(platform)/dashboard/_components/-stat-card";
+import { PageHeader } from "#/routes/(platform)/-components/page-header";
+import { StatCard } from "#/routes/(platform)/dashboard/-components/stat-card";
 
 export const Route = createFileRoute("/(platform)/dashboard/")({
   component: DashboardPage,
