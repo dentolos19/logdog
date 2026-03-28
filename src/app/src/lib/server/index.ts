@@ -6,10 +6,4 @@ export const $fetch = (path: string, init?: RequestInit) => {
   return instance.fetch(`http://cloudflare.container${path}`, init);
 };
 
-export const getRoot = () => {
-  return $fetch("/").then((res) => res.text());
-};
-
-export const getEnv = () => {
-  return $fetch("/env").then((res) => res.json());
-};
+export * from "./root";

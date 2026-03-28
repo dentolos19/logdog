@@ -1,101 +1,99 @@
 import hashlib
-import os
-from pathlib import Path
+import uuid
 
 import boto3
 from botocore.exceptions import ClientError
-from fastapi import Depends, HTTPException, status
-from lib.database import get_db
-from lib.models import Asset
+from fastapi import Depends
 from sqlalchemy.orm import Session
 
-_LOCAL_DIR: Path = Path("./store")
+from src.environment import BUCKET_ACCESS_KEY, BUCKET_ENDPOINT_URL, BUCKET_NAME, BUCKET_PREFIX, BUCKET_SECRET_KEY
+from src.lib.database import get_database
+from src.lib.models import Asset
+
+_s3_client = None
 
 
-def _bucket_config() -> tuple[str, str, str, str, str]:
-    endpoint_url = os.getenv("BUCKET_ENDPOINT_URL", "").strip()
-    access_key = os.getenv("BUCKET_ACCESS_KEY", "").strip()
-    secret_key = os.getenv("BUCKET_SECRET_KEY", "").strip()
-    bucket_name = os.getenv("BUCKET_NAME", "").strip()
-    bucket_prefix = os.getenv("BUCKET_PREFIX", "").strip().strip("/")
-    return endpoint_url, access_key, secret_key, bucket_name, bucket_prefix
+def _get_s3_client():
+    global _s3_client
+    if _s3_client is None:
+        _s3_client = boto3.client(
+            "s3",
+            endpoint_url=BUCKET_ENDPOINT_URL.get_secret_value(),
+            aws_access_key_id=BUCKET_ACCESS_KEY.get_secret_value(),
+            aws_secret_access_key=BUCKET_SECRET_KEY.get_secret_value(),
+        )
+    return _s3_client
 
 
-def _bucket_key(file_id: str, bucket_prefix: str) -> str:
-    if not bucket_prefix:
-        return file_id
-    return f"{bucket_prefix}/{file_id}"
+def _get_s3_key(asset_id: uuid.UUID, filename: str) -> str:
+    prefix = BUCKET_PREFIX.get_secret_value()
+    return f"{prefix}/{asset_id}/{filename}"
 
 
-def _s3_client(endpoint_url: str, access_key: str, secret_key: str):
-    return boto3.client(
-        "s3",
-        endpoint_url=endpoint_url,
-        aws_access_key_id=access_key,
-        aws_secret_access_key=secret_key,
+def upload_file(file_data: bytes, filename: str, content_type: str, db: Session = Depends(get_database)) -> Asset:
+    asset_id = uuid.uuid4()
+    file_hash = hashlib.sha256(file_data).hexdigest()
+    s3_key = _get_s3_key(asset_id, filename)
+
+    client = _get_s3_client()
+    client.put_object(
+        Bucket=BUCKET_NAME.get_secret_value(),
+        Key=s3_key,
+        Body=file_data,
+        ContentType=content_type,
     )
 
-
-def upload_file(raw_data: bytes, name: str, size: int, mime_type: str, db: Session = Depends(get_db)) -> Asset:
-    file_hash = hashlib.sha256(raw_data).hexdigest()
-    record = Asset(name=name, size=size, type=mime_type, hash=file_hash)
-    db.add(record)
+    asset = Asset(
+        id=asset_id,
+        name=filename,
+        size=len(file_data),
+        type=content_type,
+        hash=file_hash,
+    )
+    db.add(asset)
     db.commit()
-    db.refresh(record)
-
-    endpoint_url, access_key, secret_key, bucket_name, bucket_prefix = _bucket_config()
-    use_s3 = bool(endpoint_url and access_key and secret_key and bucket_name)
-
-    if use_s3:
-        key = _bucket_key(record.id, bucket_prefix)
-        _s3_client(endpoint_url, access_key, secret_key).put_object(Bucket=bucket_name, Key=key, Body=raw_data)
-    else:
-        _LOCAL_DIR.mkdir(parents=True, exist_ok=True)
-        (_LOCAL_DIR / record.id).write_bytes(raw_data)
-
-    return record
+    db.refresh(asset)
+    return asset
 
 
-def get_file(file_id: str, db: Session = Depends(get_db)) -> bytes:
-    record = db.get(Asset, file_id)
-    if record is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found.")
+def download_file(asset_id: uuid.UUID, db: Session = Depends(get_database)) -> bytes | None:
+    asset = db.query(Asset).filter(Asset.id == asset_id).first()
+    if not asset:
+        return None
 
-    endpoint_url, access_key, secret_key, bucket_name, bucket_prefix = _bucket_config()
-    use_s3 = bool(endpoint_url and access_key and secret_key and bucket_name)
+    s3_key = _get_s3_key(asset_id, asset.name)
+    client = _get_s3_client()
 
-    if use_s3:
-        try:
-            key = _bucket_key(file_id, bucket_prefix)
-            response = _s3_client(endpoint_url, access_key, secret_key).get_object(Bucket=bucket_name, Key=key)
-            return response["Body"].read()
-        except ClientError as error:
-            error_code = str(error.response.get("Error", {}).get("Code", ""))
-            if error_code in {"404", "NoSuchKey", "NotFound"}:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found.") from error
-            raise
-    else:
-        path = _LOCAL_DIR / file_id
-        if not path.exists():
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found.")
-        return path.read_bytes()
+    try:
+        response = client.get_object(
+            Bucket=BUCKET_NAME.get_secret_value(),
+            Key=s3_key,
+        )
+        return response["Body"].read()
+    except ClientError:
+        return None
 
 
-def delete_file(file_id: str, db: Session = Depends(get_db)) -> None:
-    record = db.get(Asset, file_id)
-    if record is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found.")
+def get_file(asset_id: uuid.UUID, db: Session = Depends(get_database)) -> Asset | None:
+    return db.query(Asset).filter(Asset.id == asset_id).first()
 
-    endpoint_url, access_key, secret_key, bucket_name, bucket_prefix = _bucket_config()
-    use_s3 = bool(endpoint_url and access_key and secret_key and bucket_name)
 
-    if use_s3:
-        key = _bucket_key(file_id, bucket_prefix)
-        _s3_client(endpoint_url, access_key, secret_key).delete_object(Bucket=bucket_name, Key=key)
-    else:
-        path = _LOCAL_DIR / file_id
-        if path.exists():
-            path.unlink()
+def delete_file(asset_id: uuid.UUID, db: Session = Depends(get_database)) -> bool:
+    asset = db.query(Asset).filter(Asset.id == asset_id).first()
+    if not asset:
+        return False
 
-    db.delete(record)
+    s3_key = _get_s3_key(asset_id, asset.name)
+    client = _get_s3_client()
+
+    try:
+        client.delete_object(
+            Bucket=BUCKET_NAME.get_secret_value(),
+            Key=s3_key,
+        )
+    except ClientError:
+        pass
+
+    db.delete(asset)
     db.commit()
+    return True
