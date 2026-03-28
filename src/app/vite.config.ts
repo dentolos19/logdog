@@ -10,15 +10,15 @@ const config = defineConfig({
     tsconfigPaths: true,
   },
   plugins: [
-    tanstackStart(),
-    viteReact(),
-    tailwindcss(),
-    devtools(),
     cloudflare({
       viteEnvironment: {
         name: "ssr",
       },
     }),
+    tanstackStart(),
+    viteReact(),
+    tailwindcss(),
+    devtools(),
   ],
 });
 

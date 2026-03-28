@@ -67,8 +67,17 @@ app.include_router(stats_router)
 
 @app.get("/")
 async def root():
-    return {"message": "Hello, World!"}
+    return "Hello, world!"
 
+@app.get("/test")
+async def test():
+    return "Hello, test!"
+
+@app.get("/env")
+async def show_env():
+    for key, val in os.environ.items():
+        print(f"{key}={val}")
+    return os.environ.items()
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
