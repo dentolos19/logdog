@@ -16,7 +16,7 @@ import { Input } from "#/components/ui/input";
 import { Skeleton } from "#/components/ui/skeleton";
 import { Spinner } from "#/components/ui/spinner";
 import { createLogEntry, type LogEntry, listLogEntries } from "#/lib/server";
-import { PageHeader } from "#/routes/(platform)/_components/-page-header";
+import { PageHeader } from "#/routes/(platform)/-components/page-header";
 
 export const Route = createFileRoute("/(platform)/logs/")({
   component: LogsPage,

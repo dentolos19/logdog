@@ -5,11 +5,13 @@ from src.lib.database import create_tables
 from src.parsers.orchestrator import register_pipelines
 from src.routes.auth import get_current_user, router as auth_router
 from src.routes.logs import router as logs_router
+from src.routes.stats import router as stats_router
 
 app = FastAPI()
 
 app.include_router(auth_router)
 app.include_router(logs_router)
+app.include_router(stats_router)
 
 
 @app.on_event("startup")

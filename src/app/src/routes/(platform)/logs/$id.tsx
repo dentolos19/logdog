@@ -36,12 +36,12 @@ import {
   listLogProcesses,
   updateLogEntry,
 } from "#/lib/server";
-import { PageHeader } from "#/routes/(platform)/_components/-page-header";
-import { ChatbotTab } from "#/routes/(platform)/logs/_components/-chatbot-tab";
-import { FilesTab } from "#/routes/(platform)/logs/_components/-files-tab";
-import { ProcessesTab } from "#/routes/(platform)/logs/_components/-processes-tab";
-import { TablesTab } from "#/routes/(platform)/logs/_components/-tables-tab";
-import { UploadSection } from "#/routes/(platform)/logs/_components/-upload-section";
+import { PageHeader } from "#/routes/(platform)/-components/page-header";
+import { FilesTab } from "#/routes/(platform)/logs/-components/files-tab";
+import { ChatbotTab } from "#/routes/(platform)/logs/-components/chatbot-tab";
+import { ProcessesTab } from "#/routes/(platform)/logs/-components/processes-tab";
+import { TablesTab } from "#/routes/(platform)/logs/-components/tables-tab";
+import { UploadSection } from "#/routes/(platform)/logs/-components/upload-section";
 
 export const Route = createFileRoute("/(platform)/logs/$id")({
   component: LogEntryPage,

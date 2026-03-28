@@ -39,6 +39,38 @@ export type ProcessEnqueuedResponse = {
   status: string;
 };
 
+export type DashboardStats = {
+  log_group_count: number;
+  total_files: number;
+  total_rows: number;
+  processes: {
+    queued: number;
+    processing: number;
+    completed: number;
+    failed: number;
+  };
+};
+
+export type ChatMessage = {
+  id: string;
+  role: string;
+  content?: string;
+  parts?: Array<Record<string, unknown>>;
+  [key: string]: unknown;
+};
+
+type ChatMessagesResponse = {
+  messages: ChatMessage[];
+};
+
+type ReplaceChatMessagesPayload = {
+  messages: ChatMessage[];
+};
+
+type ReplaceChatMessagesResponse = {
+  saved_messages: number;
+};
+
 type MessageResponse = {
   message: string;
 };
@@ -172,4 +204,27 @@ export async function createLogProcess(entryId: string, payload?: CreateProcessP
   });
 
   return parseJsonResponse<ProcessEnqueuedResponse>(response);
+}
+
+export async function getDashboardStats() {
+  const response = await $fetch("/stats");
+  return parseJsonResponse<DashboardStats>(response);
+}
+
+export async function getLogChatMessages(entryId: string) {
+  const response = await $fetch(`/logs/${entryId}/chat/messages`);
+  const payload = await parseJsonResponse<ChatMessagesResponse>(response);
+  return payload.messages;
+}
+
+export async function replaceLogChatMessages(entryId: string, payload: ReplaceChatMessagesPayload) {
+  const response = await $fetch(`/logs/${entryId}/chat/messages`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  return parseJsonResponse<ReplaceChatMessagesResponse>(response);
 }

@@ -7,7 +7,7 @@ import { Field, FieldContent, FieldError, FieldGroup, FieldLabel } from "#/compo
 import { Input } from "#/components/ui/input";
 import { Spinner } from "#/components/ui/spinner";
 
-export const Route = createFileRoute("/(public)/auth")({
+export const Route = createFileRoute("/(public)/auth/")({
   component: LoginPage,
 });
 

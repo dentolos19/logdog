@@ -78,6 +78,18 @@ class ProcessEnqueuedResponse(BaseModel):
     status: str
 
 
+class PersistedMessagesResponse(BaseModel):
+    messages: list[dict[str, Any]]
+
+
+class ReplaceMessagesRequest(BaseModel):
+    messages: list[dict[str, Any]]
+
+
+class ReplaceMessagesResponse(BaseModel):
+    saved_messages: int
+
+
 def _uuid_or_raw(value: str):
     try:
         return uuid.UUID(str(value))
@@ -98,6 +110,21 @@ def _parse_json(value: str | None):
         return parsed
 
     return {"value": parsed}
+
+
+def _parse_message_payload(payload: str | None, role: str, content: str):
+    if payload is None or payload == "":
+        return {"role": role, "content": content}
+
+    try:
+        parsed = json.loads(payload)
+    except (json.JSONDecodeError, TypeError):
+        return {"role": role, "content": content}
+
+    if isinstance(parsed, dict):
+        return parsed
+
+    return {"role": role, "content": content}
 
 
 def _entry_response(entry: LogEntry):
@@ -458,3 +485,58 @@ def create_entry_process(
     )
 
     return ProcessEnqueuedResponse(process_id=process_id, status="queued")
+
+
+@router.get("/{entry_id}/chat/messages", response_model=PersistedMessagesResponse)
+def get_chat_messages(
+    entry_id: str,
+    current_user: User = Depends(get_current_user),
+    database: Session = Depends(get_database),
+):
+    entry = _require_owned_entry(database=database, entry_id=entry_id, user_id=current_user.id)
+    messages = (
+        database.query(LogMessage).filter(LogMessage.entry_id == entry.id).order_by(LogMessage.created_at.asc()).all()
+    )
+
+    return PersistedMessagesResponse(
+        messages=[_parse_message_payload(message.payload, message.role, message.content) for message in messages]
+    )
+
+
+@router.put("/{entry_id}/chat/messages", response_model=ReplaceMessagesResponse)
+def replace_chat_messages(
+    entry_id: str,
+    payload: ReplaceMessagesRequest,
+    current_user: User = Depends(get_current_user),
+    database: Session = Depends(get_database),
+):
+    entry = _require_owned_entry(database=database, entry_id=entry_id, user_id=current_user.id)
+
+    for message in database.query(LogMessage).filter(LogMessage.entry_id == entry.id).all():
+        database.delete(message)
+
+    saved_messages = 0
+    for message in payload.messages:
+        role = str(message.get("role", "assistant"))
+        if role == "":
+            role = "assistant"
+
+        content = message.get("content", "")
+        if isinstance(content, str):
+            normalized_content = content
+        else:
+            normalized_content = json.dumps(content, ensure_ascii=True)
+
+        database.add(
+            LogMessage(
+                entry_id=entry.id,
+                role=role,
+                content=normalized_content,
+                payload=json.dumps(message, ensure_ascii=True),
+            )
+        )
+        saved_messages += 1
+
+    database.commit()
+
+    return ReplaceMessagesResponse(saved_messages=saved_messages)

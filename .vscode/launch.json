@@ -13,5 +13,20 @@
         "action": "openExternally"
       }
     }
+    // {
+    //   "name": "Server",
+    //   "request": "launch",
+    //   "type": "debugpy",
+    //   "cwd": "${workspaceFolder}/src/server",
+    //   "module": "fastapi",
+    //   "args": ["dev", "src/main.py"]
+    // }
+  ],
+  "compounds": [
+    // {
+    //   "name": "App + Server",
+    //   "configurations": ["App", "Server"],
+    //   "stopAll": true
+    // }
   ]
 }

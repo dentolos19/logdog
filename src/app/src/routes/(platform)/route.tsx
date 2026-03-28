@@ -13,8 +13,8 @@ import {
 import { ScrollArea } from "#/components/ui/scroll-area";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "#/components/ui/sidebar";
 import { Skeleton } from "#/components/ui/skeleton";
-import { AppSidebar } from "#/routes/(platform)/_components/-app-sidebar";
-import { PageHeaderProvider, usePageHeaderContext } from "#/routes/(platform)/_components/-page-header-context";
+import { AppSidebar } from "#/routes/(platform)/-components/app-sidebar";
+import { PageHeaderProvider, usePageHeaderContext } from "#/routes/(platform)/-components/page-header-context";
 
 export const Route = createFileRoute("/(platform)")({
   component: PlatformRoute,
