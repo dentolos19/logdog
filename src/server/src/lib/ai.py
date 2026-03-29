@@ -3,11 +3,11 @@ from typing import TypeVar
 from langchain_openrouter import ChatOpenRouter
 from pydantic import BaseModel
 
-from environment import OPENROUTER_API_KEY
+from environment import OPENROUTER_API_KEY, OPENROUTER_TITLE, OPENROUTER_REFERER
 
 T = TypeVar("T", bound=BaseModel)
 
-DEFAULT_MODEL = "openai/gpt-4.1"
+DEFAULT_MODEL = "openrouter/auto"
 DEFAULT_TEMPERATURE = 0.5
 DEFAULT_MAX_TOKENS = 2048
 
@@ -23,7 +23,9 @@ class GenerativeModel:
             model=model,
             temperature=temperature,
             max_tokens=max_tokens,
-            api_key=OPENROUTER_API_KEY,
+            api_key=str(OPENROUTER_API_KEY),
+            app_title=str(OPENROUTER_TITLE),
+            app_url=str(OPENROUTER_REFERER),
         )
 
     def generate(

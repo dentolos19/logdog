@@ -7,7 +7,7 @@ import re
 from typing import TYPE_CHECKING, Any
 
 import src.parsers.ai_wrappers as ai
-from src.parsers.contracts import (
+from parsers.contracts import (
     BASELINE_COLUMN_NAMES,
     BASELINE_COLUMNS,
     ColumnDefinition,
@@ -19,7 +19,7 @@ from src.parsers.contracts import (
     build_ddl,
     make_table_name,
 )
-from src.parsers.preprocessor import (
+from parsers.preprocessor import (
     ColumnKind,
     DetectedFormat,
     FileInput,
@@ -27,12 +27,12 @@ from src.parsers.preprocessor import (
     LogPreprocessorService,
     SqlType,
 )
-from src.parsers.registry import ParserPipeline
-from src.parsers.unstructured import core as _up
-from src.parsers.unstructured.core import MEASUREMENT_FIELD_NAMES as _CORE_MEASUREMENT_FIELDS
+from parsers.registry import ParserPipeline
+from parsers.unstructured import core as _up
+from parsers.unstructured.core import MEASUREMENT_FIELD_NAMES as _CORE_MEASUREMENT_FIELDS
 
 if TYPE_CHECKING:
-    from src.parsers.contracts import ClassificationResult
+    from parsers.contracts import ClassificationResult
 
 logger = logging.getLogger(__name__)
 

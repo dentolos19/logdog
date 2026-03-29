@@ -1,4 +1,5 @@
 from __future__ import annotations
+from environment import OPENROUTER_API_KEY, OPENROUTER_TITLE, OPENROUTER_REFERER
 
 import json
 import os
@@ -10,7 +11,7 @@ from pydantic import BaseModel, Field
 
 T = TypeVar("T", bound=BaseModel)
 
-DEFAULT_MODEL = os.getenv("OPENROUTER_MODEL", "openai/gpt-4.1")
+DEFAULT_MODEL = os.getenv("OPENROUTER_MODEL", "openrouter/auto")
 DEFAULT_TEMPERATURE = 0.1
 DEFAULT_MAX_TOKENS = 2048
 
@@ -71,15 +72,13 @@ def _build_client(
     temperature: float = DEFAULT_TEMPERATURE,
     max_tokens: int = DEFAULT_MAX_TOKENS,
 ) -> ChatOpenRouter:
-    resolved_key = resolve_openrouter_api_key(api_key)
-    if not resolved_key:
-        raise ValueError("OPENROUTER_API_KEY is not set.")
-
     return ChatOpenRouter(
         model=model or DEFAULT_MODEL,
         temperature=temperature,
         max_tokens=max_tokens,
-        api_key=resolved_key,
+        api_key=OPENROUTER_API_KEY,
+        app_title=str(OPENROUTER_TITLE),
+        app_url=str(OPENROUTER_REFERER),
     )
 
 

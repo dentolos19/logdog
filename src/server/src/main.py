@@ -1,11 +1,11 @@
 import uvicorn
 from fastapi import Depends, FastAPI
 
-from src.lib.database import create_tables
-from src.parsers.orchestrator import register_pipelines
-from src.routes.auth import get_current_user, router as auth_router
-from src.routes.logs import router as logs_router
-from src.routes.stats import router as stats_router
+from lib.database import create_tables
+from parsers.orchestrator import register_pipelines
+from routes.auth import get_current_user, router as auth_router
+from routes.logs import router as logs_router
+from routes.stats import router as stats_router
 
 app = FastAPI()
 
@@ -22,7 +22,7 @@ def startup() -> None:
 
 @app.get("/")
 async def root(_: object = Depends(get_current_user)):
-    return "Logdog API"
+    return "Logdog"
 
 
 if __name__ == "__main__":

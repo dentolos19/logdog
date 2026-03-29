@@ -9,14 +9,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from src.parsers.contracts import (
+    from parsers.contracts import (
         ClassificationResult,
         FileParserSelection,
         ParserPipelineResult,
         ParserSupportRequest,
         ParserSupportResult,
     )
-    from src.parsers.preprocessor import FileInput
+    from parsers.preprocessor import FileInput
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +80,7 @@ class _ParserRegistry:
         mime_type: str | None = None,
     ) -> list["ParserSupportResult"]:
         self.discover()
-        from src.parsers.contracts import ParserSupportRequest, ParserSupportResult
+        from parsers.contracts import ParserSupportRequest, ParserSupportResult
 
         request = ParserSupportRequest(
             file_id=file_input.file_id,
@@ -120,7 +120,7 @@ class _ParserRegistry:
         preferred_keys: list[str] | None = None,
     ) -> tuple[dict[str, list["FileInput"]], list["FileParserSelection"], list[str]]:
         self.discover()
-        from src.parsers.contracts import FileParserSelection
+        from parsers.contracts import FileParserSelection
 
         grouped: dict[str, list[FileInput]] = {}
         selections: list[FileParserSelection] = []

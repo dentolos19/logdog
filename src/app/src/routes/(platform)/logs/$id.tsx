@@ -37,8 +37,8 @@ import {
   updateLogEntry,
 } from "#/lib/server";
 import { PageHeader } from "#/routes/(platform)/-components/page-header";
-import { FilesTab } from "#/routes/(platform)/logs/-components/files-tab";
 import { ChatbotTab } from "#/routes/(platform)/logs/-components/chatbot-tab";
+import { FilesTab } from "#/routes/(platform)/logs/-components/files-tab";
 import { ProcessesTab } from "#/routes/(platform)/logs/-components/processes-tab";
 import { TablesTab } from "#/routes/(platform)/logs/-components/tables-tab";
 import { UploadSection } from "#/routes/(platform)/logs/-components/upload-section";
@@ -285,12 +285,12 @@ function LogEntryPage() {
             <TabsContent className={"flex flex-col gap-6 p-4"} value={"data"}>
               <UploadSection logEntryId={id} onUploadSuccess={onUploadSuccess} />
 
-              <section className={"flex items-center justify-between gap-3"}>
+              {/* <section className={"flex items-center justify-between gap-3"}>
                 <h2 className={"font-semibold text-sm"}>Processes</h2>
                 <Button onClick={() => void onReprocessAll()} size={"sm"} variant={"outline"}>
                   Reprocess All Files
                 </Button>
-              </section>
+              </section> */}
 
               <section className={"flex flex-col gap-3"}>
                 <div className={"flex items-center gap-2"}>

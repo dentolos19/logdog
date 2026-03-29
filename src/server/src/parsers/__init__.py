@@ -1,4 +1,4 @@
-from src.parsers.orchestrator import (
+from parsers.orchestrator import (
     create_parse_process,
     orchestrate_files,
     register_pipelines,

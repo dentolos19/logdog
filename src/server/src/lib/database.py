@@ -1,8 +1,8 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from src.environment import DATABASE_URL
-from src.lib.models import Base
+from environment import DATABASE_URL
+from lib.models import Base
 
 engine = create_engine(DATABASE_URL.get_secret_value())
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

@@ -4,8 +4,8 @@ import uuid
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-from src.parsers.semi_structured.field_extractor import ExtractionResult
-from src.parsers.semi_structured.fuzzy_matcher import FuzzyMatcher
+from parsers.semi_structured.field_extractor import ExtractionResult
+from parsers.semi_structured.fuzzy_matcher import FuzzyMatcher
 
 SCHEMA_VERSION = "1.0.0"
 

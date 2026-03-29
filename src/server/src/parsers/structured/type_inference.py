@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
-from src.parsers.contracts import BASELINE_COLUMN_NAMES
+from parsers.contracts import BASELINE_COLUMN_NAMES
 
 
 class SqlType(str, Enum):

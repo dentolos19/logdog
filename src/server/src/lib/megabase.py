@@ -24,7 +24,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from src.environment import MEGABASE_URL
+from environment import MEGABASE_URL
 
 TYPE_MAP = {
     "uuid": UUID(as_uuid=True),

@@ -8,7 +8,7 @@ import xml.etree.ElementTree as ET
 from io import StringIO
 from typing import TYPE_CHECKING, Any
 
-from src.parsers.contracts import (
+from parsers.contracts import (
     BASELINE_COLUMN_NAMES,
     BASELINE_COLUMNS,
     ColumnDefinition,
@@ -20,19 +20,19 @@ from src.parsers.contracts import (
     build_ddl,
     make_table_name,
 )
-from src.parsers.preprocessor import (
+from parsers.preprocessor import (
     ISO_TIMESTAMP_PATTERN,
     LOG_LEVEL_PATTERN,
     DetectedFormat,
     FileInput,
     LogPreprocessorService,
 )
-from src.parsers.registry import ParserPipeline
-from src.parsers.structured.ai_enricher import enrich_structured_schema, has_openrouter_api_key
-from src.parsers.structured.type_inference import SqlType, infer_type
+from parsers.registry import ParserPipeline
+from parsers.structured.ai_enricher import enrich_structured_schema, has_openrouter_api_key
+from parsers.structured.type_inference import SqlType, infer_type
 
 if TYPE_CHECKING:
-    from src.parsers.contracts import ClassificationResult
+    from parsers.contracts import ClassificationResult
 
 logger = logging.getLogger(__name__)
 

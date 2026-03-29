@@ -6,9 +6,9 @@ from botocore.exceptions import ClientError
 from fastapi import Depends
 from sqlalchemy.orm import Session
 
-from src.environment import BUCKET_ACCESS_KEY, BUCKET_ENDPOINT_URL, BUCKET_NAME, BUCKET_PREFIX, BUCKET_SECRET_KEY
-from src.lib.database import get_database
-from src.lib.models import Asset
+from environment import BUCKET_ACCESS_KEY, BUCKET_ENDPOINT_URL, BUCKET_NAME, BUCKET_PREFIX, BUCKET_SECRET_KEY
+from lib.database import get_database
+from lib.models import Asset
 
 _s3_client = None
 

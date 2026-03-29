@@ -20,12 +20,32 @@ export type LogFile = {
 export type LogProcess = {
   id: string;
   entry_id: string;
-  status: string;
-  classification: Record<string, unknown> | null;
-  result: Record<string, unknown> | null;
+  status: LogProcessStatus;
+  classification: LogProcessClassification | Record<string, unknown> | null;
+  result: LogProcessResult | Record<string, unknown> | null;
   error: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type LogProcessStatus = "queued" | "processing" | "completed" | "failed";
+
+export type LogProcessClassification = {
+  schema_version?: string;
+  dominant_format?: string;
+  structural_class?: string;
+  selected_parser_key?: string;
+  file_classifications?: Array<Record<string, unknown>>;
+  warnings?: string[];
+  confidence?: number;
+};
+
+export type LogProcessResult = {
+  table_definitions?: Array<Record<string, unknown>>;
+  records?: Record<string, unknown>;
+  parser_key?: string;
+  warnings?: string[];
+  confidence?: number;
 };
 
 export type UploadFilesResponse = {

@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import src.parsers.ai_wrappers as ai
-from src.parsers.semi_structured.template_cache import TemplateCache
+from parsers.semi_structured.template_cache import TemplateCache
 
 logger = logging.getLogger(__name__)
 

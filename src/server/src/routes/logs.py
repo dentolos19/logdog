@@ -10,15 +10,15 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from src.lib.database import get_database
-from src.lib.megabase import SessionLocal as MegabaseSessionLocal
-from src.lib.megabase import drop_table as megabase_drop_table
-from src.lib.megabase import init_megabase
-from src.lib.models import Asset, LogEntry, LogFile, LogMessage, LogProcess, LogTable, User
-from src.lib.storage import delete_file, download_file, upload_file
-from src.parsers.orchestrator import create_parse_process, run_parse_job
-from src.parsers.preprocessor import FileInput
-from src.routes.auth import get_current_user
+from lib.database import get_database
+from lib.megabase import SessionLocal as MegabaseSessionLocal
+from lib.megabase import drop_table as megabase_drop_table
+from lib.megabase import init_megabase
+from lib.models import Asset, LogEntry, LogFile, LogMessage, LogProcess, LogTable, User
+from lib.storage import delete_file, download_file, upload_file
+from parsers.orchestrator import create_parse_process, run_parse_job
+from parsers.preprocessor import FileInput
+from routes.auth import get_current_user
 
 router = APIRouter(prefix="/logs", tags=["logs"])
 

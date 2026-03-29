@@ -4,7 +4,7 @@ import json
 import logging
 from typing import TYPE_CHECKING, Any
 
-from src.parsers.contracts import (
+from parsers.contracts import (
     BASELINE_COLUMN_NAMES,
     BASELINE_COLUMNS,
     ColumnDefinition,
@@ -16,12 +16,12 @@ from src.parsers.contracts import (
     build_ddl,
     make_table_name,
 )
-from src.parsers.preprocessor import MULTILINE_CONTINUATION_PATTERN, DetectedFormat, FileInput, LogPreprocessorService
-from src.parsers.registry import ParserPipeline
-from src.parsers.semi_structured.pipeline import PipelineConfig, SemiStructuredPipeline
+from parsers.preprocessor import MULTILINE_CONTINUATION_PATTERN, DetectedFormat, FileInput, LogPreprocessorService
+from parsers.registry import ParserPipeline
+from parsers.semi_structured.pipeline import PipelineConfig, SemiStructuredPipeline
 
 if TYPE_CHECKING:
-    from src.parsers.contracts import ClassificationResult
+    from parsers.contracts import ClassificationResult
 
 logger = logging.getLogger(__name__)
 

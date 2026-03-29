@@ -3,13 +3,13 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from src.parsers.semi_structured.ai_fallback import AIFallback, AIFallbackConfig, AIFallbackResult
-from src.parsers.semi_structured.delimiter_splitter import DelimiterSplitter
-from src.parsers.semi_structured.field_extractor import ExtractedField, ExtractionResult, FieldExtractor
-from src.parsers.semi_structured.fuzzy_matcher import FuzzyMatcher
-from src.parsers.semi_structured.grok_engine import GrokEngine, GrokResult
-from src.parsers.semi_structured.normalizer import LogRow, Normalizer
-from src.parsers.semi_structured.template_cache import TemplateCache
+from parsers.semi_structured.ai_fallback import AIFallback, AIFallbackConfig, AIFallbackResult
+from parsers.semi_structured.delimiter_splitter import DelimiterSplitter
+from parsers.semi_structured.field_extractor import ExtractedField, ExtractionResult, FieldExtractor
+from parsers.semi_structured.fuzzy_matcher import FuzzyMatcher
+from parsers.semi_structured.grok_engine import GrokEngine, GrokResult
+from parsers.semi_structured.normalizer import LogRow, Normalizer
+from parsers.semi_structured.template_cache import TemplateCache
 
 logger = logging.getLogger(__name__)
 

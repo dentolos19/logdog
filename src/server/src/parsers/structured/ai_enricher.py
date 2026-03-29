@@ -5,8 +5,8 @@ import re
 from typing import Any
 
 import src.parsers.ai_wrappers as ai
-from src.parsers.contracts import ColumnDefinition
-from src.parsers.structured.type_inference import BASELINE_COLUMN_NAMES, SqlType, infer_columns_from_records
+from parsers.contracts import ColumnDefinition
+from parsers.structured.type_inference import BASELINE_COLUMN_NAMES, SqlType, infer_columns_from_records
 
 logger = logging.getLogger(__name__)
 

@@ -22,7 +22,6 @@ This repository is composed of two projects.
 ### Server (`src/server`)
 
 - Keep backend modules under `src/server/src/*`.
-- Use `src.*` absolute imports in backend Python code (for example `from src.lib.database import ...`).
 - Keep `/auth/*` as public routes and protect non-auth routes with `get_current_user`.
 - Container startup expects Uvicorn module path `src.main:app` from `/app`.
 

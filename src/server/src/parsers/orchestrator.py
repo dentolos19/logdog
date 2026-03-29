@@ -7,18 +7,18 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from src.lib.database import SessionLocal
-from src.lib.megabase import (
+from lib.database import SessionLocal
+from lib.megabase import (
     SessionLocal as MegabaseSessionLocal,
     create_table as megabase_create_table,
     init_megabase,
     insert_record as megabase_insert_record,
 )
-from src.lib.models import Asset, LogEntry, LogFile, LogProcess, LogTable
-from src.lib.storage import download_file
-from src.parsers.contracts import ClassificationResult, ParserPipelineResult
-from src.parsers.preprocessor import FileInput, LogPreprocessorService
-from src.parsers.registry import ParserRegistry
+from lib.models import Asset, LogEntry, LogFile, LogProcess, LogTable
+from lib.storage import download_file
+from parsers.contracts import ClassificationResult, ParserPipelineResult
+from parsers.preprocessor import FileInput, LogPreprocessorService
+from parsers.registry import ParserRegistry
 
 logger = logging.getLogger(__name__)
 

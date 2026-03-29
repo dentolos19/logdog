@@ -8,7 +8,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from src.parsers.contracts import INGESTION_SCHEMA_VERSION, ClassificationResult, FileClassification, StructuralClass
+from parsers.contracts import INGESTION_SCHEMA_VERSION, ClassificationResult, FileClassification, StructuralClass
 
 MAX_SAMPLE_LINES = 30
 MAX_SAMPLE_RECORDS = 5

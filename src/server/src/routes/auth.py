@@ -10,9 +10,9 @@ from jose import JWTError, jwt
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
-from src.environment import SECRET_KEY
-from src.lib.database import get_database
-from src.lib.models import User
+from environment import SECRET_KEY
+from lib.database import get_database
+from lib.models import User
 
 ACCESS_TOKEN_EXPIRES_MINUTES = 30
 REFRESH_TOKEN_EXPIRES_DAYS = 7

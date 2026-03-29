@@ -7,9 +7,9 @@ from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from src.lib.database import get_database
-from src.lib.models import LogEntry, LogFile, LogProcess, User
-from src.routes.auth import get_current_user
+from lib.database import get_database
+from lib.models import LogEntry, LogFile, LogProcess, User
+from routes.auth import get_current_user
 
 router = APIRouter(prefix="/stats", tags=["stats"])
 
