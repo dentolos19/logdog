@@ -7,7 +7,7 @@ from environment import OPENROUTER_API_KEY, OPENROUTER_TITLE, OPENROUTER_REFERER
 
 T = TypeVar("T", bound=BaseModel)
 
-DEFAULT_MODEL = "openrouter/auto"
+DEFAULT_MODEL = "google/gemma-4-31b-it"
 DEFAULT_TEMPERATURE = 0.5
 DEFAULT_MAX_TOKENS = 2048
 
