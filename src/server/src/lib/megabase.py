@@ -45,7 +45,17 @@ _registry_locked = False
 
 
 def _get_engine() -> Engine:
-    return __import__("sqlalchemy").create_engine(MEGABASE_URL.get_secret_value())
+    return __import__("sqlalchemy").create_engine(
+        MEGABASE_URL.get_secret_value(),
+        pool_pre_ping=True,
+        pool_recycle=1800,
+        connect_args={
+            "keepalives": 1,
+            "keepalives_idle": 30,
+            "keepalives_interval": 10,
+            "keepalives_count": 5,
+        },
+    )
 
 
 _engine = _get_engine()

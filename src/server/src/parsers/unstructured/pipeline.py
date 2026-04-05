@@ -6,7 +6,7 @@ import logging
 import re
 from typing import TYPE_CHECKING, Any
 
-import src.parsers.ai_wrappers as ai
+import parsers.ai_wrappers as ai
 from parsers.contracts import (
     BASELINE_COLUMN_NAMES,
     BASELINE_COLUMNS,

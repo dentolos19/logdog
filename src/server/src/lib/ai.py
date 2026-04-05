@@ -23,9 +23,9 @@ class GenerativeModel:
             model=model,
             temperature=temperature,
             max_tokens=max_tokens,
-            api_key=str(OPENROUTER_API_KEY),
-            app_title=str(OPENROUTER_TITLE),
-            app_url=str(OPENROUTER_REFERER),
+            api_key=OPENROUTER_API_KEY.get_secret_value(),
+            app_title=OPENROUTER_TITLE.get_secret_value(),
+            app_url=OPENROUTER_REFERER.get_secret_value(),
         )
 
     def generate(
@@ -39,7 +39,7 @@ class GenerativeModel:
         messages.append(("human", prompt))
 
         response = self.client.invoke(messages)
-        return response.content  # type: ignore
+        return response.content
 
     def generate_structured(
         self,
@@ -52,7 +52,7 @@ class GenerativeModel:
             messages.append(("system", system_prompt))
         messages.append(("human", prompt))
 
-        structured_model = self.client.withStructuredOutput(schema)  # type: ignore
+        structured_model = self.client.withStructuredOutput(schema)
         return structured_model.invoke(messages)
 
 

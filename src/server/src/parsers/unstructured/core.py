@@ -11,7 +11,7 @@ import chardet
 from drain3 import TemplateMiner
 from drain3.template_miner_config import TemplateMinerConfig
 
-import src.parsers.ai_wrappers as ai
+import parsers.ai as ai
 from parsers.preprocessor import ColumnKind, InferredColumn, SampleRecord, SqlType
 
 logger = logging.getLogger(__name__)

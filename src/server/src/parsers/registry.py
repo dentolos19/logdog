@@ -172,7 +172,7 @@ class _ParserRegistry:
         if self._discovery_done and not force:
             return
 
-        base_package = "src.parsers"
+        base_package = "parsers"
         base_path = Path(__file__).resolve().parent
 
         for module in pkgutil.walk_packages([str(base_path)], prefix=f"{base_package}."):
@@ -189,7 +189,7 @@ class _ParserRegistry:
             try:
                 imported = importlib.import_module(module_name)
             except Exception as error:  # noqa: BLE001
-                logger.debug("Skipping parser module '%s' during discovery: %s", module_name, error)
+                logger.warning("Skipping parser module '%s' during discovery: %s", module_name, error)
                 continue
 
             for _, obj in inspect.getmembers(imported, inspect.isclass):

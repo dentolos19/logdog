@@ -4,9 +4,9 @@ import logging
 import re
 from typing import Any
 
-import src.parsers.ai_wrappers as ai
+import parsers.ai as ai
 from parsers.contracts import ColumnDefinition
-from parsers.structured.type_inference import BASELINE_COLUMN_NAMES, SqlType, infer_columns_from_records
+from parsers.structured.inference import BASELINE_COLUMN_NAMES, SqlType, infer_columns_from_records
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +80,7 @@ def _reconcile_columns(
                 name=safe_name,
                 sql_type=sql_type.value,
                 description=llm_column.description or "Column inferred by LLM from structured data.",
-                nullable=llm_column.nullable,
+                nullable=True,
             )
         )
         seen_names.add(safe_name)

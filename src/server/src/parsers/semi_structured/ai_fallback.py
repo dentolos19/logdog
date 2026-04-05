@@ -4,7 +4,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-import src.parsers.ai_wrappers as ai
+import parsers.ai as ai
 from parsers.semi_structured.template_cache import TemplateCache
 
 logger = logging.getLogger(__name__)

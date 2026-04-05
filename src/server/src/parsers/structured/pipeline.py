@@ -28,8 +28,8 @@ from parsers.preprocessor import (
     LogPreprocessorService,
 )
 from parsers.registry import ParserPipeline
-from parsers.structured.ai_enricher import enrich_structured_schema, has_openrouter_api_key
-from parsers.structured.type_inference import SqlType, infer_type
+from parsers.structured.enricher import enrich_structured_schema, has_openrouter_api_key
+from parsers.structured.inference import SqlType, infer_type
 
 if TYPE_CHECKING:
     from parsers.contracts import ClassificationResult

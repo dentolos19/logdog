@@ -1,13 +1,13 @@
 from __future__ import annotations
-from environment import OPENROUTER_API_KEY, OPENROUTER_TITLE, OPENROUTER_REFERER
 
 import json
 import os
 from dataclasses import dataclass
 from typing import Any, Generic, TypeVar
 
-from langchain_openrouter import ChatOpenRouter
 from pydantic import BaseModel, Field
+
+from lib.ai import get_generative_model
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -66,28 +66,16 @@ def has_openrouter_api_key(api_key: str | None = None) -> bool:
     return bool(resolve_openrouter_api_key(api_key))
 
 
-def _build_client(
+def _build_model(
     model: str | None = None,
-    api_key: str | None = None,
     temperature: float = DEFAULT_TEMPERATURE,
     max_tokens: int = DEFAULT_MAX_TOKENS,
-) -> ChatOpenRouter:
-    return ChatOpenRouter(
+):
+    return get_generative_model(
         model=model or DEFAULT_MODEL,
         temperature=temperature,
         max_tokens=max_tokens,
-        api_key=OPENROUTER_API_KEY,
-        app_title=str(OPENROUTER_TITLE),
-        app_url=str(OPENROUTER_REFERER),
     )
-
-
-def _with_structured_output(client: ChatOpenRouter, schema: type[T]):
-    if hasattr(client, "with_structured_output"):
-        return client.with_structured_output(schema)
-    if hasattr(client, "withStructuredOutput"):
-        return client.withStructuredOutput(schema)
-    raise RuntimeError("Structured output is not supported by the configured ChatOpenRouter client.")
 
 
 def _invoke_structured(
@@ -101,13 +89,11 @@ def _invoke_structured(
         return LlmInvocation(warning="OPENROUTER_API_KEY not set; LLM enrichment skipped.")
 
     try:
-        client = _build_client(model=model, api_key=api_key)
-        structured_model = _with_structured_output(client, schema)
-        response = structured_model.invoke(
-            [
-                ("system", system_prompt),
-                ("human", prompt),
-            ]
+        generative_model = _build_model(model=model)
+        response = generative_model.generate_structured(
+            prompt=prompt,
+            schema=schema,
+            system_prompt=system_prompt,
         )
         if isinstance(response, schema):
             return LlmInvocation(response=response)
