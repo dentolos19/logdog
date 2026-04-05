@@ -11,12 +11,14 @@ dependencies = [
   "langchain-openrouter",
   "pydantic>=2.0.0,<2.12",
   "psycopg2-binary",
+  "python-dateutil",
   "python-dotenv",
   "python-jose[cryptography]",
+  "python-magic-bin",
   "sqlalchemy",
   "sqlalchemy-libsql",
   "uvicorn",
 ]
 
 [dependency-groups]
-dev = ["pytest", "httpx"]
+dev = ["pytest", "httpx", "pymupdf"]

@@ -11,6 +11,12 @@ logger = logging.getLogger(__name__)
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "inception/mercury-2")
 
+# Model for semiconductor log analysis — low latency, reduced hallucinations.
+SEMICONDUCTOR_LLM_MODEL = os.getenv(
+    "SEMICONDUCTOR_LLM_MODEL",
+    "google/gemini-2.5-flash-lite-preview",
+)
+
 StructuredResponseT = TypeVar("StructuredResponseT", bound=BaseModel)
 
 
@@ -50,6 +56,25 @@ class LlmUnstructuredResponse(BaseModel):
         default_factory=list,
         description="Template strings identified as periodic heartbeats or status pings with no actionable content.",
     )
+    warnings: list[str] = Field(default_factory=list)
+
+
+class TemplateClassification(BaseModel):
+    """Classification of a single Drain3 template by the LLM."""
+
+    template: str
+    event_type: str = "unknown"
+    severity: str = "info"
+    subsystem: str = "unknown"
+    is_heartbeat: bool = False
+
+
+class LlmTemplateClassificationResponse(BaseModel):
+    """Structured LLM response for template-level classification."""
+
+    classifications: list[TemplateClassification] = Field(default_factory=list)
+    fields: list[LlmFieldExtraction] = Field(default_factory=list)
+    summary: str = ""
     warnings: list[str] = Field(default_factory=list)
 
 

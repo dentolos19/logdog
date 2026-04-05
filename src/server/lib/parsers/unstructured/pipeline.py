@@ -113,6 +113,10 @@ def _compute_row_confidence(fields: dict[str, Any]) -> float:
     if fields.get("template"):
         score += 0.05
 
+    # Boost for LLM-classified event_type (not "unknown").
+    if fields.get("event_type") and fields["event_type"] != "unknown":
+        score += 0.05
+
     return round(min(score, 0.95), 2)
 
 
@@ -408,9 +412,12 @@ class UnstructuredPipeline(ParserPipeline):
         # Check for fixed-width columnar layout.
         fw_fields = _detect_fixed_width_fields(clean_lines)
 
-        # Cluster + mine templates.
+        # Cluster + mine templates (with optional persistence).
         clusters = _up.cluster_multiline(clean_lines)
-        _miner, templates = _up.mine_templates(clusters)
+        persistence_key = file_input.file_id or hashlib.md5(
+            file_input.filename.encode(), usedforsecurity=False
+        ).hexdigest()[:16]
+        _miner, templates = _up.mine_templates(clusters, persistence_key=persistence_key)
 
         # Extract fields from each cluster.
         all_fields: list[dict[str, Any]] = []
@@ -438,9 +445,9 @@ class UnstructuredPipeline(ParserPipeline):
         # Infer extra columns with frequency-based thresholds.
         extra_cols = self._infer_extra_columns(all_fields)
 
-        # LLM enrichment (optional).
+        # LLM enrichment (optional) — sends only unique templates to minimize token costs.
         llm_cols = self._llm_enrich_columns(
-            clusters, extra_cols, file_input.filename, file_warnings
+            clusters, templates, extra_cols, file_input.filename, file_warnings
         )
         if llm_cols:
             existing_names = {c.name for c in extra_cols}
@@ -581,13 +588,15 @@ class UnstructuredPipeline(ParserPipeline):
     @staticmethod
     def _llm_enrich_columns(
         clusters: list[tuple[int, int, str]],
+        templates: list[str],
         heuristic_cols: list[ColumnDefinition],
         filename: str,
         warnings: list[str],
     ) -> list[ColumnDefinition]:
         """Optionally call the LLM to discover additional columns.
 
-        Converts the ``ColumnDefinition`` list to the legacy
+        Only unique Drain3 templates are sent to the LLM to minimize token
+        costs.  Converts the ``ColumnDefinition`` list to the legacy
         ``InferredColumn`` format expected by ``core.call_llm_for_unstructured``,
         then converts the result back.
         """
@@ -612,9 +621,15 @@ class UnstructuredPipeline(ParserPipeline):
                 kind=ColumnKind.DETECTED,
             ))
 
+        # Deduplicate templates — only send unique ones to minimize token costs.
+        unique_templates = list(dict.fromkeys(templates))
+        logger.info(
+            "LLM enrichment: %d unique templates from %d total clusters for '%s'",
+            len(unique_templates), len(clusters), filename,
+        )
         sample_lines = [
-            text[:_up.MAX_LINE_LENGTH]
-            for _, _, text in clusters[:_up.MAX_SAMPLE_LINES]
+            t[:_up.MAX_LINE_LENGTH]
+            for t in unique_templates[:_up.MAX_SAMPLE_LINES]
         ]
 
         try:

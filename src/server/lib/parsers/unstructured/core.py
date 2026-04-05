@@ -18,10 +18,12 @@ import logging
 import re
 import struct
 import zlib
+from pathlib import Path
 from typing import Any
 
 import chardet
 from drain3 import TemplateMiner
+from drain3.file_persistence import FilePersistence
 from drain3.template_miner_config import TemplateMinerConfig
 from lib import ai
 from lib.parsers.preprocessor import (
@@ -39,6 +41,9 @@ logger = logging.getLogger(__name__)
 
 MAX_SAMPLE_LINES = 30
 MAX_LINE_LENGTH = 2000
+
+# Global persistence directory for Drain3 state files.
+DRAIN3_STATE_DIR = Path("store/drain3_state")
 
 # ---------------------------------------------------------------------------
 # Regex helpers
@@ -197,20 +202,32 @@ def is_hex_dump_line(line: str) -> bool:
     return bool(HEX_DUMP_RE.match(line.strip()))
 
 
-def extract_ascii_from_hexdump(lines: list[str]) -> list[str]:
+def extract_ascii_from_hexdump(
+    lines: list[str],
+    preserve_hex: bool = False,
+) -> list[str] | list[tuple[str, str]]:
     """Extract ASCII representations from hex dump lines.
 
     Lines like: ``00000000  48 45 58  |HEX|``
-    Returns: ``['HEX']``
+
+    If ``preserve_hex`` is ``True``, returns a list of ``(ascii_text, hex_bytes)``
+    tuples so the raw hex can be stored in ``additional_data`` for LLM
+    interpretation of binary telemetry.
+
+    Otherwise returns: ``['HEX']``
     """
-    ascii_parts: list[str] = []
+    results: list[Any] = []
     for line in lines:
         m = HEX_DUMP_ASCII_RE.search(line)
         if m:
             ascii_text = m.group(1).strip()
             if ascii_text:
-                ascii_parts.append(ascii_text)
-    return ascii_parts
+                if preserve_hex:
+                    hex_part = line[: m.start()].strip()
+                    results.append((ascii_text, hex_part))
+                else:
+                    results.append(ascii_text)
+    return results
 
 
 # ---------------------------------------------------------------------------
@@ -611,13 +628,34 @@ def cluster_multiline(lines: list[str]) -> list[tuple[int, int, str]]:
     return clusters
 
 
-def mine_templates(clusters: list[tuple[int, int, str]]) -> tuple[TemplateMiner, list[str]]:
+def mine_templates(
+    clusters: list[tuple[int, int, str]],
+    persistence_key: str | None = None,
+) -> tuple[TemplateMiner, list[str]]:
     """Run Drain3 template mining over cluster texts.
 
     Returns the miner and a list of template strings (one per cluster, in order).
+
+    Parameters
+    ----------
+    clusters:
+        List of ``(start_line, end_line, text)`` tuples from
+        :func:`cluster_multiline`.
+    persistence_key:
+        If provided, uses ``FilePersistence`` keyed to this identifier
+        (typically the ``log_group_id`` or file hash).  Templates persist
+        across server restarts so the miner improves over time.
     """
     config = _build_drain_config()
-    miner = TemplateMiner(config=config)
+
+    persistence = None
+    if persistence_key:
+        DRAIN3_STATE_DIR.mkdir(parents=True, exist_ok=True)
+        safe_key = re.sub(r"[^a-z0-9_-]", "_", persistence_key.lower())[:64]
+        state_file = str(DRAIN3_STATE_DIR / f"{safe_key}.bin")
+        persistence = FilePersistence(state_file)
+
+    miner = TemplateMiner(persistence_handler=persistence, config=config)
     templates: list[str] = []
 
     for _, _, text in clusters:
@@ -846,13 +884,22 @@ def call_llm_for_unstructured(
     sample_text = "\n".join(line[:MAX_LINE_LENGTH] for line in sample_lines[:MAX_SAMPLE_LINES])
 
     system_prompt = (
-        "You are an expert log analyst specializing in unstructured and semi-structured logs.\n"
-        "Analyze the provided raw log samples and identify additional fields that can be\n"
-        "extracted into table columns. Focus on:\n"
-        "1. Domain-specific identifiers (wafer IDs, tool names, recipe names, etc.)\n"
-        "2. Repeated key-value patterns not yet captured.\n"
-        "3. Numeric measurements or counters.\n"
-        "4. A suggested event_type classification for this log source.\n\n"
+        "You are a Senior Semiconductor Process Specialist with 15+ years of experience "
+        "analyzing equipment logs from CVD, PVD, etch, lithography, CMP, and metrology tools.\n\n"
+        "You are analyzing log templates mined from semiconductor fabrication equipment. "
+        "For each unique template, determine:\n"
+        "1. event_type: One of [process_start, process_end, alarm, warning, measurement, "
+        "calibration, maintenance, recipe_change, interlock, heartbeat, status, unknown]\n"
+        "2. severity: One of [critical, high, medium, low, info, debug]\n"
+        "3. subsystem: The equipment subsystem (e.g., RF_generator, vacuum_system, "
+        "gas_delivery, wafer_handler, thermal_control, metrology, interlock, unknown)\n"
+        "4. is_heartbeat: Boolean — true if this is a periodic status/health check "
+        "with no actionable content\n\n"
+        "Also identify any additional extractable fields. Focus on:\n"
+        "- Semiconductor-specific fields: wafer counts, recipe parameters, gas flows, "
+        "RF power readings, particle counts, film thickness, uniformity.\n"
+        "- Numeric measurements (vibration_rms, reflected_power, chamber_pressure, etc.) → REAL type.\n"
+        "- Repeated key-value patterns not yet captured.\n\n"
         "Rules:\n"
         "- Column names must be lowercase snake_case.\n"
         "- sql_type must be TEXT, INTEGER, or REAL.\n"
@@ -874,6 +921,7 @@ def call_llm_for_unstructured(
         messages,
         ai.LlmUnstructuredResponse,
         context="LLM unstructured enrichment",
+        model=ai.SEMICONDUCTOR_LLM_MODEL,
     )
     if invocation.response is not None:
         return invocation.response

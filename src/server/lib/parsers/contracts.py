@@ -138,6 +138,15 @@ BASELINE_COLUMNS: list[ColumnDefinition] = [
     ColumnDefinition(
         name="additional_data", sql_type="TEXT", description="JSON blob for extra fields not mapped to columns."
     ),
+    ColumnDefinition(
+        name="attachment_url", sql_type="TEXT", description="URL to image/binary attachment in R2 object storage."
+    ),
+    ColumnDefinition(
+        name="attachment_type", sql_type="TEXT", description="MIME type of the attachment (image/png, application/pdf, etc.)."
+    ),
+    ColumnDefinition(
+        name="sequence_id", sql_type="INTEGER", description="Monotonic sequence number within the log group for temporal ordering."
+    ),
 ]
 
 BASELINE_COLUMN_NAMES: frozenset[str] = frozenset(col.name for col in BASELINE_COLUMNS)
