@@ -28,7 +28,7 @@ from parsers.preprocessor import (
     LogPreprocessorService,
 )
 from parsers.registry import ParserPipeline
-from parsers.structured.enricher import enrich_structured_schema, has_openrouter_api_key
+from parsers.structured.enricher import enrich_structured_schema
 from parsers.structured.inference import SqlType, infer_type
 
 if TYPE_CHECKING:
@@ -211,12 +211,11 @@ def _build_table_definition(
     sample_lines: list[str],
 ) -> tuple[TableDefinition, list[str]]:
     table_name = make_table_name(parser_key, file_id, filename)
-    use_llm = has_openrouter_api_key()
     enriched_columns, warnings = enrich_structured_schema(
         records=records,
         detected_format=detected_format,
         sample_lines=sample_lines,
-        use_llm=use_llm,
+        use_llm=True,
     )
 
     extra_columns = _infer_columns_from_records(records)

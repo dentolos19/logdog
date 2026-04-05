@@ -6,7 +6,6 @@ import logging
 import re
 from typing import TYPE_CHECKING, Any
 
-import parsers.ai_wrappers as ai
 from parsers.contracts import (
     BASELINE_COLUMN_NAMES,
     BASELINE_COLUMNS,
@@ -410,9 +409,6 @@ class UnstructuredPipeline(ParserPipeline):
         filename: str,
         warnings: list[str],
     ) -> list[ColumnDefinition]:
-        if not ai.has_openrouter_api_key():
-            return []
-
         legacy_columns: list[InferredColumn] = []
         for column in heuristic_columns:
             sql_type = SqlType.TEXT

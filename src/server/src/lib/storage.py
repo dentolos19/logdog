@@ -30,9 +30,32 @@ def _get_s3_key(asset_id: uuid.UUID) -> str:
     return f"{prefix}/{asset_id}"
 
 
+def _s3_object_exists(asset_id: uuid.UUID) -> bool:
+    s3_key = _get_s3_key(asset_id)
+    client = _get_s3_client()
+    try:
+        client.head_object(
+            Bucket=BUCKET_NAME.get_secret_value(),
+            Key=s3_key,
+        )
+        return True
+    except ClientError as error:
+        error_code = error.response.get("Error", {}).get("Code")
+        if error_code in {"404", "NoSuchKey", "NotFound"}:
+            return False
+        raise
+
+
 def upload_file(file_data: bytes, filename: str, content_type: str, db: Session = Depends(get_database)) -> Asset:
-    asset_id = uuid.uuid4()
     file_hash = hashlib.sha256(file_data).hexdigest()
+
+    existing_asset = db.query(Asset).filter(Asset.hash == file_hash).first()
+    if existing_asset:
+        existing_asset_id = uuid.UUID(str(existing_asset.id))
+        if _s3_object_exists(existing_asset_id):
+            return existing_asset
+
+    asset_id = uuid.uuid4()
     s3_key = _get_s3_key(asset_id)
 
     client = _get_s3_client()

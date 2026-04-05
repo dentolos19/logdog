@@ -484,9 +484,6 @@ SEMICONDUCTOR_COLUMNS = [
 def call_llm_for_unstructured(
     sample_lines: list[str], heuristic_columns: list[InferredColumn]
 ) -> ai.LlmUnstructuredResponse:
-    if not ai.has_openrouter_api_key():
-        return ai.LlmUnstructuredResponse(warnings=["OPENROUTER_API_KEY not set; LLM enrichment skipped."])
-
     heuristic_summary = (
         "\n".join(f"  - {column.name} ({column.sql_type.value}): {column.description}" for column in heuristic_columns)
         or "  (none detected)"

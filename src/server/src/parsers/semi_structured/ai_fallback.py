@@ -136,11 +136,6 @@ class AIFallback:
         return "low"
 
     def _call_openrouter(self, raw_text: str, thinking_level: str, context: dict | None = None) -> AIFallbackResult:
-        resolved_api_key = ai.resolve_openrouter_api_key(self.config.api_key)
-        if not ai.has_openrouter_api_key(resolved_api_key):
-            logger.info("No API key configured. Using local fallback.")
-            return self._local_fallback(raw_text, thinking_level)
-
         truncated = raw_text[: self.config.max_input_tokens * 4]
         context_json = json.dumps(context or {}, ensure_ascii=True)
 
@@ -149,7 +144,7 @@ class AIFallback:
             thinking_level=thinking_level,
             context_json=context_json,
             model=self.config.model,
-            api_key=resolved_api_key,
+            api_key=self.config.api_key,
         )
 
         if invocation.response is None:

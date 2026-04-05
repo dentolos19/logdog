@@ -14,10 +14,6 @@ MAX_SAMPLE_LINES = 50
 MAX_TOTAL_CHARS = 8000
 
 
-def has_openrouter_api_key(api_key: str | None = None) -> bool:
-    return ai.has_openrouter_api_key(api_key)
-
-
 def _build_sample_content(lines: list[str], detected_format: str, max_chars: int = MAX_TOTAL_CHARS) -> str:
     if detected_format == "xml":
         return "\n".join(lines[:30])
@@ -34,9 +30,6 @@ def _call_llm_for_structured_schema(
     api_key: str | None = None,
     model: str | None = None,
 ) -> ai.LlmStructuredSchemaResponse:
-    if not has_openrouter_api_key(api_key):
-        return ai.LlmStructuredSchemaResponse(warnings=["OPENROUTER_API_KEY not set; LLM enrichment skipped."])
-
     sample_text = _build_sample_content(sample_lines, detected_format)
     if not sample_text.strip():
         return ai.LlmStructuredSchemaResponse(warnings=["No sample content available for LLM analysis."])
@@ -120,7 +113,7 @@ def enrich_structured_schema(
             )
         )
 
-    if not use_llm or not has_openrouter_api_key(api_key):
+    if not use_llm:
         return heuristic_columns, warnings
 
     heuristic_summary = (

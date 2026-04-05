@@ -7,13 +7,9 @@ from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel, Field
 
-from lib.ai import get_generative_model
+from lib.ai import get_generative_model, DEFAULT_MODEL, DEFAULT_TEMPERATURE, DEFAULT_MAX_TOKENS
 
 T = TypeVar("T", bound=BaseModel)
-
-DEFAULT_MODEL = os.getenv("OPENROUTER_MODEL", "openrouter/auto")
-DEFAULT_TEMPERATURE = 0.1
-DEFAULT_MAX_TOKENS = 2048
 
 
 @dataclass
@@ -55,17 +51,6 @@ class LlmSemiStructuredResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
-def resolve_openrouter_api_key(api_key: str | None = None) -> str | None:
-    if api_key is not None:
-        return api_key.strip() or None
-    env_key = os.getenv("OPENROUTER_API_KEY", "").strip()
-    return env_key or None
-
-
-def has_openrouter_api_key(api_key: str | None = None) -> bool:
-    return bool(resolve_openrouter_api_key(api_key))
-
-
 def _build_model(
     model: str | None = None,
     temperature: float = DEFAULT_TEMPERATURE,
@@ -85,9 +70,7 @@ def _invoke_structured(
     model: str | None = None,
     api_key: str | None = None,
 ) -> LlmInvocation[T]:
-    if not has_openrouter_api_key(api_key):
-        return LlmInvocation(warning="OPENROUTER_API_KEY not set; LLM enrichment skipped.")
-
+    _ = api_key
     try:
         generative_model = _build_model(model=model)
         response = generative_model.generate_structured(
