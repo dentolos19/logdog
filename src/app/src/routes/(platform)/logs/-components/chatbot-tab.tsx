@@ -2,6 +2,8 @@ import { type ModelMessage, modelMessagesToUIMessages } from "@tanstack/ai";
 import { fetchServerSentEvents, type UIMessage, useChat } from "@tanstack/ai-react";
 import { AlertCircleIcon, BotIcon, SendHorizontalIcon, SquareIcon } from "lucide-react";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Alert, AlertDescription, AlertTitle } from "#/components/ui/alert";
 import { Badge } from "#/components/ui/badge";
 import { Button } from "#/components/ui/button";
@@ -76,6 +78,140 @@ function parsePersistableTextFromMessage(message: UIMessage) {
     .filter((value) => value.length > 0);
 
   return toolEntries.join("\n");
+}
+
+type MarkdownMessageProps = {
+  content: string;
+  isUser: boolean;
+};
+
+function MarkdownMessage({ content, isUser }: MarkdownMessageProps) {
+  return (
+    <Markdown
+      components={{
+        a: ({ children, href, ...props }) => (
+          <a
+            {...props}
+            className={"font-medium underline underline-offset-2"}
+            href={href}
+            rel={"noreferrer noopener"}
+            target={"_blank"}
+          >
+            {children}
+          </a>
+        ),
+        blockquote: ({ children, ...props }) => (
+          <blockquote
+            {...props}
+            className={
+              isUser
+                ? "my-3 border-l-2 border-primary-foreground/60 pl-3 opacity-90"
+                : "my-3 border-l-2 border-border pl-3 text-muted-foreground"
+            }
+          >
+            {children}
+          </blockquote>
+        ),
+        code: ({ children, className, ...props }) => {
+          const hasLanguageClass = className?.includes("language-") ?? false;
+          if (hasLanguageClass) {
+            return (
+              <code
+                {...props}
+                className={
+                  isUser
+                    ? "block overflow-x-auto rounded-md bg-primary-foreground/15 p-3 font-mono text-xs"
+                    : "block overflow-x-auto rounded-md bg-muted p-3 font-mono text-xs"
+                }
+              >
+                {children}
+              </code>
+            );
+          }
+
+          return (
+            <code
+              {...props}
+              className={
+                isUser
+                  ? "rounded bg-primary-foreground/20 px-1.5 py-0.5 font-mono text-[0.8em]"
+                  : "rounded bg-muted px-1.5 py-0.5 font-mono text-[0.8em]"
+              }
+            >
+              {children}
+            </code>
+          );
+        },
+        h1: ({ children, ...props }) => (
+          <h1 {...props} className={"mt-4 mb-2 font-semibold text-base"}>
+            {children}
+          </h1>
+        ),
+        h2: ({ children, ...props }) => (
+          <h2 {...props} className={"mt-4 mb-2 font-semibold text-sm"}>
+            {children}
+          </h2>
+        ),
+        h3: ({ children, ...props }) => (
+          <h3 {...props} className={"mt-3 mb-2 font-semibold text-sm"}>
+            {children}
+          </h3>
+        ),
+        li: ({ children, ...props }) => (
+          <li {...props} className={"my-1"}>
+            {children}
+          </li>
+        ),
+        ol: ({ children, ...props }) => (
+          <ol {...props} className={"my-2 list-decimal space-y-1 pl-5"}>
+            {children}
+          </ol>
+        ),
+        p: ({ children, ...props }) => (
+          <p {...props} className={"my-2 leading-relaxed"}>
+            {children}
+          </p>
+        ),
+        pre: ({ children, ...props }) => (
+          <pre {...props} className={"my-3 overflow-x-auto whitespace-pre-wrap wrap-break-word"}>
+            {children}
+          </pre>
+        ),
+        table: ({ children, ...props }) => (
+          <div className={"my-3 overflow-x-auto"}>
+            <table {...props} className={"min-w-2xs w-full border-collapse text-left text-sm"}>
+              {children}
+            </table>
+          </div>
+        ),
+        td: ({ children, ...props }) => (
+          <td {...props} className={isUser ? "border border-primary-foreground/25 px-2 py-1" : "border px-2 py-1"}>
+            {children}
+          </td>
+        ),
+        th: ({ children, ...props }) => (
+          <th
+            {...props}
+            className={
+              isUser
+                ? "border border-primary-foreground/25 px-2 py-1.5 font-semibold"
+                : "border bg-muted/40 px-2 py-1.5 font-semibold"
+            }
+          >
+            {children}
+          </th>
+        ),
+        ul: ({ children, ...props }) => (
+          <ul {...props} className={"my-2 list-disc space-y-1 pl-5"}>
+            {children}
+          </ul>
+        ),
+      }}
+      remarkPlugins={[remarkGfm]}
+    >
+      {content}
+    </Markdown>
+  );
 }
 
 function normalizePersistedMessages(messages: ChatMessage[]) {
@@ -303,7 +439,9 @@ export function ChatbotTab({ entryId, tableNames }: ChatbotTabProps) {
                     }
                   >
                     <div className={"mb-2 font-medium text-xs opacity-80"}>{isUser ? "You" : "Assistant"}</div>
-                    <p className={"text-sm leading-relaxed whitespace-pre-wrap"}>{text}</p>
+                    <div className={"text-sm"}>
+                      <MarkdownMessage content={text} isUser={isUser} />
+                    </div>
                   </div>
                 </div>
               );
