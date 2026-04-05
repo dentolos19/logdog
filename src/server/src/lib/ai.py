@@ -52,8 +52,8 @@ class GenerativeModel:
             messages.append(("system", system_prompt))
         messages.append(("human", prompt))
 
-        structured_model = self.client.withStructuredOutput(schema)
-        return structured_model.invoke(messages)
+        structured_client = self.client.with_structured_output(schema)
+        return structured_client.invoke(messages)
 
 
 def get_generative_model(

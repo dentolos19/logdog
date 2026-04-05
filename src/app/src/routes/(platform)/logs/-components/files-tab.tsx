@@ -1,22 +1,21 @@
 import { format } from "date-fns";
-import { AlertCircleIcon, DownloadIcon, FileTextIcon, FolderOpenIcon, Trash2Icon } from "lucide-react";
+import { AlertCircleIcon, DownloadIcon, FileTextIcon, FolderOpenIcon } from "lucide-react";
 import { useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "#/components/ui/alert";
 import { Badge } from "#/components/ui/badge";
 import { Button } from "#/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "#/components/ui/empty";
 import { Spinner } from "#/components/ui/spinner";
-import { deleteLogFile, downloadLogFile, type LogFile } from "#/lib/server";
+import { downloadLogFile, type LogFile } from "#/lib/server";
 
 type FilesTabProps = {
   entryId: string;
   files: LogFile[];
   isLoading: boolean;
   error: string | null;
-  onFilesChanged: () => void;
 };
 
-export function FilesTab({ entryId, files, isLoading, error, onFilesChanged }: FilesTabProps) {
+export function FilesTab({ entryId, files, isLoading, error }: FilesTabProps) {
   if (isLoading) {
     return (
       <div className={"flex items-center justify-center py-12"}>
@@ -52,15 +51,14 @@ export function FilesTab({ entryId, files, isLoading, error, onFilesChanged }: F
   return (
     <div className={"flex flex-col gap-2"}>
       {files.map((file) => (
-        <FileRow entryId={entryId} file={file} key={file.id} onFilesChanged={onFilesChanged} />
+        <FileRow entryId={entryId} file={file} key={file.id} />
       ))}
     </div>
   );
 }
 
-function FileRow({ entryId, file, onFilesChanged }: { entryId: string; file: LogFile; onFilesChanged: () => void }) {
+function FileRow({ entryId, file }: { entryId: string; file: LogFile }) {
   const [isDownloading, setIsDownloading] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
   const formattedDate = format(new Date(file.created_at), "MMM d, yyyy 'at' h:mm a");
@@ -86,19 +84,6 @@ function FileRow({ entryId, file, onFilesChanged }: { entryId: string; file: Log
     }
   };
 
-  const onDelete = async () => {
-    setIsDeleting(true);
-    setActionError(null);
-    try {
-      await deleteLogFile(entryId, file.id);
-      onFilesChanged();
-    } catch (error) {
-      setActionError(error instanceof Error ? error.message : "Delete failed. Please try again.");
-    } finally {
-      setIsDeleting(false);
-    }
-  };
-
   return (
     <div className={"flex flex-col gap-1.5 rounded-md border p-4"}>
       <div className={"flex items-center gap-3"}>
@@ -118,24 +103,13 @@ function FileRow({ entryId, file, onFilesChanged }: { entryId: string; file: Log
 
           <Button
             aria-label={`Download ${file.name}`}
-            disabled={isDownloading || isDeleting}
+            disabled={isDownloading}
             onClick={() => void onDownload()}
             size={"sm"}
             variant={"ghost"}
           >
             {isDownloading ? <Spinner /> : <DownloadIcon />}
             Download
-          </Button>
-
-          <Button
-            aria-label={`Delete ${file.name}`}
-            disabled={isDownloading || isDeleting}
-            onClick={() => void onDelete()}
-            size={"sm"}
-            variant={"ghost"}
-          >
-            {isDeleting ? <Spinner /> : <Trash2Icon />}
-            Delete
           </Button>
         </div>
       </div>

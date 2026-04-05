@@ -1,6 +1,6 @@
 import { format } from "date-fns";
 import { AlertCircleIcon, CheckCircle2Icon, ClockIcon, InfoIcon } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "#/components/ui/accordion";
 import { Alert, AlertDescription, AlertTitle } from "#/components/ui/alert";
 import { Badge } from "#/components/ui/badge";
@@ -43,9 +43,19 @@ type ProcessInsights = {
 };
 
 export function ProcessesTab({ processes, isLoading, error }: ProcessesTabProps) {
-  const [selectedProcess, setSelectedProcess] = useState<LogProcess | null>(null);
+  const [selectedProcessId, setSelectedProcessId] = useState<string | null>(null);
 
-  if (isLoading) {
+  const selectedProcess = useMemo(() => {
+    if (selectedProcessId === null) {
+      return null;
+    }
+
+    return processes.find((process) => process.id === selectedProcessId) ?? null;
+  }, [processes, selectedProcessId]);
+
+  const isRefreshing = isLoading && processes.length > 0;
+
+  if (isLoading && processes.length === 0) {
     return (
       <div className={"flex items-center justify-center py-12"}>
         <Spinner />
@@ -53,7 +63,7 @@ export function ProcessesTab({ processes, isLoading, error }: ProcessesTabProps)
     );
   }
 
-  if (error !== null) {
+  if (error !== null && processes.length === 0) {
     return (
       <Alert variant={"destructive"}>
         <AlertCircleIcon className={"size-4"} />
@@ -80,17 +90,36 @@ export function ProcessesTab({ processes, isLoading, error }: ProcessesTabProps)
   return (
     <>
       <div className={"flex flex-col gap-2"}>
+        {isRefreshing && (
+          <div
+            className={
+              "flex items-center gap-2 rounded-md border border-dashed px-3 py-2 text-muted-foreground text-xs"
+            }
+          >
+            <Spinner className={"size-3.5"} />
+            Refreshing process details...
+          </div>
+        )}
+
+        {error !== null && processes.length > 0 && (
+          <Alert variant={"destructive"}>
+            <AlertCircleIcon className={"size-4"} />
+            <AlertTitle>Failed to refresh processes</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
         {processes.map((process) => (
           <ProcessRow
             key={process.id}
-            onViewDetails={hasProcessDetails(process) ? () => setSelectedProcess(process) : undefined}
+            onViewDetails={hasProcessDetails(process) ? () => setSelectedProcessId(process.id) : undefined}
             process={process}
           />
         ))}
       </div>
 
       {selectedProcess !== null && (
-        <ProcessDetailsDialog onClose={() => setSelectedProcess(null)} process={selectedProcess} />
+        <ProcessDetailsDialog onClose={() => setSelectedProcessId(null)} process={selectedProcess} />
       )}
     </>
   );

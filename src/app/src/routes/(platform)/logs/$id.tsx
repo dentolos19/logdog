@@ -26,7 +26,6 @@ import { Skeleton } from "#/components/ui/skeleton";
 import { Spinner } from "#/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "#/components/ui/tabs";
 import {
-  createLogProcess,
   deleteLogEntry,
   getLogEntry,
   type LogEntry,
@@ -191,17 +190,6 @@ function LogEntryPage() {
     }
   };
 
-  const onReprocessAll = async () => {
-    try {
-      await createLogProcess(id);
-      await fetchProcesses();
-      setActiveTab("processes");
-    } catch (error) {
-      setProcessesError(error instanceof Error ? error.message : "Failed to create process.");
-      setActiveTab("processes");
-    }
-  };
-
   const tableNames = useMemo(() => {
     const names = new Set<string>();
     for (const process of processes) {
@@ -285,13 +273,6 @@ function LogEntryPage() {
             <TabsContent className={"flex flex-col gap-6 p-4"} value={"data"}>
               <UploadSection logEntryId={id} onUploadSuccess={onUploadSuccess} />
 
-              {/* <section className={"flex items-center justify-between gap-3"}>
-                <h2 className={"font-semibold text-sm"}>Processes</h2>
-                <Button onClick={() => void onReprocessAll()} size={"sm"} variant={"outline"}>
-                  Reprocess All Files
-                </Button>
-              </section> */}
-
               <section className={"flex flex-col gap-3"}>
                 <div className={"flex items-center gap-2"}>
                   <h2 className={"font-semibold text-sm"}>Tables</h2>
@@ -315,13 +296,7 @@ function LogEntryPage() {
               <div className={"flex items-center gap-2"}>
                 <h2 className={"font-semibold text-sm"}>Files</h2>
               </div>
-              <FilesTab
-                entryId={id}
-                error={filesError}
-                files={files}
-                isLoading={filesLoading}
-                onFilesChanged={() => void fetchFiles()}
-              />
+              <FilesTab entryId={id} error={filesError} files={files} isLoading={filesLoading} />
             </TabsContent>
           </Tabs>
         )}
