@@ -1,5 +1,6 @@
 import { AlertCircleIcon, CheckCircle2Icon, FileTextIcon, UploadIcon, XIcon } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
+import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "#/components/ui/alert";
 import { Badge } from "#/components/ui/badge";
 import { Button } from "#/components/ui/button";
@@ -48,9 +49,12 @@ export function UploadSection({ logEntryId, onUploadSuccess }: UploadSectionProp
       setUploadedCount(response.files.length);
       setQueuedProcessId(response.process_id);
       setSelectedFiles([]);
-      onUploadSuccess();
+      toast.success(`Uploaded ${response.files.length} ${response.files.length === 1 ? "file" : "files"}.`);
+      await onUploadSuccess();
     } catch (error) {
-      setUploadError(error instanceof Error ? error.message : "Upload failed. Please try again.");
+      const message = error instanceof Error ? error.message : "Upload failed. Please try again.";
+      setUploadError(message);
+      toast.error(message);
     } finally {
       setIsUploading(false);
     }

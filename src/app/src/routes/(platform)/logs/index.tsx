@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { ChevronRightIcon, PlusIcon, ScrollTextIcon } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { Button } from "#/components/ui/button";
 import {
   Dialog,
@@ -69,9 +70,12 @@ function LogsPage() {
       const created = await createLogEntry({ name: name.trim() });
       setName("");
       setIsDialogOpen(false);
+      toast.success("Log group created.");
       await navigate({ to: "/logs/$id", params: { id: created.id } });
     } catch (error) {
-      setCreateError(error instanceof Error ? error.message : "Failed to create log entry.");
+      const message = error instanceof Error ? error.message : "Failed to create log entry.";
+      setCreateError(message);
+      toast.error(message);
     } finally {
       setIsSubmitting(false);
     }

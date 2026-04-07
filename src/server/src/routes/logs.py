@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from datetime import datetime
 from typing import Any
@@ -11,6 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from lib.database import get_database
+from lib.database import SessionLocal as AppSessionLocal
 from lib.megabase import SessionLocal as MegabaseSessionLocal
 from lib.megabase import drop_table as megabase_drop_table
 from lib.megabase import init_megabase
@@ -21,6 +23,7 @@ from parsers.preprocessor import FileInput
 from routes.auth import get_current_user
 
 router = APIRouter(prefix="/logs", tags=["logs"])
+logger = logging.getLogger(__name__)
 
 
 class MessageResponse(BaseModel):
@@ -184,6 +187,20 @@ def _require_owned_file(database: Session, entry_id: str, file_id: str):
     return log_file, asset
 
 
+def _delete_orphan_assets(asset_ids: list[uuid.UUID]):
+    database = AppSessionLocal()
+    try:
+        for asset_id in asset_ids:
+            try:
+                remaining_links = database.query(LogFile).filter(LogFile.asset_id == asset_id).count()
+                if remaining_links == 0:
+                    delete_file(asset_id=asset_id, db=database)
+            except Exception:  # noqa: BLE001
+                logger.exception("Failed to delete orphan asset %s", asset_id)
+    finally:
+        database.close()
+
+
 @router.get("", response_model=list[LogEntryResponse])
 def list_log_entries(
     current_user: User = Depends(get_current_user),
@@ -243,6 +260,7 @@ def update_log_entry(
 @router.delete("/{entry_id}", response_model=MessageResponse)
 def delete_log_entry(
     entry_id: str,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     database: Session = Depends(get_database),
 ):
@@ -256,12 +274,10 @@ def delete_log_entry(
         try:
             init_megabase(megabase_database)
             for table_name in table_names:
-                megabase_drop_table(megabase_database, table_name)
-        except Exception as error:  # noqa: BLE001
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to drop generated tables: {error}",
-            ) from error
+                try:
+                    megabase_drop_table(megabase_database, table_name)
+                except Exception:  # noqa: BLE001
+                    logger.exception("Failed to drop generated table %s", table_name)
         finally:
             megabase_database.close()
 
@@ -283,10 +299,8 @@ def delete_log_entry(
     database.delete(entry)
     database.commit()
 
-    for asset_id in orphan_asset_ids:
-        remaining_links = database.query(LogFile).filter(LogFile.asset_id == asset_id).count()
-        if remaining_links == 0:
-            delete_file(asset_id=asset_id, db=database)
+    if orphan_asset_ids:
+        background_tasks.add_task(_delete_orphan_assets, list(orphan_asset_ids))
 
     return MessageResponse(message="Log entry deleted.")
 

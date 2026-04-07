@@ -1,5 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { useAuth } from "#/components/auth-provider";
 import { Button } from "#/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "#/components/ui/card";
@@ -44,6 +45,14 @@ function RegisterPage() {
     }
   }, [isAuthenticated, isLoading, navigate]);
 
+  if (isLoading || isAuthenticated) {
+    return (
+      <div className={"flex min-h-screen items-center justify-center"}>
+        <Spinner className={"size-8"} />
+      </div>
+    );
+  }
+
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setServerError(null);
@@ -58,7 +67,9 @@ function RegisterPage() {
       await signUp(email.trim(), password);
       await navigate({ to: "/dashboard" });
     } catch (error) {
-      setServerError(error instanceof Error ? error.message : "Something went wrong.");
+      const message = error instanceof Error ? error.message : "Something went wrong.";
+      setServerError(message);
+      toast.error(message);
     } finally {
       setIsSubmitting(false);
     }

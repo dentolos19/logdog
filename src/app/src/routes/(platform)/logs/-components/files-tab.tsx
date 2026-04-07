@@ -1,6 +1,7 @@
 import { format } from "date-fns";
 import { AlertCircleIcon, DownloadIcon, FileTextIcon, FolderOpenIcon } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "#/components/ui/alert";
 import { Badge } from "#/components/ui/badge";
 import { Button } from "#/components/ui/button";
@@ -78,7 +79,9 @@ function FileRow({ entryId, file }: { entryId: string; file: LogFile }) {
       anchor.remove();
       URL.revokeObjectURL(blobUrl);
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : "Download failed. Please try again.");
+      const message = error instanceof Error ? error.message : "Download failed. Please try again.";
+      setActionError(message);
+      toast.error(message);
     } finally {
       setIsDownloading(false);
     }

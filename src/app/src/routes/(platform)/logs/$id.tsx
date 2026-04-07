@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { MoreHorizontalIcon, PencilIcon, Trash2Icon } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -171,8 +172,11 @@ function LogEntryPage() {
       const updated = await updateLogEntry(id, { name: renameName.trim() });
       setEntry(updated);
       setIsRenameDialogOpen(false);
+      toast.success("Log group renamed.");
     } catch (error) {
-      setRenameError(error instanceof Error ? error.message : "Failed to rename log entry.");
+      const message = error instanceof Error ? error.message : "Failed to rename log entry.";
+      setRenameError(message);
+      toast.error(message);
     } finally {
       setIsRenaming(false);
     }
@@ -180,13 +184,18 @@ function LogEntryPage() {
 
   const onDelete = async () => {
     setIsDeleting(true);
+    setIsDeleteAlertOpen(false);
+    const deletingToastId = toast.loading("Deleting log group...");
     try {
       await deleteLogEntry(id);
+      toast.success("Log group deleted.", { id: deletingToastId });
       await navigate({ to: "/logs" });
     } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to delete log entry.";
+      toast.error(message, { id: deletingToastId });
+      setFetchError(message);
+    } finally {
       setIsDeleting(false);
-      setFetchError(error instanceof Error ? error.message : "Failed to delete log entry.");
-      setIsDeleteAlertOpen(false);
     }
   };
 
