@@ -44,13 +44,7 @@ type ProcessInsights = {
   resultWarnings: string[];
 };
 
-export function ProcessesTab({
-  processes,
-  isLoading,
-  error,
-  onRetryProcess,
-  retryingProcessIds,
-}: ProcessesTabProps) {
+export function ProcessesTab({ processes, isLoading, error, onRetryProcess, retryingProcessIds }: ProcessesTabProps) {
   const [selectedProcessId, setSelectedProcessId] = useState<string | null>(null);
 
   const selectedProcess = useMemo(() => {

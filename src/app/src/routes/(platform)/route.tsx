@@ -91,11 +91,7 @@ function PlatformInner() {
           <div className={"ml-auto flex items-center gap-2"} ref={setActionsContainer} />
         </header>
 
-        <ScrollArea
-          className={
-            "h-[calc(100dvh-3rem)] w-[calc(100dvw-var(--sidebar-width))] min-w-0 max-w-[calc(100dvw-var(--sidebar-width))] overflow-x-hidden"
-          }
-        >
+        <ScrollArea className={"h-[calc(100dvh-3rem)] w-full min-w-0 overflow-x-hidden"}>
           <Outlet />
         </ScrollArea>
       </SidebarInset>

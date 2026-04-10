@@ -52,13 +52,7 @@ function EmptyMedia({
 }
 
 function EmptyTitle({ className, ...props }: React.ComponentProps<"div">) {
-  return (
-    <div
-      className={cn("font-heading text-lg font-medium tracking-tight", className)}
-      data-slot="empty-title"
-      {...props}
-    />
-  );
+  return <div className={cn("text-lg font-medium tracking-tight", className)} data-slot="empty-title" {...props} />;
 }
 
 function EmptyDescription({ className, ...props }: React.ComponentProps<"p">) {

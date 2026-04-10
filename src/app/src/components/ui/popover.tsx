@@ -1,5 +1,5 @@
 import { Popover as PopoverPrimitive } from "radix-ui";
-import type * as React from "react";
+import * as React from "react";
 
 import { cn } from "#/lib/utils";
 
@@ -42,7 +42,7 @@ function PopoverHeader({ className, ...props }: React.ComponentProps<"div">) {
 }
 
 function PopoverTitle({ className, ...props }: React.ComponentProps<"h2">) {
-  return <div className={cn("font-heading font-medium", className)} data-slot="popover-title" {...props} />;
+  return <div className={cn("font-medium", className)} data-slot="popover-title" {...props} />;
 }
 
 function PopoverDescription({ className, ...props }: React.ComponentProps<"p">) {

@@ -2,7 +2,7 @@
 
 import { XIcon } from "lucide-react";
 import { Dialog as DialogPrimitive } from "radix-ui";
-import type * as React from "react";
+import * as React from "react";
 import { Button } from "#/components/ui/button";
 import { cn } from "#/lib/utils";
 
@@ -98,11 +98,7 @@ function DialogFooter({
 
 function DialogTitle({ className, ...props }: React.ComponentProps<typeof DialogPrimitive.Title>) {
   return (
-    <DialogPrimitive.Title
-      className={cn("font-heading leading-none font-medium", className)}
-      data-slot="dialog-title"
-      {...props}
-    />
+    <DialogPrimitive.Title className={cn("leading-none font-medium", className)} data-slot="dialog-title" {...props} />
   );
 }
 

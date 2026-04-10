@@ -1,4 +1,4 @@
-import type * as React from "react";
+import * as React from "react";
 
 import { cn } from "#/lib/utils";
 
@@ -32,7 +32,7 @@ function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
 function CardTitle({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
-      className={cn("font-heading text-base leading-normal font-medium group-data-[size=sm]/card:text-sm", className)}
+      className={cn("text-base leading-normal font-medium group-data-[size=sm]/card:text-sm", className)}
       data-slot="card-title"
       {...props}
     />

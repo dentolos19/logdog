@@ -1,4 +1,4 @@
-import type * as React from "react";
+import * as React from "react";
 import { Drawer as DrawerPrimitive } from "vaul";
 
 import { cn } from "#/lib/utils";
@@ -71,7 +71,7 @@ function DrawerFooter({ className, ...props }: React.ComponentProps<"div">) {
 function DrawerTitle({ className, ...props }: React.ComponentProps<typeof DrawerPrimitive.Title>) {
   return (
     <DrawerPrimitive.Title
-      className={cn("font-heading font-medium text-foreground", className)}
+      className={cn("font-medium text-foreground", className)}
       data-slot="drawer-title"
       {...props}
     />
