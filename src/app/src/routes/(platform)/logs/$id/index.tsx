@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { MoreHorizontalIcon, PencilIcon, Trash2Icon } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { Alert, AlertDescription, AlertTitle } from "#/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -39,12 +40,11 @@ import {
 } from "#/lib/server";
 import { PageHeader } from "#/routes/(platform)/-components/page-header";
 import { ChatbotTab } from "#/routes/(platform)/logs/-components/chatbot-tab";
-import { FilesTab } from "#/routes/(platform)/logs/-components/files-tab";
 import { ProcessesTab } from "#/routes/(platform)/logs/-components/processes-tab";
 import { TablesTab } from "#/routes/(platform)/logs/-components/tables-tab";
 import { UploadSection } from "#/routes/(platform)/logs/-components/upload-section";
 
-export const Route = createFileRoute("/(platform)/logs/$id")({
+export const Route = createFileRoute("/(platform)/logs/$id/")({
   component: LogEntryPage,
 });
 
@@ -60,7 +60,6 @@ function LogEntryPage() {
   const [processesError, setProcessesError] = useState<string | null>(null);
 
   const [files, setFiles] = useState<LogFile[]>([]);
-  const [filesLoading, setFilesLoading] = useState(false);
   const [filesError, setFilesError] = useState<string | null>(null);
 
   const [activeTab, setActiveTab] = useState("data");
@@ -103,15 +102,12 @@ function LogEntryPage() {
   }, [id]);
 
   const fetchFiles = useCallback(async () => {
-    setFilesLoading(true);
     setFilesError(null);
     try {
       const data = await listLogFiles(id);
       setFiles(data);
     } catch (error) {
       setFilesError(error instanceof Error ? error.message : "Failed to load files.");
-    } finally {
-      setFilesLoading(false);
     }
   }, [id]);
 
@@ -133,7 +129,9 @@ function LogEntryPage() {
       });
 
       try {
-        const response = await createLogProcess(id, { file_ids: [process.file_id] });
+        const response = await createLogProcess(id, {
+          file_ids: [process.file_id],
+        });
         if (response.process_ids.length === 0) {
           throw new Error(response.errors[0] ?? "Retry failed.");
         }
@@ -311,9 +309,8 @@ function LogEntryPage() {
           <Tabs className={"gap-0"} onValueChange={setActiveTab} value={activeTab}>
             <TabsList className={"w-full border-b bg-sidebar rounded-none"}>
               <TabsTrigger value={"data"}>Data</TabsTrigger>
-              <TabsTrigger value={"chatbot"}>Chatbot</TabsTrigger>
               <TabsTrigger value={"processes"}>Processes</TabsTrigger>
-              <TabsTrigger value={"files"}>Files</TabsTrigger>
+              <TabsTrigger value={"chatbot"}>Chatbot</TabsTrigger>
             </TabsList>
 
             <TabsContent className={"flex flex-col gap-6 p-4"} value={"data"}>
@@ -323,7 +320,13 @@ function LogEntryPage() {
                 <div className={"flex items-center gap-2"}>
                   <h2 className={"font-semibold text-sm"}>Tables</h2>
                 </div>
-                <TablesTab files={files} processes={processes} />
+                {filesError !== null && (
+                  <Alert variant={"destructive"}>
+                    <AlertTitle>Failed to load file metadata</AlertTitle>
+                    <AlertDescription>{filesError}</AlertDescription>
+                  </Alert>
+                )}
+                <TablesTab entryId={id} files={files} processes={processes} />
               </section>
             </TabsContent>
 
@@ -342,13 +345,6 @@ function LogEntryPage() {
 
             <TabsContent className={"flex flex-col gap-3 p-4"} value={"chatbot"}>
               <ChatbotTab entryId={id} tableNames={tableNames} />
-            </TabsContent>
-
-            <TabsContent className={"flex flex-col gap-3 p-4"} value={"files"}>
-              <div className={"flex items-center gap-2"}>
-                <h2 className={"font-semibold text-sm"}>Files</h2>
-              </div>
-              <FilesTab entryId={id} error={filesError} files={files} isLoading={filesLoading} />
             </TabsContent>
           </Tabs>
         )}
