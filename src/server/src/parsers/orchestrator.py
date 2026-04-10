@@ -328,6 +328,7 @@ def _ensure_megabase_table(megabase_db: Session, table_definition: Any) -> None:
                 "type": _sql_to_megabase_type(column.sql_type),
                 "nullable": column.nullable,
                 "primary_key": bool(column.primary_key and column.name != "id"),
+                "description": column.description or "",
             }
             for column in table_definition.columns
             if column.name != "id"
@@ -393,13 +394,16 @@ def _sync_log_table(db: Session, entry_id: str, table_definition: Any) -> None:
         ensure_ascii=True,
     )
 
-    existing = db.query(LogTable).filter_by(entry_id=_uuid_or_raw(entry_id), name=table_definition.table_name).first()
+    table_uuid = uuid.UUID(table_definition.table_name)
+    existing = db.query(LogTable).filter_by(id=table_uuid).first()
     if existing:
+        existing.name = table_definition.table_name
         existing.table = table_definition.table_name
         existing.schema = schema_json
     else:
         db.add(
             LogTable(
+                id=table_uuid,
                 entry_id=_uuid_or_raw(entry_id),
                 name=table_definition.table_name,
                 table=table_definition.table_name,

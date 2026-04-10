@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import re
 from enum import Enum
+from uuid import uuid4
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -140,11 +140,4 @@ def build_ddl(table_name: str, columns: list[ColumnDefinition]) -> str:
 
 
 def make_table_name(parser_key: str, file_id: str | None, filename: str) -> str:
-    if file_id:
-        safe_file_id = re.sub(r"[^a-z0-9]", "", file_id.lower())[:12]
-    else:
-        safe_filename = re.sub(r"[^a-z0-9]", "_", filename.lower()).strip("_")[:20]
-        safe_file_id = safe_filename or "file"
-
-    safe_parser_key = re.sub(r"[^a-z0-9]", "_", parser_key.lower()).strip("_")
-    return f"{safe_parser_key}_{safe_file_id}"
+    return uuid4().hex
