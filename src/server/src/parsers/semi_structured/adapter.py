@@ -25,8 +25,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = "1.0.0"
-
 
 def _segment(lines: list[str]) -> list[tuple[int, int, str]]:
     clusters: list[tuple[int, int, str]] = []
@@ -48,19 +46,16 @@ def _segment(lines: list[str]) -> list[tuple[int, int, str]]:
     return clusters
 
 
-def _log_row_to_dict(log_row: Any, line_start: int, line_end: int, filename: str) -> dict[str, Any]:
+def _log_row_to_dict(log_row: Any, filename: str) -> dict[str, Any]:
     from dataclasses import asdict
 
     data = asdict(log_row)
-    data["source"] = data.get("source") or filename
-    data["source_type"] = data.get("source_type") or "file"
-    data["schema_version"] = SCHEMA_VERSION
-    data["line_start"] = line_start
-    data["line_end"] = line_end
 
-    additional = data.get("additional_data")
-    if isinstance(additional, dict):
-        data["additional_data"] = json.dumps(additional)
+    extra = data.get("extra")
+    if isinstance(extra, dict):
+        if "source" not in extra:
+            extra["source"] = filename
+        data["extra"] = json.dumps(extra)
 
     for drop_key in ("raw_hash", "template_id", "log_group_id"):
         data.pop(drop_key, None)
@@ -152,7 +147,7 @@ class SemiStructuredParserPipeline(ParserPipeline):
             for start, end, text in clusters:
                 try:
                     result = inner_pipeline.process(text)
-                    row = _log_row_to_dict(result.log_row, start, end, file_input.filename)
+                    row = _log_row_to_dict(result.log_row, file_input.filename)
                     file_rows.append(row)
                     total_confidence += result.confidence
                     processed += 1

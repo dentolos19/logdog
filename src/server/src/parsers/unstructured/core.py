@@ -339,7 +339,6 @@ def extract_fields_heuristic(text: str) -> dict[str, Any]:
     timestamp_match = TIMESTAMP_RE.search(text)
     if timestamp_match:
         ts = timestamp_match.group("ts")
-        fields["timestamp_raw"] = ts
         fields["timestamp"] = ts
 
     level_match = LOG_LEVEL_RE.search(text)
@@ -405,7 +404,7 @@ def infer_columns_from_fields(all_fields: list[dict[str, Any]]) -> list[Inferred
 
     for fields in all_fields:
         for key, value in fields.items():
-            if key in {"timestamp", "timestamp_raw", "log_level", "message"}:
+            if key in {"timestamp", "log_level", "message"}:
                 continue
             key_counts[key] = key_counts.get(key, 0) + 1
             examples = key_examples.setdefault(key, [])
@@ -586,9 +585,8 @@ def extract_unstructured_samples(
     samples: list[SampleRecord] = []
     for (start, end, text), template in zip(clusters[:max_samples], templates[:max_samples]):
         fields = extract_fields_heuristic(text)
-        fields["raw_text"] = text
+        fields["raw"] = text
         fields["source"] = filename
-        fields["source_type"] = "file"
         fields["template"] = template
         fields["template_cluster_id"] = hashlib.md5(template.encode(), usedforsecurity=False).hexdigest()[:12]
 

@@ -35,8 +35,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = "1.0.0"
-
 SEMICONDUCTOR_COLUMN_NAMES = frozenset({"wafer_id", "tool_id", "recipe_id", "process_step"})
 TEMPLATE_COLUMN_NAMES = frozenset({"template", "template_cluster_id"})
 MEASUREMENT_FIELD_NAMES = frozenset(_CORE_MEASUREMENT_FIELDS)
@@ -48,7 +46,7 @@ _MIN_FREQUENCY_RATIO = 0.05
 
 def _compute_row_confidence(fields: dict[str, Any]) -> float:
     score = 0.40
-    if fields.get("timestamp") or fields.get("timestamp_raw"):
+    if fields.get("timestamp"):
         score += 0.10
     if fields.get("log_level"):
         score += 0.05
@@ -68,24 +66,20 @@ def _compute_row_confidence(fields: dict[str, Any]) -> float:
 def _row_from_fields(
     fields: dict[str, Any],
     filename: str,
-    line_start: int,
-    line_end: int,
     raw_text: str,
     column_names: frozenset[str],
 ) -> dict[str, Any]:
     row: dict[str, Any] = {
         "source": filename,
-        "source_type": "file",
-        "schema_version": SCHEMA_VERSION,
-        "line_start": line_start,
-        "line_end": line_end,
-        "raw_text": raw_text[:4000],
+        "raw": raw_text[:4000],
     }
     overflow: dict[str, Any] = {}
 
     for key, value in fields.items():
         if key in column_names or key in BASELINE_COLUMN_NAMES:
             row[key] = value
+        elif isinstance(value, (dict, list)):
+            overflow[key] = value
         else:
             overflow[key] = value
 
@@ -94,7 +88,7 @@ def _row_from_fields(
     row["parse_confidence"] = _compute_row_confidence(fields)
 
     if overflow:
-        row["additional_data"] = json.dumps(overflow, default=str)
+        row["extra"] = json.dumps(overflow, default=str)
 
     return row
 
@@ -321,7 +315,7 @@ class UnstructuredPipeline(ParserPipeline):
 
         file_rows: list[dict[str, Any]] = []
         for (start, end, text), fields in zip(clusters, all_fields):
-            row = _row_from_fields(fields, file_input.filename, start, end, text, column_names)
+            row = _row_from_fields(fields, file_input.filename, text, column_names)
             file_rows.append(row)
 
         file_rows, _suppressed = _suppress_heartbeats(file_rows, len(clusters), file_warnings)

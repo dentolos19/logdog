@@ -30,19 +30,9 @@ type LocalParseResult = {
   ai_fallback_used: boolean;
   log_row: {
     timestamp: string | null;
-    source: string;
-    source_type: string;
     log_level: string;
-    event_type: string;
     message: string;
-    schema_version: string;
-    additional_data: Record<string, unknown>;
-    equipment_id: string | null;
-    lot_id: string | null;
-    wafer_id: string | null;
-    recipe_id: string | null;
-    step_id: string | null;
-    module_id: string | null;
+    extra: Record<string, unknown>;
   };
 };
 
@@ -120,13 +110,10 @@ function ParserTesterBody() {
             ai_fallback_used: detectedFormat === "plain_text",
             log_row: {
               timestamp: null,
-              source: file.name,
-              source_type: "file",
               log_level: inferredLevel,
-              event_type: inferredLevel === "ERROR" ? "error_event" : "log_event",
               message: firstLine || "No message detected.",
-              schema_version: "local-preview-1.0",
-              additional_data: {
+              extra: {
+                source: file.name,
                 line_count: lines.length,
                 char_count: text.length,
               },
@@ -263,15 +250,6 @@ function ParseResultCard({ result }: { result: LocalParseResult }) {
   const percent = Math.round(result.confidence * 100);
   const row = result.log_row;
 
-  const semiconductorFields = [
-    { label: "Equipment", value: row.equipment_id },
-    { label: "Lot", value: row.lot_id },
-    { label: "Wafer", value: row.wafer_id },
-    { label: "Recipe", value: row.recipe_id },
-    { label: "Step", value: row.step_id },
-    { label: "Module", value: row.module_id },
-  ].filter((field) => field.value);
-
   return (
     <div className={"flex flex-col gap-3 rounded-lg border p-4"}>
       <div className={"flex items-start justify-between gap-2"}>
@@ -290,9 +268,6 @@ function ParseResultCard({ result }: { result: LocalParseResult }) {
               {result.format_detected}
             </Badge>
           )}
-          <Badge className={"text-[10px]"} variant={"outline"}>
-            {row.event_type}
-          </Badge>
         </div>
       </div>
 
@@ -318,10 +293,7 @@ function ParseResultCard({ result }: { result: LocalParseResult }) {
       <div className={"grid grid-cols-2 gap-x-4 gap-y-2 rounded-md bg-muted/50 p-3"}>
         {[
           { label: "log_level", value: row.log_level },
-          { label: "source_type", value: row.source_type },
           { label: "timestamp", value: row.timestamp },
-          { label: "source", value: row.source },
-          { label: "schema_version", value: row.schema_version },
         ].map(({ label, value }) =>
           value ? (
             <div className={"flex flex-col gap-0.5"} key={label}>
@@ -334,26 +306,15 @@ function ParseResultCard({ result }: { result: LocalParseResult }) {
 
       <p className={"rounded-md border px-3 py-2 font-mono text-muted-foreground text-xs"}>{row.message}</p>
 
-      {semiconductorFields.length > 0 && (
-        <div className={"flex flex-wrap gap-2"}>
-          {semiconductorFields.map((field) => (
-            <div className={"flex items-center gap-1 rounded-sm bg-muted px-2 py-1"} key={field.label}>
-              <span className={"text-[10px] text-muted-foreground"}>{field.label}:</span>
-              <span className={"font-medium font-mono text-[10px]"}>{field.value}</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {Object.keys(row.additional_data).length > 0 && (
+      {Object.keys(row.extra).length > 0 && (
         <Collapsible>
           <CollapsibleTrigger className={"flex items-center gap-1 text-muted-foreground text-xs hover:text-foreground"}>
             <ChevronDownIcon className={"size-3 transition-transform [[data-state=open]_&]:rotate-180"} />
-            additional_data ({Object.keys(row.additional_data).length} fields)
+            extra ({Object.keys(row.extra).length} fields)
           </CollapsibleTrigger>
           <CollapsibleContent>
             <pre className={"mt-2 overflow-x-auto rounded-md bg-muted p-3 font-mono text-[10px] text-foreground"}>
-              {JSON.stringify(row.additional_data, null, 2)}
+              {JSON.stringify(row.extra, null, 2)}
             </pre>
           </CollapsibleContent>
         </Collapsible>

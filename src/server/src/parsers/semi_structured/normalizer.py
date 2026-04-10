@@ -7,39 +7,20 @@ from typing import Any
 from parsers.semi_structured.field_extractor import ExtractionResult
 from parsers.semi_structured.fuzzy_matcher import FuzzyMatcher
 
-SCHEMA_VERSION = "1.0.0"
-
 
 @dataclass
 class LogRow:
     id: str = ""
     timestamp: str | None = None
-    timestamp_raw: str | None = None
-    source: str = ""
-    source_type: str = "file"
-    log_level: str = "INFO"
-    event_type: str = "log"
-    message: str = ""
-    raw_text: str = ""
-    record_group_id: str | None = None
-    line_start: int | None = None
-    line_end: int | None = None
-    parse_confidence: float = 0.0
-    schema_version: str = SCHEMA_VERSION
-    additional_data: dict[str, Any] = field(default_factory=dict)
+    raw: str = ""
+    extra: dict[str, Any] = field(default_factory=dict)
     raw_hash: str = ""
     template_id: str | None = None
     log_group_id: str = "default"
-    equipment_id: str | None = None
-    lot_id: str | None = None
-    wafer_id: str | None = None
-    recipe_id: str | None = None
-    step_id: str | None = None
-    module_id: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         result = asdict(self)
-        result["additional_data"] = json.dumps(result["additional_data"])
+        result["extra"] = json.dumps(result["extra"])
         return result
 
     def to_json(self) -> str:
@@ -82,40 +63,33 @@ class Normalizer:
         template_id: str | None = None,
         log_group_id: str = "default",
         parse_confidence: float = 0.0,
-        source_type: str = "file",
-        line_start: int | None = None,
-        line_end: int | None = None,
-        record_group_id: str | None = None,
     ) -> LogRow:
         flat = extraction.to_flat_dict()
         remapped = self.matcher.remap_dict(flat)
         timestamp = self._find_field(remapped, self._timestamp_keys)
 
+        extra: dict[str, Any] = dict(remapped)
+        source = self._find_field(remapped, self._source_keys)
+        if source:
+            extra["source"] = source
+        extra["log_level"] = self._find_field(remapped, self._log_level_keys) or "INFO"
+        extra["message"] = self._build_message(remapped, extraction)
+        extra["parse_confidence"] = round(parse_confidence, 4)
+        extra["equipment_id"] = self._find_field(remapped, ["equipment_id", "EquipmentID"])
+        extra["lot_id"] = self._find_field(remapped, ["lot_id", "LotID"])
+        extra["wafer_id"] = self._find_field(remapped, ["wafer_id", "WaferID"])
+        extra["recipe_id"] = self._find_field(remapped, ["recipe_id", "RecipeID", "ModuleRecipeID"])
+        extra["step_id"] = self._find_field(remapped, ["recipe_step_id", "RecipeStepID", "step_id"])
+        extra["module_id"] = self._find_field(remapped, ["module_id", "ModuleID"])
+
         return LogRow(
             id=self._generate_id(raw_text),
             timestamp=timestamp,
-            timestamp_raw=timestamp,
-            source=self._find_field(remapped, self._source_keys) or "",
-            source_type=source_type,
-            log_level=self._find_field(remapped, self._log_level_keys) or "INFO",
-            event_type=self._infer_event_type(extraction.format_detected, remapped),
-            message=self._build_message(remapped, extraction),
-            raw_text=raw_text,
-            record_group_id=record_group_id,
-            line_start=line_start,
-            line_end=line_end,
-            parse_confidence=round(parse_confidence, 4),
-            schema_version=SCHEMA_VERSION,
-            additional_data=remapped,
+            raw=raw_text,
+            extra=extra,
             raw_hash=hashlib.sha256(raw_text.encode()).hexdigest() if raw_text else "",
             template_id=template_id,
             log_group_id=log_group_id,
-            equipment_id=self._find_field(remapped, ["equipment_id", "EquipmentID"]),
-            lot_id=self._find_field(remapped, ["lot_id", "LotID"]),
-            wafer_id=self._find_field(remapped, ["wafer_id", "WaferID"]),
-            recipe_id=self._find_field(remapped, ["recipe_id", "RecipeID", "ModuleRecipeID"]),
-            step_id=self._find_field(remapped, ["recipe_step_id", "RecipeStepID", "step_id"]),
-            module_id=self._find_field(remapped, ["module_id", "ModuleID"]),
         )
 
     def normalize_from_dict(
@@ -125,10 +99,6 @@ class Normalizer:
         template_id: str | None = None,
         log_group_id: str = "default",
         parse_confidence: float = 0.0,
-        source_type: str = "file",
-        line_start: int | None = None,
-        line_end: int | None = None,
-        record_group_id: str | None = None,
     ) -> LogRow:
         remapped = self.matcher.remap_dict(fields)
 
@@ -136,31 +106,28 @@ class Normalizer:
         remapped.pop("_section_map", {})
         timestamp = self._find_field(remapped, self._timestamp_keys)
 
+        extra: dict[str, Any] = dict(remapped)
+        source = self._find_field(remapped, self._source_keys)
+        if source:
+            extra["source"] = source
+        extra["log_level"] = self._find_field(remapped, self._log_level_keys) or "INFO"
+        extra["message"] = f"[{format_type}] Parsed via AI fallback"
+        extra["parse_confidence"] = round(parse_confidence, 4)
+        extra["equipment_id"] = self._find_field(remapped, ["equipment_id", "EquipmentID"])
+        extra["lot_id"] = self._find_field(remapped, ["lot_id", "LotID"])
+        extra["wafer_id"] = self._find_field(remapped, ["wafer_id", "WaferID"])
+        extra["recipe_id"] = self._find_field(remapped, ["recipe_id", "RecipeID"])
+        extra["step_id"] = self._find_field(remapped, ["recipe_step_id", "RecipeStepID"])
+        extra["module_id"] = self._find_field(remapped, ["module_id", "ModuleID"])
+
         return LogRow(
             id=self._generate_id(raw_text),
             timestamp=timestamp,
-            timestamp_raw=timestamp,
-            source=self._find_field(remapped, self._source_keys) or "",
-            source_type=source_type,
-            log_level=self._find_field(remapped, self._log_level_keys) or "INFO",
-            event_type=format_type if format_type != "unknown" else "log",
-            message=f"[{format_type}] Parsed via AI fallback",
-            raw_text=raw_text,
-            record_group_id=record_group_id,
-            line_start=line_start,
-            line_end=line_end,
-            parse_confidence=round(parse_confidence, 4),
-            schema_version=SCHEMA_VERSION,
-            additional_data=remapped,
+            raw=raw_text,
+            extra=extra,
             raw_hash=hashlib.sha256(raw_text.encode()).hexdigest() if raw_text else "",
             template_id=template_id,
             log_group_id=log_group_id,
-            equipment_id=self._find_field(remapped, ["equipment_id", "EquipmentID"]),
-            lot_id=self._find_field(remapped, ["lot_id", "LotID"]),
-            wafer_id=self._find_field(remapped, ["wafer_id", "WaferID"]),
-            recipe_id=self._find_field(remapped, ["recipe_id", "RecipeID"]),
-            step_id=self._find_field(remapped, ["recipe_step_id", "RecipeStepID"]),
-            module_id=self._find_field(remapped, ["module_id", "ModuleID"]),
         )
 
     @staticmethod
@@ -193,26 +160,6 @@ class Normalizer:
                 return str(value)
 
         return None
-
-    @staticmethod
-    def _infer_event_type(format_detected: str | None, data: dict) -> str:
-        if format_detected:
-            fmt = format_detected.upper()
-            if fmt == "SYSLOG":
-                return "syslog"
-            if fmt in {"JSON", "JSON_LINES"}:
-                return "json_log"
-            if fmt in {"KEY_VALUE", "LOGFMT"}:
-                return "key_value_log"
-            if fmt in {"SECTION_DELIMITED", "LAM_PARQUET"}:
-                return "equipment_event"
-            if fmt == "CSV":
-                return "csv_record"
-
-        semiconductor_keys = {"equipment_id", "EquipmentID", "lot_id", "LotID", "wafer_id", "WaferID"}
-        if any(key in data for key in semiconductor_keys):
-            return "equipment_event"
-        return "log"
 
     @staticmethod
     def _build_message(data: dict, extraction: ExtractionResult) -> str:

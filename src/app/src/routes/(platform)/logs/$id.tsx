@@ -334,8 +334,6 @@ function LogEntryPage() {
               <ProcessesTab
                 error={processesError}
                 isLoading={processesLoading}
-                onOpenFilesTab={() => setActiveTab("files")}
-                onOpenTablesTab={() => setActiveTab("data")}
                 onRetryProcess={onRetryProcess}
                 processes={processes}
                 retryingProcessIds={retryingProcessIds}

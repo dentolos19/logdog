@@ -32,7 +32,6 @@ export type LogProcess = {
 export type LogProcessStatus = "queued" | "processing" | "completed" | "failed";
 
 export type LogProcessClassification = {
-  schema_version?: string;
   dominant_format?: string;
   structural_class?: string;
   selected_parser_key?: string;

@@ -1,5 +1,5 @@
 import { format } from "date-fns";
-import { AlertCircleIcon, CheckCircle2Icon, ClockIcon, DatabaseIcon, InfoIcon, RotateCcwIcon } from "lucide-react";
+import { AlertCircleIcon, CheckCircle2Icon, ClockIcon, InfoIcon, RotateCcwIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "#/components/ui/accordion";
 import { Alert, AlertDescription, AlertTitle } from "#/components/ui/alert";
@@ -17,8 +17,6 @@ type ProcessesTabProps = {
   isLoading: boolean;
   error: string | null;
   onRetryProcess: (process: LogProcess) => Promise<void>;
-  onOpenFilesTab: () => void;
-  onOpenTablesTab: () => void;
   retryingProcessIds: Set<string>;
 };
 
@@ -51,8 +49,6 @@ export function ProcessesTab({
   isLoading,
   error,
   onRetryProcess,
-  onOpenFilesTab,
-  onOpenTablesTab,
   retryingProcessIds,
 }: ProcessesTabProps) {
   const [selectedProcessId, setSelectedProcessId] = useState<string | null>(null);
@@ -124,8 +120,6 @@ export function ProcessesTab({
         {processes.map((process) => (
           <ProcessRow
             key={process.id}
-            onOpenFilesTab={onOpenFilesTab}
-            onOpenTablesTab={onOpenTablesTab}
             onRetryProcess={onRetryProcess}
             onViewDetails={hasProcessDetails(process) ? () => setSelectedProcessId(process.id) : undefined}
             process={process}
@@ -145,15 +139,11 @@ function ProcessRow({
   process,
   onViewDetails,
   onRetryProcess,
-  onOpenFilesTab,
-  onOpenTablesTab,
   retrying,
 }: {
   process: LogProcess;
   onViewDetails?: () => void;
   onRetryProcess: (process: LogProcess) => Promise<void>;
-  onOpenFilesTab: () => void;
-  onOpenTablesTab: () => void;
   retrying: boolean;
 }) {
   const formattedDate = format(new Date(process.created_at), "MMM d, yyyy 'at' h:mm a");
@@ -186,6 +176,20 @@ function ProcessRow({
           <Button className={"shrink-0"} onClick={onViewDetails} size={"sm"} variant={"ghost"}>
             <InfoIcon />
             Details
+          </Button>
+        )}
+        {(process.status === "completed" || process.status === "failed") && (
+          <Button
+            className={"shrink-0"}
+            disabled={retrying || process.file_id === null}
+            onClick={() => {
+              void onRetryProcess(process);
+            }}
+            size={"sm"}
+            variant={"ghost"}
+          >
+            {retrying ? <Spinner className={"size-4"} /> : <RotateCcwIcon />}
+            Retry
           </Button>
         )}
       </div>
@@ -231,33 +235,6 @@ function ProcessRow({
           <Badge className={"text-xs"} variant={"destructive"}>
             {insights.classificationWarnings.length + insights.resultWarnings.length} warning(s)
           </Badge>
-        )}
-      </div>
-
-      <div className={"flex flex-wrap items-center gap-2"}>
-        {process.file_id !== null && (
-          <Button onClick={onOpenFilesTab} size={"sm"} variant={"outline"}>
-            Files
-          </Button>
-        )}
-        {insights.tableCount > 0 && (
-          <Button onClick={onOpenTablesTab} size={"sm"} variant={"outline"}>
-            <DatabaseIcon />
-            Tables
-          </Button>
-        )}
-        {(process.status === "completed" || process.status === "failed") && (
-          <Button
-            disabled={retrying || process.file_id === null}
-            onClick={() => {
-              void onRetryProcess(process);
-            }}
-            size={"sm"}
-            variant={"secondary"}
-          >
-            {retrying ? <Spinner className={"size-4"} /> : <RotateCcwIcon />}
-            Retry
-          </Button>
         )}
       </div>
 

@@ -36,7 +36,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = "1.0.0"
 MAX_NESTING_DEPTH = 3
 MAX_ARRAY_LENGTH_STORED = 10
 
@@ -94,14 +93,10 @@ def _sanitize(name: str) -> str:
     return sanitized
 
 
-def _base_row(filename: str, line_start: int, line_end: int, raw_text: str) -> dict[str, Any]:
+def _base_row(filename: str, raw_text: str) -> dict[str, Any]:
     return {
         "source": filename,
-        "source_type": "file",
-        "schema_version": SCHEMA_VERSION,
-        "line_start": line_start,
-        "line_end": line_end,
-        "raw_text": raw_text[:4000],
+        "raw": raw_text[:4000],
     }
 
 
@@ -241,7 +236,7 @@ def _extract_json_records(lines: list[str], filename: str) -> list[dict[str, Any
         except json.JSONDecodeError:
             continue
 
-        row = _base_row(filename, index + 1, index + 1, stripped)
+        row = _base_row(filename, stripped)
 
         if isinstance(parsed, dict):
             flat = _flatten_json_object(parsed)
@@ -249,13 +244,12 @@ def _extract_json_records(lines: list[str], filename: str) -> list[dict[str, Any
                 safe_key = _sanitize(key)
                 if safe_key not in BASELINE_COLUMN_NAMES:
                     row[safe_key] = json.dumps(value) if isinstance(value, (dict, list)) else value
-                elif safe_key in {"timestamp", "timestamp_raw", "log_level", "message", "event_type", "source"}:
-                    row[safe_key] = str(value) if value is not None else None
+                elif safe_key == "timestamp":
+                    row["timestamp"] = str(value) if value is not None else None
 
-            if "timestamp_raw" not in row:
+            if "timestamp" not in row:
                 timestamp_match = ISO_TIMESTAMP_PATTERN.search(stripped)
                 if timestamp_match:
-                    row["timestamp_raw"] = timestamp_match.group(0)
                     row["timestamp"] = timestamp_match.group(0)
 
             level_match = LOG_LEVEL_PATTERN.search(stripped)
@@ -265,11 +259,6 @@ def _extract_json_records(lines: list[str], filename: str) -> list[dict[str, Any
             if "message" not in row:
                 message_value = parsed.get("message") or parsed.get("msg") or parsed.get("text") or stripped[:500]
                 row["message"] = str(message_value) if message_value else stripped[:500]
-
-            if "event_type" not in row:
-                event_value = parsed.get("event") or parsed.get("type") or parsed.get("action")
-                if event_value:
-                    row["event_type"] = str(event_value)
 
         elif isinstance(parsed, list):
             row["_json_array_length"] = len(parsed)
@@ -308,8 +297,7 @@ def _extract_csv_records(content: str, filename: str) -> list[dict[str, Any]]:
                 type_hints[column] = type_result.sql_type.value
 
         reader = csv.DictReader(StringIO(content))
-        for index, raw_row in enumerate(reader):
-            line_number = index + 2
+        for raw_row in reader:
             row_values: dict[str, Any] = {}
             for key, value in raw_row.items():
                 if not key:
@@ -335,12 +323,11 @@ def _extract_csv_records(content: str, filename: str) -> list[dict[str, Any]]:
                 row_values[safe_key] = value
 
             raw_text = ",".join(str(value) for value in raw_row.values())
-            row = _base_row(filename, line_number, line_number, raw_text)
+            row = _base_row(filename, raw_text)
             row.update(row_values)
 
             timestamp_match = ISO_TIMESTAMP_PATTERN.search(raw_text)
             if timestamp_match:
-                row["timestamp_raw"] = timestamp_match.group(0)
                 row["timestamp"] = timestamp_match.group(0)
 
             if "message" not in row:
@@ -366,7 +353,7 @@ def _extract_syslog_records(lines: list[str], filename: str) -> list[dict[str, A
 
         match = SYSLOG_RE.match(stripped)
         if not match:
-            row = _base_row(filename, index + 1, index + 1, stripped)
+            row = _base_row(filename, stripped)
             level_match = LOG_LEVEL_PATTERN.search(stripped)
             row["log_level"] = level_match.group(1).upper() if level_match else "INFO"
             row["message"] = stripped[:500]
@@ -389,10 +376,9 @@ def _extract_syslog_records(lines: list[str], filename: str) -> list[dict[str, A
             )
 
         timestamp_raw = f"{match.group('month')} {match.group('day')} {match.group('time')}"
-        row = _base_row(filename, index + 1, index + 1, stripped)
+        row = _base_row(filename, stripped)
         row.update(
             {
-                "timestamp_raw": timestamp_raw,
                 "timestamp": timestamp_raw,
                 "source": match.group("hostname"),
                 "log_level": (severity or "INFO").upper(),
@@ -411,9 +397,8 @@ def _extract_syslog_records(lines: list[str], filename: str) -> list[dict[str, A
     return records
 
 
-def _extract_clf_records(lines: list[str], filename: str, format_hint: str) -> list[dict[str, Any]]:
+def _extract_clf_records(lines: list[str], filename: str) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
-    event_type = "nginx_request" if format_hint == DetectedFormat.NGINX_ACCESS.value else "http_request"
 
     for index, line in enumerate(lines):
         stripped = line.strip()
@@ -422,19 +407,17 @@ def _extract_clf_records(lines: list[str], filename: str, format_hint: str) -> l
 
         match = CLF_RE.match(stripped)
         if not match:
-            row = _base_row(filename, index + 1, index + 1, stripped)
+            row = _base_row(filename, stripped)
             row["message"] = stripped[:500]
             row["parse_confidence"] = 0.3
             records.append(row)
             continue
 
-        row = _base_row(filename, index + 1, index + 1, stripped)
+        row = _base_row(filename, stripped)
         row.update(
             {
-                "timestamp_raw": match.group("time_local"),
                 "timestamp": match.group("time_local"),
                 "source": match.group("remote_host"),
-                "event_type": event_type,
                 "message": f"{match.group('method')} {match.group('path')} -> {match.group('status_code')}",
                 "parse_confidence": 0.9,
                 "remote_host": match.group("remote_host"),
@@ -463,7 +446,7 @@ def _extract_logfmt_records(lines: list[str], filename: str) -> list[dict[str, A
         if not stripped:
             continue
 
-        row = _base_row(filename, index + 1, index + 1, stripped)
+        row = _base_row(filename, stripped)
         key_examples: dict[str, list[str]] = {}
 
         for match in kv_regex.finditer(stripped):
@@ -471,7 +454,7 @@ def _extract_logfmt_records(lines: list[str], filename: str) -> list[dict[str, A
             value = match.group(2) if match.group(2) is not None else match.group(3)
             if key not in BASELINE_COLUMN_NAMES:
                 row[key] = value
-            elif key in {"timestamp", "timestamp_raw", "log_level", "message"}:
+            elif key == "timestamp":
                 row[key] = value
 
             examples = key_examples.setdefault(key, [])
@@ -495,10 +478,9 @@ def _extract_logfmt_records(lines: list[str], filename: str) -> list[dict[str, A
                 except (ValueError, TypeError):
                     pass
 
-        if "timestamp_raw" not in row:
+        if "timestamp" not in row:
             timestamp_match = ISO_TIMESTAMP_PATTERN.search(stripped)
             if timestamp_match:
-                row["timestamp_raw"] = timestamp_match.group(0)
                 row["timestamp"] = timestamp_match.group(0)
 
         level_match = LOG_LEVEL_PATTERN.search(stripped)
@@ -519,9 +501,6 @@ def _extract_xml_records(content: str, filename: str) -> list[dict[str, Any]]:
     except ET.ParseError:
         return records
 
-    def _line_number(_element: ET.Element) -> int:
-        return 1
-
     def _element_to_row(element: ET.Element) -> dict[str, Any]:
         tag_name = element.tag
         if "}" in tag_name:
@@ -530,11 +509,8 @@ def _extract_xml_records(content: str, filename: str) -> list[dict[str, Any]]:
 
         row = _base_row(
             filename,
-            _line_number(element),
-            _line_number(element),
             ET.tostring(element, encoding="unicode")[:4000],
         )
-        row["event_type"] = f"xml_{_sanitize(tag_name)}"
 
         for attr_key, attr_value in element.attrib.items():
             if attr_key.startswith("{") and "}" in attr_key:
@@ -696,7 +672,7 @@ class StructuredPipeline(ParserPipeline):
         if detected_format == DetectedFormat.SYSLOG.value:
             return _extract_syslog_records(lines, filename)
         if detected_format in {DetectedFormat.APACHE_ACCESS.value, DetectedFormat.NGINX_ACCESS.value}:
-            return _extract_clf_records(lines, filename, detected_format)
+            return _extract_clf_records(lines, filename)
         if detected_format in {DetectedFormat.LOGFMT.value, DetectedFormat.KEY_VALUE.value}:
             return _extract_logfmt_records(lines, filename)
         if filename.lower().endswith(".xml"):
