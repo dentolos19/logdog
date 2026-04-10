@@ -1,42 +1,17 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import {
-  type ColumnDef,
-  flexRender,
-  getCoreRowModel,
-  getSortedRowModel,
-  type SortingState,
-  useReactTable,
-  type VisibilityState,
-} from "@tanstack/react-table";
+import { type ColumnDef, type PaginationState, type SortingState, type VisibilityState } from "@tanstack/react-table";
 import { format } from "date-fns";
-import {
-  ArrowDownIcon,
-  ArrowUpDownIcon,
-  ArrowUpIcon,
-  ChevronDownIcon,
-  DownloadIcon,
-  FileTextIcon,
-  InfoIcon,
-  TableIcon,
-} from "lucide-react";
+import { DownloadIcon, FileTextIcon, InfoIcon, TableIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "#/components/ui/alert";
 import { Badge } from "#/components/ui/badge";
 import { Button } from "#/components/ui/button";
+import { DataTable, DataTableColumnHeader, DataTableViewOptions } from "#/components/ui/data-table";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "#/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "#/components/ui/dropdown-menu";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "#/components/ui/empty";
 import { Skeleton } from "#/components/ui/skeleton";
 import { Spinner } from "#/components/ui/spinner";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "#/components/ui/table";
 import {
   downloadLogFile,
   getLogEntry,
@@ -302,6 +277,7 @@ function LogTablePage() {
 function TableRowsDataTable({ table }: { table: TableSummary }) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
+  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 20 });
 
   const columnKeys = useMemo(() => {
     const keys = new Set(table.columns.map((column) => column.name));
@@ -317,56 +293,30 @@ function TableRowsDataTable({ table }: { table: TableSummary }) {
     return columnKeys.map((key) => ({
       id: key,
       accessorKey: key,
-      header: ({ column }) => {
-        const sorted = column.getIsSorted();
-        return (
-          <Button
-            className={"-ml-3 h-7 gap-1 font-medium font-mono text-xs"}
-            onClick={() => column.toggleSorting(sorted === "asc")}
-            size={"sm"}
-            variant={"ghost"}
-          >
-            {key}
-            {sorted === "asc" ? (
-              <ArrowUpIcon className={"size-3"} />
-            ) : sorted === "desc" ? (
-              <ArrowDownIcon className={"size-3"} />
-            ) : (
-              <ArrowUpDownIcon className={"size-3 opacity-40"} />
-            )}
-          </Button>
-        );
-      },
+      meta: { label: key },
+      header: ({ column }) => <DataTableColumnHeader column={column} title={key} />,
       cell: ({ getValue }) => {
         const value = getValue();
         if (value === null || value === undefined) {
-          return <span className={"text-muted-foreground"}>null</span>;
+          return <span className="text-muted-foreground">null</span>;
         }
 
         if (typeof value === "object") {
-          return <span className={"font-mono text-xs"}>{safeSerialize(value)}</span>;
+          return <span className="font-mono text-xs">{safeSerialize(value)}</span>;
         }
 
-        return <span className={"font-mono text-xs"}>{String(value)}</span>;
+        return <span className="font-mono text-xs">{String(value)}</span>;
       },
+      enableHiding: true,
+      enableSorting: true,
     }));
   }, [columnKeys]);
 
-  const reactTable = useReactTable({
-    data: table.rows,
-    columns,
-    state: { sorting, columnVisibility },
-    onSortingChange: setSorting,
-    onColumnVisibilityChange: setColumnVisibility,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-  });
-
   if (table.rows.length === 0) {
     return (
-      <Empty className={"border"}>
+      <Empty className="border">
         <EmptyHeader>
-          <EmptyMedia variant={"icon"}>
+          <EmptyMedia variant="icon">
             <TableIcon />
           </EmptyMedia>
           <EmptyTitle>No table rows available</EmptyTitle>
@@ -379,62 +329,19 @@ function TableRowsDataTable({ table }: { table: TableSummary }) {
   }
 
   return (
-    <div className={"flex flex-col gap-3"}>
-      <div className={"flex justify-end"}>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button className={"gap-1.5"} size={"sm"} variant={"outline"}>
-              Columns
-              <ChevronDownIcon className={"size-3.5"} />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align={"end"}>
-            <DropdownMenuLabel>Toggle columns</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {reactTable
-              .getAllColumns()
-              .filter((column) => column.getCanHide())
-              .map((column) => (
-                <DropdownMenuCheckboxItem
-                  checked={column.getIsVisible()}
-                  className={"font-mono text-xs"}
-                  key={column.id}
-                  onCheckedChange={(value) => column.toggleVisibility(value)}
-                >
-                  {column.id}
-                </DropdownMenuCheckboxItem>
-              ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-
-      <div className={"rounded-md border"}>
-        <Table>
-          <TableHeader>
-            {reactTable.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
-                  <TableHead className={"whitespace-nowrap"} key={header.id}>
-                    {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
-                  </TableHead>
-                ))}
-              </TableRow>
-            ))}
-          </TableHeader>
-          <TableBody>
-            {reactTable.getRowModel().rows.map((row) => (
-              <TableRow key={row.id}>
-                {row.getVisibleCells().map((cell) => (
-                  <TableCell className={"max-w-64 truncate"} key={cell.id}>
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </TableCell>
-                ))}
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-    </div>
+    <DataTable
+      columns={columns}
+      data={table.rows}
+      onColumnVisibilityChange={setColumnVisibility}
+      onPaginationChange={setPagination}
+      onSortingChange={setSorting}
+      state={{ sorting, columnVisibility, pagination }}
+      toolbar={(reactTable) => (
+        <div className="flex items-center justify-end">
+          <DataTableViewOptions table={reactTable} />
+        </div>
+      )}
+    />
   );
 }
 
