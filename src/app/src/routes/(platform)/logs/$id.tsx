@@ -27,6 +27,7 @@ import { Skeleton } from "#/components/ui/skeleton";
 import { Spinner } from "#/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "#/components/ui/tabs";
 import {
+  createLogProcess,
   deleteLogEntry,
   getLogEntry,
   type LogEntry,
@@ -70,6 +71,7 @@ function LogEntryPage() {
   const [renameName, setRenameName] = useState("");
   const [renameError, setRenameError] = useState<string | null>(null);
   const [isRenaming, setIsRenaming] = useState(false);
+  const [retryingProcessIds, setRetryingProcessIds] = useState<Set<string>>(new Set());
 
   const fetchEntry = useCallback(async () => {
     setFetchError(null);
@@ -116,6 +118,41 @@ function LogEntryPage() {
   const onUploadSuccess = useCallback(async () => {
     await Promise.all([fetchEntry(), fetchProcesses(), fetchFiles()]);
   }, [fetchEntry, fetchFiles, fetchProcesses]);
+
+  const onRetryProcess = useCallback(
+    async (process: LogProcess) => {
+      if (process.file_id === null) {
+        toast.error("This process cannot be retried because it is not linked to a file.");
+        return;
+      }
+
+      setRetryingProcessIds((previous) => {
+        const next = new Set(previous);
+        next.add(process.id);
+        return next;
+      });
+
+      try {
+        const response = await createLogProcess(id, { file_ids: [process.file_id] });
+        if (response.process_ids.length === 0) {
+          throw new Error(response.errors[0] ?? "Retry failed.");
+        }
+
+        toast.success("Reprocessing queued.");
+        await Promise.all([fetchProcesses(), fetchFiles()]);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to retry process.";
+        toast.error(message);
+      } finally {
+        setRetryingProcessIds((previous) => {
+          const next = new Set(previous);
+          next.delete(process.id);
+          return next;
+        });
+      }
+    },
+    [fetchFiles, fetchProcesses, id],
+  );
 
   useEffect(() => {
     void fetchEntry();
@@ -272,7 +309,7 @@ function LogEntryPage() {
 
         {entry !== null && (
           <Tabs className={"gap-0"} onValueChange={setActiveTab} value={activeTab}>
-            <TabsList className={"w-full border-b bg-sidebar"}>
+            <TabsList className={"w-full border-b bg-sidebar rounded-none"}>
               <TabsTrigger value={"data"}>Data</TabsTrigger>
               <TabsTrigger value={"chatbot"}>Chatbot</TabsTrigger>
               <TabsTrigger value={"processes"}>Processes</TabsTrigger>
@@ -294,7 +331,15 @@ function LogEntryPage() {
               <div className={"flex items-center gap-2"}>
                 <h2 className={"font-semibold text-sm"}>Processes</h2>
               </div>
-              <ProcessesTab error={processesError} isLoading={processesLoading} processes={processes} />
+              <ProcessesTab
+                error={processesError}
+                isLoading={processesLoading}
+                onOpenFilesTab={() => setActiveTab("files")}
+                onOpenTablesTab={() => setActiveTab("data")}
+                onRetryProcess={onRetryProcess}
+                processes={processes}
+                retryingProcessIds={retryingProcessIds}
+              />
             </TabsContent>
 
             <TabsContent className={"flex flex-col gap-3 p-4"} value={"chatbot"}>

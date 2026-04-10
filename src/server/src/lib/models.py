@@ -62,7 +62,7 @@ class LogEntry(Base):
     files = relationship("LogFile", back_populates="entry")
     tables = relationship("LogTable", back_populates="entry")
     messages = relationship("LogMessage", back_populates="entry")
-    parse_processes = relationship("LogProcess", back_populates="entry")
+    processes = relationship("LogProcess", back_populates="entry")
 
 
 class LogFile(Base):
@@ -83,6 +83,7 @@ class LogFile(Base):
     user = relationship("User", back_populates="files")
     asset = relationship("Asset", back_populates="files")
     entry = relationship("LogEntry", back_populates="files")
+    processes = relationship("LogProcess", back_populates="file")
 
 
 class LogTable(Base):
@@ -134,6 +135,7 @@ class LogProcess(Base):
         default=uuid.uuid4,
     )
     entry_id = Column(UUID(as_uuid=True), ForeignKey("log_entries.id"), nullable=False, index=True)
+    file_id = Column(UUID(as_uuid=True), ForeignKey("log_files.id"), nullable=True, index=True)
     status = Column(String, nullable=False, default="queued")
     classification = Column(Text, nullable=True)
     result = Column(Text, nullable=True)
@@ -141,4 +143,5 @@ class LogProcess(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 
-    entry = relationship("LogEntry", back_populates="parse_processes")
+    entry = relationship("LogEntry", back_populates="processes")
+    file = relationship("LogFile", back_populates="processes")

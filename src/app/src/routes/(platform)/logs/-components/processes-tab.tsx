@@ -1,5 +1,5 @@
 import { format } from "date-fns";
-import { AlertCircleIcon, CheckCircle2Icon, ClockIcon, InfoIcon } from "lucide-react";
+import { AlertCircleIcon, CheckCircle2Icon, ClockIcon, DatabaseIcon, InfoIcon, RotateCcwIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "#/components/ui/accordion";
 import { Alert, AlertDescription, AlertTitle } from "#/components/ui/alert";
@@ -16,6 +16,10 @@ type ProcessesTabProps = {
   processes: LogProcess[];
   isLoading: boolean;
   error: string | null;
+  onRetryProcess: (process: LogProcess) => Promise<void>;
+  onOpenFilesTab: () => void;
+  onOpenTablesTab: () => void;
+  retryingProcessIds: Set<string>;
 };
 
 type ProcessInsights = {
@@ -42,7 +46,15 @@ type ProcessInsights = {
   resultWarnings: string[];
 };
 
-export function ProcessesTab({ processes, isLoading, error }: ProcessesTabProps) {
+export function ProcessesTab({
+  processes,
+  isLoading,
+  error,
+  onRetryProcess,
+  onOpenFilesTab,
+  onOpenTablesTab,
+  retryingProcessIds,
+}: ProcessesTabProps) {
   const [selectedProcessId, setSelectedProcessId] = useState<string | null>(null);
 
   const selectedProcess = useMemo(() => {
@@ -112,8 +124,12 @@ export function ProcessesTab({ processes, isLoading, error }: ProcessesTabProps)
         {processes.map((process) => (
           <ProcessRow
             key={process.id}
+            onOpenFilesTab={onOpenFilesTab}
+            onOpenTablesTab={onOpenTablesTab}
+            onRetryProcess={onRetryProcess}
             onViewDetails={hasProcessDetails(process) ? () => setSelectedProcessId(process.id) : undefined}
             process={process}
+            retrying={retryingProcessIds.has(process.id)}
           />
         ))}
       </div>
@@ -125,16 +141,28 @@ export function ProcessesTab({ processes, isLoading, error }: ProcessesTabProps)
   );
 }
 
-function ProcessRow({ process, onViewDetails }: { process: LogProcess; onViewDetails?: () => void }) {
+function ProcessRow({
+  process,
+  onViewDetails,
+  onRetryProcess,
+  onOpenFilesTab,
+  onOpenTablesTab,
+  retrying,
+}: {
+  process: LogProcess;
+  onViewDetails?: () => void;
+  onRetryProcess: (process: LogProcess) => Promise<void>;
+  onOpenFilesTab: () => void;
+  onOpenTablesTab: () => void;
+  retrying: boolean;
+}) {
   const formattedDate = format(new Date(process.created_at), "MMM d, yyyy 'at' h:mm a");
   const insights = getProcessInsights(process);
   const isInProgress = process.status === "queued" || process.status === "processing";
 
   const getStatusLabel = () => {
     if (process.status === "completed") {
-      return insights.tableCount > 0
-        ? `Created ${insights.tableCount} ${insights.tableCount === 1 ? "table" : "tables"}`
-        : "Ingestion complete";
+      return "Ingestion successful";
     }
     if (process.status === "failed") {
       return "Ingestion failed";
@@ -179,6 +207,11 @@ function ProcessRow({ process, onViewDetails }: { process: LogProcess; onViewDet
       )}
 
       <div className={"flex flex-wrap items-center gap-1.5"}>
+        {process.file_id !== null && (
+          <Badge className={"font-mono text-xs"} variant={"outline"}>
+            file_id: {process.file_id}
+          </Badge>
+        )}
         {insights.structuralClass !== null && (
           <Badge className={"text-xs"} variant={"outline"}>
             {insights.structuralClass}
@@ -201,16 +234,35 @@ function ProcessRow({ process, onViewDetails }: { process: LogProcess; onViewDet
         )}
       </div>
 
+      <div className={"flex flex-wrap items-center gap-2"}>
+        {process.file_id !== null && (
+          <Button onClick={onOpenFilesTab} size={"sm"} variant={"outline"}>
+            Files
+          </Button>
+        )}
+        {insights.tableCount > 0 && (
+          <Button onClick={onOpenTablesTab} size={"sm"} variant={"outline"}>
+            <DatabaseIcon />
+            Tables
+          </Button>
+        )}
+        {(process.status === "completed" || process.status === "failed") && (
+          <Button
+            disabled={retrying || process.file_id === null}
+            onClick={() => {
+              void onRetryProcess(process);
+            }}
+            size={"sm"}
+            variant={"secondary"}
+          >
+            {retrying ? <Spinner className={"size-4"} /> : <RotateCcwIcon />}
+            Retry
+          </Button>
+        )}
+      </div>
+
       {process.status === "failed" && process.error !== null && (
         <p className={"rounded bg-destructive/10 px-2 py-1 font-mono text-destructive text-xs"}>{process.error}</p>
-      )}
-
-      {insights.fileClassifications.length > 0 && (
-        <ProcessFileList
-          fileClassifications={insights.fileClassifications}
-          processStatus={process.status}
-          tableDefinitions={insights.tableDefinitions}
-        />
       )}
     </div>
   );
@@ -450,79 +502,6 @@ function ProcessDetailsDialog({ process, onClose }: { process: LogProcess; onClo
   );
 }
 
-function ProcessFileList({
-  fileClassifications,
-  tableDefinitions,
-  processStatus,
-}: {
-  fileClassifications: Record<string, unknown>[];
-  tableDefinitions: Record<string, unknown>[];
-  processStatus: string;
-}) {
-  const status =
-    processStatus === "completed"
-      ? "completed"
-      : processStatus === "failed"
-        ? "failed"
-        : processStatus === "processing"
-          ? "processing"
-          : "queued";
-
-  const getVariant = (value: string) => {
-    if (value === "completed") {
-      return "secondary" as const;
-    }
-    if (value === "failed") {
-      return "destructive" as const;
-    }
-    return "outline" as const;
-  };
-
-  return (
-    <Accordion className={"w-full"} collapsible type={"single"}>
-      <AccordionItem className={"border-none"} value={"files"}>
-        <AccordionTrigger className={"h-auto rounded-md border px-3 py-2 text-xs hover:bg-muted/50 hover:no-underline"}>
-          <div className={"flex items-center gap-2"}>
-            <span className={"font-medium"}>Files ({fileClassifications.length})</span>
-            <span className={"text-muted-foreground"}>View classifications</span>
-          </div>
-        </AccordionTrigger>
-        <AccordionContent>
-          <div className={"flex flex-col divide-y rounded-md border"}>
-            {fileClassifications.map((fileClassification) => {
-              const filename = asString(fileClassification.filename, "unknown");
-              const formatName = asString(fileClassification.detected_format, "unknown");
-              const lineCount = asNumber(fileClassification.line_count, 0);
-              const matchedTables = resolveMatchingTables(fileClassification, tableDefinitions);
-              const key = getFileClassificationKey(fileClassification);
-
-              return (
-                <div className={"flex items-center gap-3 px-3 py-2"} key={key}>
-                  <span className={"flex-1 truncate font-mono text-xs"}>{filename}</span>
-                  <Badge className={"shrink-0 text-xs"} variant={"secondary"}>
-                    {formatName}
-                  </Badge>
-                  <Badge className={"shrink-0 text-xs"} variant={getVariant(status)}>
-                    {status.charAt(0).toUpperCase() + status.slice(1)}
-                  </Badge>
-                  <span className={"shrink-0 text-muted-foreground text-xs"}>{lineCount} lines</span>
-                  {matchedTables.length > 0 ? (
-                    <Badge className={"max-w-40 shrink-0 truncate text-xs"} variant={"outline"}>
-                      {matchedTables.length} table(s)
-                    </Badge>
-                  ) : (
-                    <span className={"shrink-0 text-muted-foreground text-xs"}>No table generated</span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </AccordionContent>
-      </AccordionItem>
-    </Accordion>
-  );
-}
-
 function DetailPair({ label, value, valueClassName }: { label: string; value: string; valueClassName?: string }) {
   return (
     <div className={"flex flex-col gap-0.5"}>
@@ -572,26 +551,6 @@ function getProcessInsights(process: LogProcess): ProcessInsights {
     classificationWarnings: asStringArray(classification?.warnings),
     resultWarnings: asStringArray(result?.warnings),
   };
-}
-
-function resolveMatchingTables(
-  fileClassification: Record<string, unknown>,
-  tableDefinitions: Record<string, unknown>[],
-) {
-  const fileId = asNullableString(fileClassification.file_id);
-  if (fileId === null) {
-    return [];
-  }
-
-  const fileHint = fileId.replace(/-/g, "").toLowerCase().slice(0, 12);
-  if (fileHint === "") {
-    return [];
-  }
-
-  return tableDefinitions.filter((tableDefinition) => {
-    const tableName = asString(tableDefinition.table_name, "").toLowerCase();
-    return tableName.endsWith(fileHint);
-  });
 }
 
 function getFileClassificationKey(fileClassification: Record<string, unknown>) {

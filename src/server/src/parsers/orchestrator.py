@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import os
 import json
 import logging
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -23,15 +25,31 @@ from parsers.registry import ParserRegistry
 logger = logging.getLogger(__name__)
 
 
+def _resolve_parse_job_workers() -> int:
+    raw_value = os.environ.get("LOG_PARSE_JOB_WORKERS", "4").strip()
+    try:
+        workers = int(raw_value)
+    except ValueError:
+        workers = 4
+    return max(workers, 1)
+
+
+PARSE_JOB_EXECUTOR = ThreadPoolExecutor(
+    max_workers=_resolve_parse_job_workers(),
+    thread_name_prefix="logdog-parse-job",
+)
+
+
 def register_pipelines() -> None:
     ParserRegistry.discover(force=True)
     logger.info("Parser pipelines registered: %s", ", ".join(sorted(ParserRegistry.registered_keys())))
 
 
-def create_parse_process(
+def create_process(
     entry_id: str,
     file_inputs: list[FileInput] | None = None,
     file_ids: list[str] | None = None,
+    file_id: str | None = None,
 ) -> str:
     db = SessionLocal()
     try:
@@ -46,6 +64,7 @@ def create_parse_process(
 
         process = LogProcess(
             entry_id=_uuid_or_raw(entry_id),
+            file_id=_uuid_or_raw(file_id) if file_id else None,
             status="queued",
             classification=classification_json,
         )
@@ -55,13 +74,37 @@ def create_parse_process(
 
         if file_ids:
             logger.info(
-                "Created parse process %s for entry %s with %d file id(s).",
+                "Created process %s for entry %s with %d file id(s).",
                 process.id,
                 entry_id,
                 len(file_ids),
             )
 
         return str(process.id)
+    finally:
+        db.close()
+
+
+def enqueue_process(
+    process_id: str,
+    entry_id: str,
+    file_inputs_json: str | None = None,
+    file_ids_json: str | None = None,
+) -> None:
+    PARSE_JOB_EXECUTOR.submit(
+        run_parse_job,
+        process_id,
+        entry_id,
+        file_inputs_json,
+        file_ids_json,
+    )
+
+
+def mark_process_failed(process_id: str, entry_id: str, message: str) -> None:
+    db = SessionLocal()
+    try:
+        process = db.query(LogProcess).filter_by(id=_uuid_or_raw(process_id), entry_id=_uuid_or_raw(entry_id)).first()
+        _fail(db=db, process=process, message=message)
     finally:
         db.close()
 

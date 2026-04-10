@@ -6,7 +6,7 @@ import { Badge } from "#/components/ui/badge";
 import { Button } from "#/components/ui/button";
 import { Progress } from "#/components/ui/progress";
 import { Spinner } from "#/components/ui/spinner";
-import { uploadLogFiles } from "#/lib/server";
+import { type UploadFileOutcome, uploadLogFiles } from "#/lib/server";
 
 type UploadSectionProps = {
   logEntryId: string;
@@ -18,8 +18,8 @@ export function UploadSection({ logEntryId, onUploadSuccess }: UploadSectionProp
   const [isDragOver, setIsDragOver] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [queuedProcessId, setQueuedProcessId] = useState<string | null>(null);
-  const [uploadedCount, setUploadedCount] = useState(0);
+  const [queueOutcomes, setQueueOutcomes] = useState<UploadFileOutcome[]>([]);
+  const [queuedProcessIds, setQueuedProcessIds] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const addFiles = useCallback((incoming: FileList | File[]) => {
@@ -42,14 +42,26 @@ export function UploadSection({ logEntryId, onUploadSuccess }: UploadSectionProp
 
     setIsUploading(true);
     setUploadError(null);
-    setQueuedProcessId(null);
+    setQueueOutcomes([]);
+    setQueuedProcessIds([]);
 
     try {
       const response = await uploadLogFiles(logEntryId, selectedFiles);
-      setUploadedCount(response.files.length);
-      setQueuedProcessId(response.process_id);
+      const queuedOutcomes = response.outcomes.filter((outcome) => outcome.status === "queued");
+      const failedOutcomes = response.outcomes.filter((outcome) => outcome.status !== "queued");
+
+      setQueueOutcomes(response.outcomes);
+      setQueuedProcessIds(response.process_ids);
       setSelectedFiles([]);
-      toast.success(`Uploaded ${response.files.length} ${response.files.length === 1 ? "file" : "files"}.`);
+
+      if (failedOutcomes.length === 0) {
+        toast.success(`Queued ${queuedOutcomes.length} ${queuedOutcomes.length === 1 ? "process" : "processes"}.`);
+      } else {
+        toast.warning(
+          `Queued ${queuedOutcomes.length} ${queuedOutcomes.length === 1 ? "process" : "processes"}; ${failedOutcomes.length} failed.`,
+        );
+      }
+
       await onUploadSuccess();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Upload failed. Please try again.";
@@ -151,7 +163,7 @@ export function UploadSection({ logEntryId, onUploadSuccess }: UploadSectionProp
         </div>
       )}
 
-      {isUploading && <Progress className={"h-1.5"} value={75} />}
+      {isUploading && <Progress className={"h-1.5"} value={45} />}
 
       {uploadError !== null && (
         <Alert variant={"destructive"}>
@@ -161,15 +173,37 @@ export function UploadSection({ logEntryId, onUploadSuccess }: UploadSectionProp
         </Alert>
       )}
 
-      {queuedProcessId !== null && (
+      {queueOutcomes.length > 0 && (
         <Alert>
           <CheckCircle2Icon className={"size-4 text-green-500"} />
-          <AlertTitle>Files Queued</AlertTitle>
-          <AlertDescription className={"flex flex-wrap items-center gap-2"}>
+          <AlertTitle>Processes Queued</AlertTitle>
+          <AlertDescription className={"flex flex-col gap-2"}>
             <span>
-              Uploaded {uploadedCount} {uploadedCount === 1 ? "file" : "files"}. Processing started.
+              Queued {queueOutcomes.filter((outcome) => outcome.status === "queued").length} of {queueOutcomes.length}{" "}
+              processes.
             </span>
-            <Badge variant={"outline"}>process_id: {queuedProcessId}</Badge>
+            {queueOutcomes.some((outcome) => outcome.status !== "queued") && (
+              <span className={"text-destructive text-xs"}>
+                {queueOutcomes.filter((outcome) => outcome.status !== "queued").length} file(s) could not be queued.
+              </span>
+            )}
+            {queuedProcessIds.length > 0 && (
+              <div className={"flex flex-wrap gap-1.5"}>
+                {queuedProcessIds.map((processId) => (
+                  <Badge key={processId} variant={"outline"}>
+                    process_id: {processId}
+                  </Badge>
+                ))}
+              </div>
+            )}
+            <div className={"flex flex-col gap-1 rounded-md border p-2"}>
+              {queueOutcomes.map((outcome) => (
+                <div className={"flex items-center justify-between gap-2 text-xs"} key={outcome.file_id}>
+                  <span className={"truncate font-mono"}>{outcome.filename}</span>
+                  <Badge variant={outcome.status === "queued" ? "secondary" : "destructive"}>{outcome.status}</Badge>
+                </div>
+              ))}
+            </div>
           </AlertDescription>
         </Alert>
       )}

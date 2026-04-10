@@ -7,7 +7,7 @@ from environment import OPENROUTER_API_KEY, OPENROUTER_TITLE, OPENROUTER_REFERER
 
 T = TypeVar("T", bound=BaseModel)
 
-DEFAULT_MODEL = "nvidia/nemotron-3-super-120b-a12b"
+DEFAULT_MODEL = "inception/mercury-2"
 DEFAULT_TEMPERATURE = 0.5
 DEFAULT_MAX_TOKENS = 2048
 
@@ -52,7 +52,7 @@ class GenerativeModel:
             messages.append(("system", system_prompt))
         messages.append(("human", prompt))
 
-        structured_client = self.client.with_structured_output(schema)
+        structured_client = self.client.with_structured_output(schema, method="json_schema")
         return structured_client.invoke(messages)
 
 

@@ -20,6 +20,7 @@ export type LogFile = {
 export type LogProcess = {
   id: string;
   entry_id: string;
+  file_id: string | null;
   status: LogProcessStatus;
   classification: LogProcessClassification | Record<string, unknown> | null;
   result: LogProcessResult | Record<string, unknown> | null;
@@ -49,14 +50,24 @@ export type LogProcessResult = {
 };
 
 export type UploadFilesResponse = {
-  process_id: string;
+  process_ids: string[];
   status: string;
   files: LogFile[];
+  outcomes: UploadFileOutcome[];
+};
+
+export type UploadFileOutcome = {
+  file_id: string;
+  filename: string;
+  process_id: string | null;
+  status: string;
+  error: string | null;
 };
 
 export type ProcessEnqueuedResponse = {
-  process_id: string;
+  process_ids: string[];
   status: string;
+  errors: string[];
 };
 
 export type DashboardStats = {

@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker
 
 from environment import DATABASE_URL
@@ -28,3 +28,22 @@ def get_database():
 
 def create_tables():
     Base.metadata.create_all(bind=engine)
+    _ensure_log_process_file_column()
+
+
+def _ensure_log_process_file_column() -> None:
+    inspector = inspect(engine)
+    table_names = inspector.get_table_names()
+    if "log_processes" not in table_names:
+        return
+
+    column_names = {column["name"] for column in inspector.get_columns("log_processes")}
+    if "file_id" in column_names:
+        return
+
+    dialect = engine.dialect.name
+    with engine.begin() as connection:
+        if dialect == "postgresql":
+            connection.execute(text("ALTER TABLE log_processes ADD COLUMN file_id UUID NULL"))
+        else:
+            connection.execute(text("ALTER TABLE log_processes ADD COLUMN file_id VARCHAR(36) NULL"))

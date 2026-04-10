@@ -8,7 +8,7 @@ from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from lib.database import get_database
@@ -18,7 +18,7 @@ from lib.megabase import drop_table as megabase_drop_table
 from lib.megabase import init_megabase
 from lib.models import Asset, LogEntry, LogFile, LogMessage, LogProcess, LogTable, User
 from lib.storage import delete_file, download_file, upload_file
-from parsers.orchestrator import create_parse_process, run_parse_job
+from parsers.orchestrator import create_process, enqueue_process, mark_process_failed
 from parsers.preprocessor import FileInput
 from routes.auth import get_current_user
 
@@ -62,6 +62,7 @@ class LogFileResponse(BaseModel):
 class LogProcessResponse(BaseModel):
     id: str
     entry_id: str
+    file_id: str | None
     status: str
     classification: dict[str, Any] | None
     result: dict[str, Any] | None
@@ -70,15 +71,25 @@ class LogProcessResponse(BaseModel):
     updated_at: datetime
 
 
+class FileProcessOutcomeResponse(BaseModel):
+    file_id: str
+    filename: str
+    process_id: str | None
+    status: str
+    error: str | None = None
+
+
 class UploadFilesResponse(BaseModel):
-    process_id: str
+    process_ids: list[str]
     status: str
     files: list[LogFileResponse]
+    outcomes: list[FileProcessOutcomeResponse]
 
 
 class ProcessEnqueuedResponse(BaseModel):
-    process_id: str
+    process_ids: list[str]
     status: str
+    errors: list[str] = Field(default_factory=list)
 
 
 class PersistedMessagesResponse(BaseModel):
@@ -155,6 +166,7 @@ def _log_process_response(process: LogProcess):
     return LogProcessResponse(
         id=str(process.id),
         entry_id=str(process.entry_id),
+        file_id=str(process.file_id) if process.file_id is not None else None,
         status=process.status,
         classification=_parse_json(process.classification),
         result=_parse_json(process.result),
@@ -162,6 +174,14 @@ def _log_process_response(process: LogProcess):
         created_at=process.created_at,
         updated_at=process.updated_at,
     )
+
+
+def _batched_status(total: int, queued: int) -> str:
+    if queued == 0:
+        return "failed"
+    if queued == total:
+        return "queued"
+    return "partial"
 
 
 def _require_owned_entry(database: Session, entry_id: str, user_id: uuid.UUID):
@@ -199,6 +219,58 @@ def _delete_orphan_assets(asset_ids: list[uuid.UUID]):
                 logger.exception("Failed to delete orphan asset %s", asset_id)
     finally:
         database.close()
+
+
+def _cleanup_generated_tables_for_file(database: Session, entry_id: str, file_id: str) -> None:
+    latest_completed_process = (
+        database.query(LogProcess)
+        .filter(
+            LogProcess.entry_id == _uuid_or_raw(entry_id),
+            LogProcess.file_id == _uuid_or_raw(file_id),
+            LogProcess.status == "completed",
+        )
+        .order_by(LogProcess.updated_at.desc())
+        .first()
+    )
+
+    if latest_completed_process is None or not latest_completed_process.result:
+        return
+
+    parsed_result = _parse_json(latest_completed_process.result)
+    if not isinstance(parsed_result, dict):
+        return
+
+    table_definitions = parsed_result.get("table_definitions")
+    if not isinstance(table_definitions, list):
+        return
+
+    table_names: set[str] = set()
+    for table_definition in table_definitions:
+        if isinstance(table_definition, dict):
+            table_name = table_definition.get("table_name")
+            if isinstance(table_name, str) and table_name:
+                table_names.add(table_name)
+
+    if not table_names:
+        return
+
+    megabase_database = MegabaseSessionLocal()
+    try:
+        init_megabase(megabase_database)
+        for table_name in table_names:
+            try:
+                megabase_drop_table(megabase_database, table_name)
+            except Exception:  # noqa: BLE001
+                logger.exception("Failed to drop generated table %s before reprocessing file %s", table_name, file_id)
+    finally:
+        megabase_database.close()
+
+    (
+        database.query(LogTable)
+        .filter(LogTable.entry_id == _uuid_or_raw(entry_id), LogTable.table.in_(table_names))
+        .delete(synchronize_session=False)
+    )
+    database.commit()
 
 
 @router.get("", response_model=list[LogEntryResponse])
@@ -378,7 +450,6 @@ def delete_log_file_route(
 @router.post("/{entry_id}/files/upload", response_model=UploadFilesResponse, status_code=status.HTTP_202_ACCEPTED)
 async def upload_log_files(
     entry_id: str,
-    background_tasks: BackgroundTasks,
     files: list[UploadFile] = File(...),
     current_user: User = Depends(get_current_user),
     database: Session = Depends(get_database),
@@ -388,8 +459,8 @@ async def upload_log_files(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="At least one file is required.")
 
     uploaded_files: list[LogFileResponse] = []
-    file_inputs: list[FileInput] = []
-    file_ids: list[str] = []
+    process_ids: list[str] = []
+    outcomes: list[FileProcessOutcomeResponse] = []
 
     for file in files:
         filename = (file.filename or "uploaded.log").strip() or "uploaded.log"
@@ -408,29 +479,59 @@ async def upload_log_files(
         database.refresh(log_file)
 
         file_id = str(log_file.id)
-        file_ids.append(file_id)
-        file_inputs.append(
-            FileInput(
-                file_id=file_id,
-                filename=asset.name,
-                content=file_data.decode("utf-8", errors="ignore"),
-            )
+        file_input = FileInput(
+            file_id=file_id,
+            filename=asset.name,
+            content=file_data.decode("utf-8", errors="ignore"),
         )
         uploaded_files.append(_log_file_response(log_file, asset))
 
-    process_id = create_parse_process(entry_id=str(entry.id), file_inputs=file_inputs, file_ids=file_ids)
-    background_tasks.add_task(
-        run_parse_job,
-        process_id,
-        str(entry.id),
-        json.dumps([file_input.model_dump() for file_input in file_inputs], ensure_ascii=True),
-        json.dumps(file_ids, ensure_ascii=True),
-    )
+        process_id: str | None = None
+        try:
+            process_id = create_process(
+                entry_id=str(entry.id),
+                file_inputs=[file_input],
+                file_ids=[file_id],
+                file_id=file_id,
+            )
+            enqueue_process(
+                process_id=process_id,
+                entry_id=str(entry.id),
+                file_inputs_json=json.dumps([file_input.model_dump()], ensure_ascii=True),
+                file_ids_json=json.dumps([file_id], ensure_ascii=True),
+            )
+            process_ids.append(process_id)
+            outcomes.append(
+                FileProcessOutcomeResponse(
+                    file_id=file_id,
+                    filename=asset.name,
+                    process_id=process_id,
+                    status="queued",
+                )
+            )
+        except Exception as error:  # noqa: BLE001
+            logger.exception("Failed to enqueue process for file %s", file_id)
+            if process_id is not None:
+                mark_process_failed(
+                    process_id=process_id,
+                    entry_id=str(entry.id),
+                    message=f"Queueing failed: {error}",
+                )
+            outcomes.append(
+                FileProcessOutcomeResponse(
+                    file_id=file_id,
+                    filename=asset.name,
+                    process_id=process_id,
+                    status="failed",
+                    error=str(error),
+                )
+            )
 
     return UploadFilesResponse(
-        process_id=process_id,
-        status="queued",
+        process_ids=process_ids,
+        status=_batched_status(total=len(outcomes), queued=len(process_ids)),
         files=uploaded_files,
+        outcomes=outcomes,
     )
 
 
@@ -468,16 +569,14 @@ def get_entry_process(
 @router.post("/{entry_id}/processes", response_model=ProcessEnqueuedResponse, status_code=status.HTTP_202_ACCEPTED)
 def create_entry_process(
     entry_id: str,
-    background_tasks: BackgroundTasks,
     payload: CreateProcessRequest | None = None,
     current_user: User = Depends(get_current_user),
     database: Session = Depends(get_database),
 ):
     entry = _require_owned_entry(database=database, entry_id=entry_id, user_id=current_user.id)
 
-    selected_file_ids: list[str] | None = None
+    selected_file_ids: list[str] = []
     if payload and payload.file_ids:
-        selected_file_ids = []
         for file_id in payload.file_ids:
             normalized_id = str(_uuid_or_raw(file_id))
             exists = (
@@ -488,17 +587,42 @@ def create_entry_process(
             if exists is None:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Log file '{file_id}' not found.")
             selected_file_ids.append(normalized_id)
+    else:
+        selected_file_ids = [
+            str(file_row.id) for file_row in database.query(LogFile).filter(LogFile.entry_id == entry.id)
+        ]
 
-    process_id = create_parse_process(entry_id=str(entry.id), file_ids=selected_file_ids)
-    background_tasks.add_task(
-        run_parse_job,
-        process_id,
-        str(entry.id),
-        None,
-        json.dumps(selected_file_ids, ensure_ascii=True) if selected_file_ids else None,
+    if not selected_file_ids:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="No files available to process.")
+
+    process_ids: list[str] = []
+    errors: list[str] = []
+    for file_id in selected_file_ids:
+        process_id: str | None = None
+        try:
+            _cleanup_generated_tables_for_file(database=database, entry_id=str(entry.id), file_id=file_id)
+            process_id = create_process(entry_id=str(entry.id), file_ids=[file_id], file_id=file_id)
+            enqueue_process(
+                process_id=process_id,
+                entry_id=str(entry.id),
+                file_ids_json=json.dumps([file_id], ensure_ascii=True),
+            )
+            process_ids.append(process_id)
+        except Exception as error:  # noqa: BLE001
+            logger.exception("Failed to enqueue process for file %s", file_id)
+            if process_id is not None:
+                mark_process_failed(
+                    process_id=process_id,
+                    entry_id=str(entry.id),
+                    message=f"Queueing failed: {error}",
+                )
+            errors.append(f"{file_id}: {error}")
+
+    return ProcessEnqueuedResponse(
+        process_ids=process_ids,
+        status=_batched_status(total=len(selected_file_ids), queued=len(process_ids)),
+        errors=errors,
     )
-
-    return ProcessEnqueuedResponse(process_id=process_id, status="queued")
 
 
 @router.get("/{entry_id}/chat/messages", response_model=PersistedMessagesResponse)
