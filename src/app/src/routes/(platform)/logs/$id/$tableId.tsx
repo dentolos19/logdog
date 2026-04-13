@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { type ColumnDef, type PaginationState, type SortingState, type VisibilityState } from "@tanstack/react-table";
 import { format } from "date-fns";
-import { DownloadIcon, FileTextIcon, InfoIcon, TableIcon } from "lucide-react";
+import { ChevronDownIcon, DownloadIcon, FileSpreadsheetIcon, FileTextIcon, InfoIcon, TableIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "#/components/ui/alert";
@@ -9,11 +9,19 @@ import { Badge } from "#/components/ui/badge";
 import { Button } from "#/components/ui/button";
 import { DataTable, DataTableColumnHeader, DataTableViewOptions } from "#/components/ui/data-table";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "#/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "#/components/ui/dropdown-menu";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "#/components/ui/empty";
 import { Skeleton } from "#/components/ui/skeleton";
 import { Spinner } from "#/components/ui/spinner";
 import {
   downloadLogFile,
+  downloadTableCsv,
+  downloadTableXlsx,
   getLogEntry,
   type LogEntry,
   type LogFile,
@@ -50,7 +58,7 @@ function LogTablePage() {
   const [processesError, setProcessesError] = useState<string | null>(null);
 
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
-  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadingFormat, setDownloadingFormat] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
 
   const fetchEntry = useCallback(async () => {
@@ -100,31 +108,51 @@ function LogTablePage() {
 
   const table = useMemo(() => tables.find((tableItem) => tableItem.id === tableId) ?? null, [tableId, tables]);
 
-  const onDownload = useCallback(async () => {
-    if (table?.sourceFile === null || table === null) {
-      return;
-    }
+  const onDownload = useCallback(
+    async (format: "original" | "csv" | "xlsx") => {
+      if (table === null) {
+        return;
+      }
 
-    setIsDownloading(true);
-    setDownloadError(null);
-    try {
-      const blob = await downloadLogFile(id, table.sourceFile.id);
-      const blobUrl = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = blobUrl;
-      anchor.download = table.sourceFile.name;
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      URL.revokeObjectURL(blobUrl);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Download failed. Please try again.";
-      setDownloadError(message);
-      toast.error(message);
-    } finally {
-      setIsDownloading(false);
-    }
-  }, [id, table]);
+      if (format === "original" && table.sourceFile === null) {
+        return;
+      }
+
+      setDownloadingFormat(format);
+      setDownloadError(null);
+      try {
+        let blob: Blob;
+        let filename: string;
+
+        if (format === "original" && table.sourceFile !== null) {
+          blob = await downloadLogFile(id, table.sourceFile.id);
+          filename = table.sourceFile.name;
+        } else if (format === "csv") {
+          blob = await downloadTableCsv(id, table.name);
+          filename = `${table.name}.csv`;
+        } else {
+          blob = await downloadTableXlsx(id, table.name);
+          filename = `${table.name}.xlsx`;
+        }
+
+        const blobUrl = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = blobUrl;
+        anchor.download = filename;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        URL.revokeObjectURL(blobUrl);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Download failed. Please try again.";
+        setDownloadError(message);
+        toast.error(message);
+      } finally {
+        setDownloadingFormat(null);
+      }
+    },
+    [id, table],
+  );
 
   const hasLoadingState = entryLoading || filesLoading || processesLoading;
   const hasRequestError = entryError !== null || filesError !== null || processesError !== null;
@@ -236,35 +264,41 @@ function LogTablePage() {
               </div>
 
               <div className={"flex flex-wrap items-center gap-2"}>
-                <Button asChild size={"sm"} variant={"outline"}>
-                  <Link params={{ id }} to={"/logs/$id"}>
-                    Back
-                  </Link>
-                </Button>
                 <Button onClick={() => setIsDetailsOpen(true)} size={"sm"} variant={"ghost"}>
                   <InfoIcon />
                   Details
                 </Button>
-                <Button
-                  disabled={isDownloading || table.sourceFile === null}
-                  onClick={() => void onDownload()}
-                  size={"sm"}
-                  variant={"ghost"}
-                >
-                  {isDownloading ? <Spinner /> : <DownloadIcon />}
-                  Download
-                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button disabled={downloadingFormat !== null} size={"sm"} variant={"ghost"}>
+                      {downloadingFormat !== null ? <Spinner /> : <DownloadIcon />}
+                      Download
+                      <ChevronDownIcon />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align={"end"}>
+                    {table.sourceFile !== null && (
+                      <DropdownMenuItem onClick={() => void onDownload("original")}>
+                        <FileTextIcon />
+                        Original File
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuItem onClick={() => void onDownload("csv")}>
+                      <TableIcon />
+                      CSV Spreadsheet
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => void onDownload("xlsx")}>
+                      <FileSpreadsheetIcon />
+                      Excel Spreadsheet
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
 
               {downloadError !== null && <p className={"text-destructive text-xs"}>{downloadError}</p>}
             </section>
 
-            <section className={"flex flex-col gap-3"}>
-              <div className={"flex items-center gap-2"}>
-                <h3 className={"font-semibold text-sm"}>Table Data</h3>
-              </div>
-              <TableRowsDataTable table={table} />
-            </section>
+            <TableRowsDataTable table={table} />
 
             {isDetailsOpen && <TableDetailsDialog onClose={() => setIsDetailsOpen(false)} table={table} />}
           </>

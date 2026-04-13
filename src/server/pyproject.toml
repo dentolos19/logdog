@@ -9,6 +9,7 @@ dependencies = [
   "drain3",
   "fastapi[standard]",
   "langchain-openrouter",
+  "openpyxl",
   "psycopg2-binary",
   "pydantic>=2.0.0,<2.12",
   "python-dotenv",

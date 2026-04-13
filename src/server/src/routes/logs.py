@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import csv
+import io
 import json
 import logging
 import uuid
@@ -8,6 +10,7 @@ from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import Response
+from openpyxl import Workbook
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -16,6 +19,7 @@ from lib.database import SessionLocal as AppSessionLocal
 from lib.megabase import SessionLocal as MegabaseSessionLocal
 from lib.megabase import drop_table as megabase_drop_table
 from lib.megabase import init_megabase
+from lib.megabase import query_records as megabase_query_records
 from lib.models import Asset, LogEntry, LogFile, LogMessage, LogProcess, LogTable, User
 from lib.storage import delete_file, download_file, upload_file
 from parsers.orchestrator import create_process, enqueue_process, mark_process_failed
@@ -424,6 +428,102 @@ def download_log_file(
 
     headers = {"Content-Disposition": f'attachment; filename="{asset.name}"'}
     return Response(content=payload, media_type=asset.type or "application/octet-stream", headers=headers)
+
+
+def _get_table_records(entry_id: str, table_name: str, current_user: User, database: Session) -> list[dict]:
+    entry = _require_owned_entry(database=database, entry_id=entry_id, user_id=current_user.id)
+    table_record = database.query(LogTable).filter(LogTable.entry_id == entry.id, LogTable.table == table_name).first()
+    if table_record is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Table not found.")
+
+    megabase_database = MegabaseSessionLocal()
+    try:
+        init_megabase(megabase_database)
+        records = megabase_query_records(megabase_database, table_name, limit=100000)
+    finally:
+        megabase_database.close()
+
+    return records
+
+
+def _serialize_value(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=True)
+    return str(value)
+
+
+@router.get("/{entry_id}/tables/{table_name}/download/csv")
+def download_table_csv(
+    entry_id: str,
+    table_name: str,
+    current_user: User = Depends(get_current_user),
+    database: Session = Depends(get_database),
+):
+    _require_owned_entry(database=database, entry_id=entry_id, user_id=current_user.id)
+    records = _get_table_records(entry_id, table_name, current_user, database)
+
+    if not records:
+        columns: list[str] = []
+    else:
+        columns = list(records[0].keys())
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(columns)
+    for record in records:
+        writer.writerow([_serialize_value(record.get(col)) for col in columns])
+
+    content = output.getvalue()
+    filename = f"{table_name}.csv"
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    return Response(content=content, media_type="text/csv", headers=headers)
+
+
+@router.get("/{entry_id}/tables/{table_name}/download/xlsx")
+def download_table_xlsx(
+    entry_id: str,
+    table_name: str,
+    current_user: User = Depends(get_current_user),
+    database: Session = Depends(get_database),
+):
+    _require_owned_entry(database=database, entry_id=entry_id, user_id=current_user.id)
+    records = _get_table_records(entry_id, table_name, current_user, database)
+
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = table_name[:31]
+
+    if not records:
+        columns: list[str] = []
+    else:
+        columns = list(records[0].keys())
+
+    worksheet.append(columns)
+    for record in records:
+        row_values = []
+        for col in columns:
+            value = record.get(col)
+            if value is None:
+                row_values.append("")
+            elif isinstance(value, (dict, list)):
+                row_values.append(json.dumps(value, ensure_ascii=True))
+            else:
+                row_values.append(value)
+        worksheet.append(row_values)
+
+    output = io.BytesIO()
+    workbook.save(output)
+    output.seek(0)
+
+    filename = f"{table_name}.xlsx"
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    return Response(
+        content=output.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers=headers,
+    )
 
 
 @router.delete("/{entry_id}/files/{file_id}", response_model=MessageResponse)

@@ -206,6 +206,26 @@ export async function downloadLogFile(entryId: string, fileId: string) {
   return response.blob();
 }
 
+export async function downloadTableCsv(entryId: string, tableName: string) {
+  const response = await $fetch(`/logs/${entryId}/tables/${tableName}/download/csv`);
+  if (!response.ok) {
+    const payload = await response.text();
+    throw new Error(`Request failed (${response.status}): ${payload}`);
+  }
+
+  return response.blob();
+}
+
+export async function downloadTableXlsx(entryId: string, tableName: string) {
+  const response = await $fetch(`/logs/${entryId}/tables/${tableName}/download/xlsx`);
+  if (!response.ok) {
+    const payload = await response.text();
+    throw new Error(`Request failed (${response.status}): ${payload}`);
+  }
+
+  return response.blob();
+}
+
 export async function deleteLogFile(entryId: string, fileId: string) {
   const response = await $fetch(`/logs/${entryId}/files/${fileId}`, {
     method: "DELETE",

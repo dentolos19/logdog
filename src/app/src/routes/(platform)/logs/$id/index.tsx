@@ -314,7 +314,11 @@ function LogEntryPage() {
             </TabsList>
 
             <TabsContent className={"flex flex-col gap-6 p-4"} value={"data"}>
-              <UploadSection logEntryId={id} onUploadSuccess={onUploadSuccess} />
+              <UploadSection
+                logEntryId={id}
+                onNavigateToProcesses={() => setActiveTab("processes")}
+                onUploadSuccess={onUploadSuccess}
+              />
 
               <section className={"flex flex-col gap-3"}>
                 <div className={"flex items-center gap-2"}>
