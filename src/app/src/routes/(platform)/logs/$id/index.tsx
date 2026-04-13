@@ -347,7 +347,7 @@ function LogEntryPage() {
               />
             </TabsContent>
 
-            <TabsContent className={"flex flex-col gap-3 p-4"} value={"chatbot"}>
+            <TabsContent className={"flex min-h-[calc(100svh-10rem)] flex-col gap-3 p-4"} value={"chatbot"}>
               <ChatbotTab entryId={id} tableNames={tableNames} />
             </TabsContent>
           </Tabs>

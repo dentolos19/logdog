@@ -3,15 +3,18 @@ import { fetchServerSentEvents, type UIMessage, useChat } from "@tanstack/ai-rea
 import {
   AlertCircleIcon,
   BotIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
   FileTextIcon,
   LightbulbIcon,
   SendHorizontalIcon,
   SparklesIcon,
-  SquareIcon,
+  Trash2Icon,
 } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, AlertDescription, AlertTitle } from "#/components/ui/alert";
 import { Button } from "#/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "#/components/ui/collapsible";
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "#/components/ui/input-group";
 import { Spinner } from "#/components/ui/spinner";
 import { type ChatMessage, getAccessToken, getLogChatMessages, replaceLogChatMessages } from "#/lib/server";
 import { streamLogChat } from "#/lib/server/chat";
@@ -139,6 +142,31 @@ function hasVisibleContent(message: UIMessage) {
     }
     return false;
   });
+}
+
+function ErrorBadge({ label, message }: { label: string; message: string }) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <Collapsible onOpenChange={setIsOpen} open={isOpen}>
+      <CollapsibleTrigger asChild>
+        <button
+          className={
+            "inline-flex cursor-pointer items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 " +
+            "text-destructive text-xs hover:bg-destructive/20 transition-colors"
+          }
+          type={"button"}
+        >
+          <AlertCircleIcon className={"size-2.5"} />
+          {label}
+          {isOpen ? <ChevronUpIcon className={"size-3"} /> : <ChevronDownIcon className={"size-3"} />}
+        </button>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <p className={"mt-2 max-w-md rounded-md bg-destructive/5 px-3 py-2 text-destructive text-xs"}>{message}</p>
+      </CollapsibleContent>
+    </Collapsible>
+  );
 }
 
 export function ChatbotTab({ entryId, tableNames }: ChatbotTabProps) {
@@ -288,47 +316,44 @@ export function ChatbotTab({ entryId, tableNames }: ChatbotTabProps) {
     void submitMessage();
   };
 
+  const handleClearChat = useCallback(async () => {
+    stop();
+    setDraftMessage("");
+    setMessages([]);
+    try {
+      await replaceLogChatMessages(entryId, { messages: [] });
+    } catch {
+      setPersistError("Failed to clear chat history.");
+    }
+  }, [entryId, setMessages, stop]);
+
   const visibleMessages = useMemo(() => messages.filter(hasVisibleContent), [messages]);
 
   return (
-    <div className={"flex h-full flex-col"}>
-      {hydrateError !== null && (
-        <Alert variant={"destructive"}>
-          <AlertCircleIcon className={"size-4"} />
-          <AlertTitle>Failed to load chat history</AlertTitle>
-          <AlertDescription>{hydrateError}</AlertDescription>
-        </Alert>
+    <div className={"flex min-h-0 flex-1 flex-col"}>
+      {(hydrateError !== null || persistError !== null || error !== undefined) && (
+        <div className={"flex flex-wrap gap-2 px-4 pt-2 pb-1"}>
+          {hydrateError !== null && <ErrorBadge label={"Load failed"} message={hydrateError} />}
+          {persistError !== null && <ErrorBadge label={"Save failed"} message={persistError} />}
+          {error !== undefined && (
+            <ErrorBadge label={"Chat failed"} message={error.message || "Failed to generate a response."} />
+          )}
+        </div>
       )}
 
-      {persistError !== null && (
-        <Alert variant={"destructive"}>
-          <AlertCircleIcon className={"size-4"} />
-          <AlertTitle>Failed to save chat history</AlertTitle>
-          <AlertDescription>{persistError}</AlertDescription>
-        </Alert>
-      )}
-
-      {error !== undefined && (
-        <Alert variant={"destructive"}>
-          <AlertCircleIcon className={"size-4"} />
-          <AlertTitle>Chat request failed</AlertTitle>
-          <AlertDescription>{error.message || "Failed to generate a response."}</AlertDescription>
-        </Alert>
-      )}
-
-      <div className={"flex-1 overflow-y-auto"} onScroll={handleScroll} ref={scrollContainerRef}>
+      <div className={"flex min-h-0 flex-1 overflow-y-auto"} onScroll={handleScroll} ref={scrollContainerRef}>
         {isHydrating ? (
           <div className={"flex items-center justify-center py-12"}>
             <Spinner />
           </div>
         ) : visibleMessages.length === 0 ? (
-          <div className={"flex h-full flex-col items-center justify-center px-4"}>
+          <div className={"flex flex-1 flex-col items-center justify-center px-4"}>
             <div className={"flex max-w-md flex-col items-center gap-6 text-center"}>
               <div className={"flex size-14 items-center justify-center rounded-2xl bg-muted"}>
                 <BotIcon className={"size-7 text-muted-foreground"} />
               </div>
               <div className={"flex flex-col gap-2"}>
-                <h2 className={"font-semibold text-lg"}>Log Analysis Assistant</h2>
+                <h2 className={"font-semibold text-lg"}>Log Analysis Chatbot</h2>
                 <p className={"text-muted-foreground text-sm"}>
                   Ask questions about your log data. I can query tables, find anomalies, generate charts, and compile
                   reports.
@@ -371,10 +396,10 @@ export function ChatbotTab({ entryId, tableNames }: ChatbotTabProps) {
       <div className={"shrink-0 border-t bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60"}>
         <div className={"mx-auto max-w-3xl"}>
           {visibleMessages.length > 0 && (
-            <div className={"flex gap-2 overflow-x-auto px-4 pt-3 pb-2"}>
+            <div className={"flex flex-wrap gap-2 px-4 pt-3 pb-2"}>
               {suggestions.map((suggestion) => (
                 <Button
-                  className={"shrink-0 rounded-full"}
+                  className={"max-w-full shrink rounded-full"}
                   disabled={isLoading}
                   key={suggestion}
                   onClick={() => void sendMessage(suggestion)}
@@ -382,34 +407,41 @@ export function ChatbotTab({ entryId, tableNames }: ChatbotTabProps) {
                   type={"button"}
                   variant={"secondary"}
                 >
-                  <LightbulbIcon className={"size-3"} />
-                  {suggestion}
+                  <LightbulbIcon className={"size-3 shrink-0"} />
+                  <span className={"truncate"}>{suggestion}</span>
                 </Button>
               ))}
               <Button
-                className={"shrink-0 rounded-full"}
+                className={"max-w-full shrink rounded-full"}
                 disabled={isLoading}
                 onClick={() => void sendMessage(REPORT_PROMPT)}
                 size={"sm"}
                 type={"button"}
                 variant={"outline"}
               >
-                <FileTextIcon className={"size-3"} />
-                Generate Report
+                <FileTextIcon className={"size-3 shrink-0"} />
+                <span className={"truncate"}>Generate Report</span>
+              </Button>
+              <Button
+                className={"max-w-full shrink rounded-full"}
+                disabled={isLoading}
+                onClick={() => void handleClearChat()}
+                size={"sm"}
+                type={"button"}
+                variant={"ghost"}
+              >
+                <Trash2Icon className={"size-3 shrink-0"} />
+                <span className={"truncate"}>Clear Chat</span>
               </Button>
             </div>
           )}
 
-          <form className={"flex items-end gap-2 px-4 pb-4"} onSubmit={onSubmit}>
-            <div className={"relative flex-1"}>
-              <textarea
-                className={
-                  "max-h-[200px] min-h-[44px] w-full resize-none rounded-xl border bg-background px-4 py-3 text-sm shadow-sm" +
-                  "placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" +
-                  "disabled:cursor-not-allowed disabled:opacity-50"
-                }
+          <form className={"flex items-center justify-center gap-2 px-4 pt-4 pb-4"} onSubmit={onSubmit}>
+            <InputGroup className={"bg-background shadow-sm"}>
+              <InputGroupTextarea
+                className={"max-h-[200px] min-h-[44px] py-3"}
                 disabled={isLoading}
-                onChange={(event) => setDraftMessage(event.target.value)}
+                onChange={(event) => setDraftMessage(event.currentTarget.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" && !event.shiftKey) {
                     event.preventDefault();
@@ -420,31 +452,19 @@ export function ChatbotTab({ entryId, tableNames }: ChatbotTabProps) {
                 rows={1}
                 value={draftMessage}
               />
-            </div>
-
-            {isLoading ? (
-              <Button
-                className={"size-11 shrink-0 rounded-xl"}
-                onClick={() => stop()}
-                size={"icon"}
-                type={"button"}
-                variant={"outline"}
-              >
-                <SquareIcon className={"size-4"} />
-                <span className={"sr-only"}>Stop</span>
-              </Button>
-            ) : (
-              <Button
-                className={"size-11 shrink-0 rounded-xl"}
-                disabled={!draftMessage.trim()}
-                size={"icon"}
-                type={"submit"}
-                variant={"default"}
-              >
-                <SendHorizontalIcon className={"size-4"} />
-                <span className={"sr-only"}>Send</span>
-              </Button>
-            )}
+              <InputGroupAddon align={"inline-end"}>
+                <InputGroupButton
+                  className={"mr-1 size-8 rounded-full"}
+                  disabled={isLoading || !draftMessage.trim()}
+                  size={"icon-sm"}
+                  type={"submit"}
+                  variant={"default"}
+                >
+                  <SendHorizontalIcon />
+                  <span className={"sr-only"}>Send</span>
+                </InputGroupButton>
+              </InputGroupAddon>
+            </InputGroup>
           </form>
         </div>
       </div>

@@ -1,7 +1,6 @@
 import type { UIMessage } from "@tanstack/ai-react";
-import { ChevronDownIcon, ChevronRightIcon, WrenchIcon } from "lucide-react";
+import { ChevronDownIcon, ChevronUpIcon, WrenchIcon } from "lucide-react";
 import { useState } from "react";
-import { Button } from "#/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "#/components/ui/collapsible";
 import { WidgetChart } from "#/routes/(platform)/logs/-components/widget-chart";
 import { WidgetDataTable } from "#/routes/(platform)/logs/-components/widget-data-table";
@@ -9,11 +8,6 @@ import { WidgetReportDownload } from "#/routes/(platform)/logs/-components/widge
 import { WidgetStats } from "#/routes/(platform)/logs/-components/widget-stats";
 
 type ToolCallPart = UIMessage["parts"][number];
-
-type ToolCallRendererProps = {
-  part: ToolCallPart;
-  isUser: boolean;
-};
 
 function parseJsonSafe(value: unknown): Record<string, unknown> | null {
   if (typeof value === "object" && value !== null) {
@@ -32,7 +26,17 @@ function parseJsonSafe(value: unknown): Record<string, unknown> | null {
   return null;
 }
 
-function ToolWidgetOutput({ part }: { part: ToolCallPart }) {
+const WIDGET_TOOLS = new Set(["execute_sql_query", "render_widget", "generate_report"]);
+
+export function isWidgetTool(part: ToolCallPart) {
+  return part.type === "tool-call" && WIDGET_TOOLS.has(part.name ?? "");
+}
+
+export function WidgetToolOutput({ part }: { part: ToolCallPart }) {
+  if (part.type !== "tool-call") {
+    return null;
+  }
+
   const output = "output" in part ? part.output : undefined;
   const parsed = parseJsonSafe(output);
 
@@ -108,7 +112,7 @@ function formatToolLabel(name: string): string {
     .join(" ");
 }
 
-export function ToolCallRenderer({ part, isUser }: ToolCallRendererProps) {
+export function ToolCallBadge({ part }: { part: ToolCallPart }) {
   const [isOpen, setIsOpen] = useState(false);
 
   if (part.type !== "tool-call") {
@@ -117,34 +121,6 @@ export function ToolCallRenderer({ part, isUser }: ToolCallRendererProps) {
 
   const toolName = typeof part.name === "string" ? part.name : "tool";
   const hasOutput = "output" in part && part.output !== undefined;
-  const isWidgetTool =
-    toolName === "execute_sql_query" || toolName === "render_widget" || toolName === "generate_report";
-
-  if (isWidgetTool && hasOutput) {
-    return (
-      <div className={"my-2"}>
-        <Collapsible onOpenChange={setIsOpen} open={isOpen}>
-          <CollapsibleTrigger asChild>
-            <Button className={"h-auto gap-2 px-3 py-1.5 text-muted-foreground text-xs"} variant={"ghost"}>
-              {isOpen ? <ChevronDownIcon className={"size-3"} /> : <ChevronRightIcon className={"size-3"} />}
-              <WrenchIcon className={"size-3"} />
-              {formatToolLabel(toolName)}
-            </Button>
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            <div className={"mt-1 rounded-lg border bg-muted/30 p-3"}>
-              <ToolWidgetOutput part={part} />
-            </div>
-          </CollapsibleContent>
-        </Collapsible>
-        {!isOpen && (
-          <div className={"mt-1"}>
-            <ToolWidgetOutput part={part} />
-          </div>
-        )}
-      </div>
-    );
-  }
 
   const outputText = hasOutput
     ? (() => {
@@ -157,24 +133,27 @@ export function ToolCallRenderer({ part, isUser }: ToolCallRendererProps) {
     : null;
 
   return (
-    <div className={"my-2"}>
-      <Collapsible onOpenChange={setIsOpen} open={isOpen}>
-        <CollapsibleTrigger asChild>
-          <Button className={"h-auto gap-2 px-3 py-1.5 text-muted-foreground text-xs"} variant={"ghost"}>
-            {isOpen ? <ChevronDownIcon className={"size-3"} /> : <ChevronRightIcon className={"size-3"} />}
-            <WrenchIcon className={"size-3"} />
-            {formatToolLabel(toolName)}
-            {!hasOutput && <span className={"text-muted-foreground/60"}>…</span>}
-          </Button>
-        </CollapsibleTrigger>
+    <Collapsible onOpenChange={setIsOpen} open={isOpen}>
+      <CollapsibleTrigger asChild>
+        <button
+          className={
+            "inline-flex cursor-pointer items-center gap-1 rounded-full bg-muted/60 px-2 py-0.5 text-muted-foreground text-xs " +
+            "hover:bg-muted transition-colors"
+          }
+          type={"button"}
+        >
+          <WrenchIcon className={"size-2.5"} />
+          {formatToolLabel(toolName)}
+          {isOpen ? <ChevronUpIcon className={"size-3"} /> : <ChevronDownIcon className={"size-3"} />}
+        </button>
+      </CollapsibleTrigger>
+      {outputText && (
         <CollapsibleContent>
-          {outputText && (
-            <pre className={"mt-1 max-h-[300px] overflow-auto rounded-md bg-muted p-3 font-mono text-xs"}>
-              {outputText}
-            </pre>
-          )}
+          <pre className={"mt-2 max-h-[300px] overflow-auto rounded-md bg-muted p-3 font-mono text-xs"}>
+            {outputText}
+          </pre>
         </CollapsibleContent>
-      </Collapsible>
-    </div>
+      )}
+    </Collapsible>
   );
 }

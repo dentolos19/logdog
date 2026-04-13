@@ -4,7 +4,7 @@ import { useCallback, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Button } from "#/components/ui/button";
-import { ToolCallRenderer } from "#/routes/(platform)/logs/-components/chat-tool-call";
+import { isWidgetTool, ToolCallBadge, WidgetToolOutput } from "#/routes/(platform)/logs/-components/chat-tool-call";
 
 type ChatMessageItemProps = {
   message: UIMessage;
@@ -20,10 +20,6 @@ function parseTextFromMessage(message: UIMessage) {
     })
     .filter((value) => value.length > 0)
     .join("\n");
-}
-
-function hasToolCallParts(message: UIMessage) {
-  return message.parts.some((part) => part.type === "tool-call");
 }
 
 function MarkdownMessage({ content, isUser }: { content: string; isUser: boolean }) {
@@ -180,9 +176,12 @@ function CopyButton({ text }: { text: string }) {
 export function ChatMessageItem({ message }: ChatMessageItemProps) {
   const isUser = message.role === "user";
   const text = parseTextFromMessage(message);
-  const hasToolCalls = hasToolCallParts(message);
 
-  if (text.length === 0 && !hasToolCalls) {
+  const toolParts = message.parts.filter((part) => part.type === "tool-call");
+  const widgetParts = toolParts.filter(isWidgetTool);
+  const nonWidgetParts = toolParts.filter((part) => !isWidgetTool(part));
+
+  if (text.length === 0 && toolParts.length === 0) {
     return null;
   }
 
@@ -219,10 +218,20 @@ export function ChatMessageItem({ message }: ChatMessageItemProps) {
           )}
         </div>
 
+        {!isUser && nonWidgetParts.length > 0 && (
+          <div className={"mt-1.5 flex flex-wrap gap-1.5"}>
+            {nonWidgetParts.map((part, index) => (
+              <ToolCallBadge key={`badge-${message.id}-${index}`} part={part} />
+            ))}
+          </div>
+        )}
+
         {!isUser &&
-          message.parts
-            .filter((part) => part.type === "tool-call")
-            .map((part, index) => <ToolCallRenderer isUser={isUser} key={`tool-${message.id}-${index}`} part={part} />)}
+          widgetParts.map((part, index) => (
+            <div className={"mt-2 w-full"} key={`widget-${message.id}-${index}`}>
+              <WidgetToolOutput part={part} />
+            </div>
+          ))}
       </div>
     </div>
   );
