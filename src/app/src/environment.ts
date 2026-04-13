@@ -21,7 +21,7 @@ export function getEnv() {
     openRouterApiKey: getEnvVar<string>("OPENROUTER_API_KEY"),
     openRouterTitle: getEnvVar<string>("OPENROUTER_TITLE", "Logdog"),
     openRouterReferer: getEnvVar<string>("OPENROUTER_REFERER", "https://dennise.me"),
-    openRouterModel: getEnvVar<string>("OPENROUTER_MODEL", "moonshotai/kimi-k2.5"),
+    openRouterModel: getEnvVar<string>("OPENROUTER_MODEL", "openrouter/auto"),
   };
 }
 

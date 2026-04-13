@@ -1,17 +1,21 @@
 import { type ModelMessage, modelMessagesToUIMessages } from "@tanstack/ai";
 import { fetchServerSentEvents, type UIMessage, useChat } from "@tanstack/ai-react";
-import { AlertCircleIcon, BotIcon, SendHorizontalIcon, SquareIcon } from "lucide-react";
-import { type FormEvent, useEffect, useMemo, useState } from "react";
-import Markdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import {
+  AlertCircleIcon,
+  BotIcon,
+  FileTextIcon,
+  LightbulbIcon,
+  SendHorizontalIcon,
+  SparklesIcon,
+  SquareIcon,
+} from "lucide-react";
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "#/components/ui/alert";
-import { Badge } from "#/components/ui/badge";
 import { Button } from "#/components/ui/button";
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "#/components/ui/empty";
-import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "#/components/ui/input-group";
 import { Spinner } from "#/components/ui/spinner";
 import { type ChatMessage, getAccessToken, getLogChatMessages, replaceLogChatMessages } from "#/lib/server";
 import { streamLogChat } from "#/lib/server/chat";
+import { ChatMessageItem } from "#/routes/(platform)/logs/-components/chat-message";
 
 type ChatbotTabProps = {
   entryId: string;
@@ -29,11 +33,16 @@ function createSuggestions(tableNames: string[]) {
 
   const selected = tableNames.slice(0, 3);
   return [
-    "Confirm currently available tables and key columns before analysis.",
-    `Summarize key insights from ${selected.join(", ")}.`,
-    "Find unusual spikes or anomalies.",
+    "Summarize key insights from all available tables.",
+    `Analyze ${selected.join(", ")} for anomalies.`,
+    "Show error rate trends over time.",
   ];
 }
+
+const REPORT_PROMPT =
+  "Generate a comprehensive analysis report for this log group. " +
+  "Query all available tables, identify key insights, anomalies, and trends. " +
+  "Present findings with data tables and charts, then compile everything into a structured report using generate_report.";
 
 function safeSerialize(value: unknown) {
   try {
@@ -43,8 +52,8 @@ function safeSerialize(value: unknown) {
   }
 }
 
-function parseTextFromMessage(message: UIMessage) {
-  return message.parts
+function parsePersistableTextFromMessage(message: UIMessage) {
+  const textContent = message.parts
     .map((part) => {
       if (part.type === "text" && typeof part.content === "string") {
         return part.content;
@@ -53,10 +62,7 @@ function parseTextFromMessage(message: UIMessage) {
     })
     .filter((value) => value.length > 0)
     .join("\n");
-}
 
-function parsePersistableTextFromMessage(message: UIMessage) {
-  const textContent = parseTextFromMessage(message);
   if (textContent.length > 0) {
     return textContent;
   }
@@ -78,140 +84,6 @@ function parsePersistableTextFromMessage(message: UIMessage) {
     .filter((value) => value.length > 0);
 
   return toolEntries.join("\n");
-}
-
-type MarkdownMessageProps = {
-  content: string;
-  isUser: boolean;
-};
-
-function MarkdownMessage({ content, isUser }: MarkdownMessageProps) {
-  return (
-    <Markdown
-      components={{
-        a: ({ children, href, ...props }) => (
-          <a
-            {...props}
-            className={"font-medium underline underline-offset-2"}
-            href={href}
-            rel={"noreferrer noopener"}
-            target={"_blank"}
-          >
-            {children}
-          </a>
-        ),
-        blockquote: ({ children, ...props }) => (
-          <blockquote
-            {...props}
-            className={
-              isUser
-                ? "my-3 border-l-2 border-primary-foreground/60 pl-3 opacity-90"
-                : "my-3 border-l-2 border-border pl-3 text-muted-foreground"
-            }
-          >
-            {children}
-          </blockquote>
-        ),
-        code: ({ children, className, ...props }) => {
-          const hasLanguageClass = className?.includes("language-") ?? false;
-          if (hasLanguageClass) {
-            return (
-              <code
-                {...props}
-                className={
-                  isUser
-                    ? "block overflow-x-auto rounded-md bg-primary-foreground/15 p-3 font-mono text-xs"
-                    : "block overflow-x-auto rounded-md bg-muted p-3 font-mono text-xs"
-                }
-              >
-                {children}
-              </code>
-            );
-          }
-
-          return (
-            <code
-              {...props}
-              className={
-                isUser
-                  ? "rounded bg-primary-foreground/20 px-1.5 py-0.5 font-mono text-[0.8em]"
-                  : "rounded bg-muted px-1.5 py-0.5 font-mono text-[0.8em]"
-              }
-            >
-              {children}
-            </code>
-          );
-        },
-        h1: ({ children, ...props }) => (
-          <h1 {...props} className={"mt-4 mb-2 font-semibold text-base"}>
-            {children}
-          </h1>
-        ),
-        h2: ({ children, ...props }) => (
-          <h2 {...props} className={"mt-4 mb-2 font-semibold text-sm"}>
-            {children}
-          </h2>
-        ),
-        h3: ({ children, ...props }) => (
-          <h3 {...props} className={"mt-3 mb-2 font-semibold text-sm"}>
-            {children}
-          </h3>
-        ),
-        li: ({ children, ...props }) => (
-          <li {...props} className={"my-1"}>
-            {children}
-          </li>
-        ),
-        ol: ({ children, ...props }) => (
-          <ol {...props} className={"my-2 list-decimal space-y-1 pl-5"}>
-            {children}
-          </ol>
-        ),
-        p: ({ children, ...props }) => (
-          <p {...props} className={"my-2 leading-relaxed"}>
-            {children}
-          </p>
-        ),
-        pre: ({ children, ...props }) => (
-          <pre {...props} className={"my-3 overflow-x-auto whitespace-pre-wrap wrap-break-word"}>
-            {children}
-          </pre>
-        ),
-        table: ({ children, ...props }) => (
-          <div className={"my-3 overflow-x-auto"}>
-            <table {...props} className={"min-w-2xs w-full border-collapse text-left text-sm"}>
-              {children}
-            </table>
-          </div>
-        ),
-        td: ({ children, ...props }) => (
-          <td {...props} className={isUser ? "border border-primary-foreground/25 px-2 py-1" : "border px-2 py-1"}>
-            {children}
-          </td>
-        ),
-        th: ({ children, ...props }) => (
-          <th
-            {...props}
-            className={
-              isUser
-                ? "border border-primary-foreground/25 px-2 py-1.5 font-semibold"
-                : "border bg-muted/40 px-2 py-1.5 font-semibold"
-            }
-          >
-            {children}
-          </th>
-        ),
-        ul: ({ children, ...props }) => (
-          <ul {...props} className={"my-2 list-disc space-y-1 pl-5"}>
-            {children}
-          </ul>
-        ),
-      }}
-      remarkPlugins={[remarkGfm]}
-    >
-      {content}
-    </Markdown>
-  );
 }
 
 function normalizePersistedMessages(messages: ChatMessage[]) {
@@ -257,12 +129,28 @@ function toPersistedMessages(messages: UIMessage[]) {
   return persisted;
 }
 
+function hasVisibleContent(message: UIMessage) {
+  return message.parts.some((part) => {
+    if (part.type === "text" && typeof part.content === "string" && part.content.length > 0) {
+      return true;
+    }
+    if (part.type === "tool-call") {
+      return true;
+    }
+    return false;
+  });
+}
+
 export function ChatbotTab({ entryId, tableNames }: ChatbotTabProps) {
   const [draftMessage, setDraftMessage] = useState("");
   const [hydrateError, setHydrateError] = useState<string | null>(null);
   const [persistError, setPersistError] = useState<string | null>(null);
   const [isHydrating, setIsHydrating] = useState(true);
   const [isPersisting, setIsPersisting] = useState(false);
+  const [isAtBottom, setIsAtBottom] = useState(true);
+
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const suggestions = useMemo(() => createSuggestions(tableNames), [tableNames]);
   const token = getAccessToken();
@@ -295,6 +183,27 @@ export function ChatbotTab({ entryId, tableNames }: ChatbotTabProps) {
       },
     }),
   });
+
+  const scrollToBottom = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, []);
+
+  const handleScroll = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (!container) {
+      return;
+    }
+
+    const { scrollTop, scrollHeight, clientHeight } = container;
+    const atBottom = scrollHeight - scrollTop - clientHeight < 50;
+    setIsAtBottom(atBottom);
+  }, []);
+
+  useEffect(() => {
+    if (isAtBottom || isLoading) {
+      scrollToBottom();
+    }
+  }, [messages, isLoading, isAtBottom, scrollToBottom]);
 
   useEffect(() => {
     let cancelled = false;
@@ -379,8 +288,10 @@ export function ChatbotTab({ entryId, tableNames }: ChatbotTabProps) {
     void submitMessage();
   };
 
+  const visibleMessages = useMemo(() => messages.filter(hasVisibleContent), [messages]);
+
   return (
-    <div className={"flex flex-col gap-4"}>
+    <div className={"flex h-full flex-col"}>
       {hydrateError !== null && (
         <Alert variant={"destructive"}>
           <AlertCircleIcon className={"size-4"} />
@@ -405,126 +316,137 @@ export function ChatbotTab({ entryId, tableNames }: ChatbotTabProps) {
         </Alert>
       )}
 
-      <div className={"flex-1 pb-4"}>
+      <div className={"flex-1 overflow-y-auto"} onScroll={handleScroll} ref={scrollContainerRef}>
         {isHydrating ? (
           <div className={"flex items-center justify-center py-12"}>
             <Spinner />
           </div>
-        ) : messages.length === 0 ? (
-          <Empty className={"border"}>
-            <EmptyHeader>
-              <EmptyMedia variant={"icon"}>
-                <BotIcon />
-              </EmptyMedia>
-              <EmptyTitle>Assistant Workspace</EmptyTitle>
-              <EmptyDescription>Ask questions to analyze this log group and its parsed tables.</EmptyDescription>
-            </EmptyHeader>
-          </Empty>
-        ) : (
-          <div className={"flex flex-col gap-4"}>
-            {messages.map((message) => {
-              const isUser = message.role === "user";
-              const text = parseTextFromMessage(message);
-              if (text.length === 0) {
-                return null;
-              }
-
-              return (
-                <div className={isUser ? "flex justify-end" : "flex justify-start"} key={message.id}>
-                  <div
-                    className={
-                      isUser
-                        ? "max-w-[90%] rounded-lg bg-primary px-4 py-3 text-primary-foreground"
-                        : "max-w-[90%] rounded-lg border bg-card px-4 py-3 text-card-foreground"
-                    }
+        ) : visibleMessages.length === 0 ? (
+          <div className={"flex h-full flex-col items-center justify-center px-4"}>
+            <div className={"flex max-w-md flex-col items-center gap-6 text-center"}>
+              <div className={"flex size-14 items-center justify-center rounded-2xl bg-muted"}>
+                <BotIcon className={"size-7 text-muted-foreground"} />
+              </div>
+              <div className={"flex flex-col gap-2"}>
+                <h2 className={"font-semibold text-lg"}>Log Analysis Assistant</h2>
+                <p className={"text-muted-foreground text-sm"}>
+                  Ask questions about your log data. I can query tables, find anomalies, generate charts, and compile
+                  reports.
+                </p>
+              </div>
+              <div className={"flex w-full flex-col gap-2"}>
+                {suggestions.map((suggestion) => (
+                  <Button
+                    className={"h-auto w-full justify-start gap-2 px-4 py-3 text-left text-sm"}
+                    disabled={isLoading}
+                    key={suggestion}
+                    onClick={() => void sendMessage(suggestion)}
+                    variant={"outline"}
                   >
-                    <div className={"mb-2 font-medium text-xs opacity-80"}>{isUser ? "You" : "Assistant"}</div>
-                    <div className={"text-sm"}>
-                      <MarkdownMessage content={text} isUser={isUser} />
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+                    <SparklesIcon className={"size-4 shrink-0 text-muted-foreground"} />
+                    {suggestion}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className={"mx-auto max-w-3xl space-y-6 py-6"}>
+            {visibleMessages.map((message) => (
+              <ChatMessageItem key={message.id} message={message} />
+            ))}
+            <div ref={messagesEndRef} />
           </div>
         )}
       </div>
 
-      <div
-        className={
-          "sticky bottom-0 z-10 -mx-4 bg-background/95 px-4 pt-2 pb-4 backdrop-blur supports-backdrop-filter:bg-background/60 sm:-mx-6 sm:px-6"
-        }
-      >
-        <div className={"mb-4 flex flex-wrap gap-2"}>
-          {suggestions.map((suggestion) => (
-            <Button
-              className={"rounded-full"}
-              disabled={isLoading}
-              key={suggestion}
-              onClick={() => {
-                if (isLoading) {
-                  return;
-                }
-                void sendMessage(suggestion);
-              }}
-              size={"sm"}
-              type={"button"}
-              variant={"secondary"}
-            >
-              {suggestion}
-            </Button>
-          ))}
+      {!isAtBottom && visibleMessages.length > 0 && (
+        <div className={"flex justify-center py-1"}>
+          <Button className={"rounded-full shadow-md"} onClick={scrollToBottom} size={"sm"} variant={"secondary"}>
+            Scroll to bottom
+          </Button>
         </div>
+      )}
 
-        <div className={"mb-3 flex items-center gap-2"}>
-          <Badge variant={"outline"}>log_entry_id: {entryId}</Badge>
-          <Badge variant={"secondary"}>{tableNames.length} table hints</Badge>
-          {isPersisting && <Badge variant={"outline"}>Saving…</Badge>}
-        </div>
-
-        <form className={"flex flex-col gap-3"} onSubmit={onSubmit}>
-          <InputGroup className={"bg-background shadow-sm"}>
-            <InputGroupTextarea
-              className={"min-h-[3rem] resize-none py-3"}
-              disabled={isLoading}
-              onChange={(event) => setDraftMessage(event.currentTarget.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
-                  event.preventDefault();
-                  void submitMessage();
-                }
-              }}
-              placeholder={"Ask about anomalies, trends, or table insights..."}
-              rows={1}
-              value={draftMessage}
-            />
-            <InputGroupAddon align={"inline-end"}>
-              <InputGroupButton
-                className={"mr-1 size-8 rounded-full"}
-                disabled={isLoading || !draftMessage.trim()}
-                size={"icon-sm"}
-                type={"submit"}
-                variant={"default"}
+      <div className={"shrink-0 border-t bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60"}>
+        <div className={"mx-auto max-w-3xl"}>
+          {visibleMessages.length > 0 && (
+            <div className={"flex gap-2 overflow-x-auto px-4 pt-3 pb-2"}>
+              {suggestions.map((suggestion) => (
+                <Button
+                  className={"shrink-0 rounded-full"}
+                  disabled={isLoading}
+                  key={suggestion}
+                  onClick={() => void sendMessage(suggestion)}
+                  size={"sm"}
+                  type={"button"}
+                  variant={"secondary"}
+                >
+                  <LightbulbIcon className={"size-3"} />
+                  {suggestion}
+                </Button>
+              ))}
+              <Button
+                className={"shrink-0 rounded-full"}
+                disabled={isLoading}
+                onClick={() => void sendMessage(REPORT_PROMPT)}
+                size={"sm"}
+                type={"button"}
+                variant={"outline"}
               >
-                <SendHorizontalIcon />
-                <span className={"sr-only"}>Send</span>
-              </InputGroupButton>
-            </InputGroupAddon>
-          </InputGroup>
-
-          {isLoading && (
-            <div className={"flex items-center justify-between gap-2"}>
-              <div className={"flex items-center gap-2 text-muted-foreground text-sm"}>
-                <Spinner />
-                Generating response...
-              </div>
-              <Button onClick={() => stop()} size={"sm"} type={"button"} variant={"outline"}>
-                <SquareIcon data-icon={"inline-start"} />
-                Stop
+                <FileTextIcon className={"size-3"} />
+                Generate Report
               </Button>
             </div>
           )}
-        </form>
+
+          <form className={"flex items-end gap-2 px-4 pb-4"} onSubmit={onSubmit}>
+            <div className={"relative flex-1"}>
+              <textarea
+                className={
+                  "max-h-[200px] min-h-[44px] w-full resize-none rounded-xl border bg-background px-4 py-3 text-sm shadow-sm" +
+                  "placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" +
+                  "disabled:cursor-not-allowed disabled:opacity-50"
+                }
+                disabled={isLoading}
+                onChange={(event) => setDraftMessage(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    void submitMessage();
+                  }
+                }}
+                placeholder={"Ask about anomalies, trends, or table insights..."}
+                rows={1}
+                value={draftMessage}
+              />
+            </div>
+
+            {isLoading ? (
+              <Button
+                className={"size-11 shrink-0 rounded-xl"}
+                onClick={() => stop()}
+                size={"icon"}
+                type={"button"}
+                variant={"outline"}
+              >
+                <SquareIcon className={"size-4"} />
+                <span className={"sr-only"}>Stop</span>
+              </Button>
+            ) : (
+              <Button
+                className={"size-11 shrink-0 rounded-xl"}
+                disabled={!draftMessage.trim()}
+                size={"icon"}
+                type={"submit"}
+                variant={"default"}
+              >
+                <SendHorizontalIcon className={"size-4"} />
+                <span className={"sr-only"}>Send</span>
+              </Button>
+            )}
+          </form>
+        </div>
       </div>
     </div>
   );

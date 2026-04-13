@@ -41,8 +41,83 @@ const listAvailableTablesInputSchema = z.object({
   include_columns: z.boolean().optional().default(true),
 });
 
+const executeSqlQueryInputSchema = z.object({
+  sql: z.string().min(1).describe("A SELECT SQL query to execute against the parsed log tables."),
+});
+
+const widgetStatsItemSchema = z.object({
+  label: z.string(),
+  value: z.union([z.string(), z.number()]),
+  description: z.string().optional(),
+});
+
+const renderWidgetInputSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("data_table"),
+    columns: z.array(z.string()).min(1),
+    rows: z.array(z.array(z.unknown())),
+    title: z.string().optional(),
+  }),
+  z.object({
+    type: z.literal("chart"),
+    chart_type: z.enum(["bar", "line", "pie"]),
+    data: z.array(z.record(z.string(), z.unknown())).min(1),
+    x_key: z.string(),
+    y_key: z.string(),
+    title: z.string().optional(),
+  }),
+  z.object({
+    type: z.literal("stats"),
+    stats: z.array(widgetStatsItemSchema).min(1),
+  }),
+]);
+
+const reportSectionTableSchema = z.object({
+  title: z.string(),
+  columns: z.array(z.string()),
+  rows: z.array(z.array(z.unknown())),
+});
+
+const reportSectionSchema = z.object({
+  heading: z.string(),
+  content: z.string(),
+  tables: z.array(reportSectionTableSchema).default([]),
+});
+
+const generateReportInputSchema = z.object({
+  title: z.string().min(1).describe("Report title."),
+  sections: z
+    .array(reportSectionSchema)
+    .min(1)
+    .describe("Report sections with headings, content, and optional data tables."),
+});
+
 function getErrorMessage(error: unknown, fallbackMessage: string) {
   return error instanceof Error ? error.message : fallbackMessage;
+}
+
+async function fetchBackendPost<T>(
+  origin: string,
+  authorizationHeader: string,
+  path: string,
+  body: unknown,
+): Promise<T> {
+  const url = new URL(`/api${path}`, normalizeOrigin(origin));
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: authorizationHeader,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const payload = await response.text();
+    throw new Error(`Backend request failed (${response.status}): ${payload}`);
+  }
+
+  return (await response.json()) as T;
 }
 
 function normalizeOrigin(origin: string) {
@@ -217,7 +292,11 @@ function buildSystemPrompt(entryId: string) {
   return [
     "You are Logdog's data analyst assistant for a specific log group.",
     `Log group id: ${entryId}.`,
-    "Use the list_available_tables tool to discover table availability and schemas before making assumptions.",
+    "Always start by calling list_available_tables to discover what data is available.",
+    "Use execute_sql_query to run SELECT queries against the parsed log tables for data exploration and analysis.",
+    "Use render_widget to present results visually: type 'data_table' for tabular data, 'chart' for bar/line/pie charts, 'stats' for key metrics.",
+    "Use generate_report to compile a full analysis report as a downloadable DOCX file when the user asks for a report or when you have gathered sufficient insights.",
+    "Report workflow: list tables -> query data -> render widgets -> compile findings into generate_report.",
     "Rely only on user-provided information and tool outputs.",
     "If the available data is insufficient, explicitly say what is missing and suggest the next query or upload.",
     "Keep answers concise, actionable, and focused on insights from the log data.",
@@ -281,7 +360,111 @@ function createLogChatServerTools(options: { entryId: string; origin: string; au
     }
   });
 
-  return [listAvailableTables];
+  const executeSqlQuery = toolDefinition({
+    name: "execute_sql_query",
+    description:
+      "Run a read-only SELECT SQL query against the parsed log tables. Use this to explore data, compute aggregations, find anomalies, and answer analytical questions.",
+    inputSchema: executeSqlQueryInputSchema,
+    outputSchema: z.object({
+      status: z.enum(["ok", "error"]),
+      columns: z.array(z.string()),
+      rows: z.array(z.array(z.unknown())),
+      row_count: z.number(),
+      execution_time_ms: z.number(),
+      message: z.string(),
+    }),
+  }).server(async ({ sql }) => {
+    try {
+      const result = await fetchBackendPost<{
+        status: string;
+        columns: string[];
+        rows: unknown[][];
+        row_count: number;
+        execution_time_ms: number;
+        message: string;
+      }>(options.origin, options.authorizationHeader, `/logs/${encodeURIComponent(options.entryId)}/query`, { sql });
+
+      return {
+        status: result.status === "ok" ? ("ok" as const) : ("error" as const),
+        columns: result.columns ?? [],
+        rows: (result.rows ?? []).map((row) => row.map((v) => (typeof v === "object" ? JSON.stringify(v) : v))),
+        row_count: result.row_count ?? 0,
+        execution_time_ms: result.execution_time_ms ?? 0,
+        message: result.message ?? "",
+      };
+    } catch (error) {
+      return {
+        status: "error" as const,
+        columns: [],
+        rows: [],
+        row_count: 0,
+        execution_time_ms: 0,
+        message: `Query failed: ${getErrorMessage(error, "Unknown error.")}`,
+      };
+    }
+  });
+
+  const renderWidget = toolDefinition({
+    name: "render_widget",
+    description:
+      "Render a visual widget in the chat. Use type 'data_table' for tabular results, 'chart' for bar/line/pie charts, or 'stats' for key metric cards.",
+    inputSchema: renderWidgetInputSchema,
+    outputSchema: z.object({
+      type: z.string(),
+      message: z.string(),
+    }),
+  }).server(async (input) => {
+    return {
+      type: input.type,
+      message: `Rendered ${input.type} widget.`,
+    };
+  });
+
+  const generateReport = toolDefinition({
+    name: "generate_report",
+    description:
+      "Generate a full analysis report as a downloadable DOCX file. Compile findings, data tables, and insights into a structured report document.",
+    inputSchema: generateReportInputSchema,
+    outputSchema: z.object({
+      status: z.enum(["ok", "error"]),
+      message: z.string(),
+      download_url: z.string().optional(),
+    }),
+  }).server(async ({ title, sections }) => {
+    try {
+      const url = new URL(`/api/logs/${encodeURIComponent(options.entryId)}/report`, normalizeOrigin(options.origin));
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: options.authorizationHeader,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ title, sections }),
+      });
+
+      if (!response.ok) {
+        const payload = await response.text();
+        throw new Error(`Report generation failed (${response.status}): ${payload}`);
+      }
+
+      const blob = await response.arrayBuffer();
+      const base64 = btoa(String.fromCharCode(...new Uint8Array(blob)));
+      const downloadUrl = `data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,${base64}`;
+
+      return {
+        status: "ok" as const,
+        message: `Report "${title}" generated successfully.`,
+        download_url: downloadUrl,
+      };
+    } catch (error) {
+      return {
+        status: "error" as const,
+        message: `Report generation failed: ${getErrorMessage(error, "Unknown error.")}`,
+      };
+    }
+  });
+
+  return [listAvailableTables, executeSqlQuery, renderWidget, generateReport];
 }
 
 export const streamLogChat = createServerFn({ method: "POST" })

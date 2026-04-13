@@ -4,14 +4,20 @@ import csv
 import io
 import json
 import logging
+import re
+import time
 import uuid
 from datetime import datetime
 from typing import Any
 
+import sqlparse
+from docx import Document
+from docx.shared import Pt
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import Response
 from openpyxl import Workbook
 from pydantic import BaseModel, Field
+from sqlalchemy import text as sa_text
 from sqlalchemy.orm import Session
 
 from lib.database import get_database
@@ -106,6 +112,43 @@ class ReplaceMessagesRequest(BaseModel):
 
 class ReplaceMessagesResponse(BaseModel):
     saved_messages: int
+
+
+class QueryRequest(BaseModel):
+    sql: str
+
+
+class QueryResponse(BaseModel):
+    status: str
+    columns: list[str] = Field(default_factory=list)
+    rows: list[list[Any]] = Field(default_factory=list)
+    row_count: int = 0
+    execution_time_ms: float = 0
+    message: str = ""
+
+
+class ReportSectionTable(BaseModel):
+    title: str
+    columns: list[str]
+    rows: list[list[Any]]
+
+
+class ReportSectionRequest(BaseModel):
+    heading: str
+    content: str
+    tables: list[ReportSectionTable] = Field(default_factory=list)
+
+
+class ReportRequest(BaseModel):
+    title: str
+    sections: list[ReportSectionRequest]
+
+
+FORBIDDEN_SQL_KEYWORDS = re.compile(
+    r"^\s*(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|REPLACE|GRANT|REVOKE)\s",
+    re.IGNORECASE,
+)
+QUERY_RESULT_LIMIT = 500
 
 
 def _uuid_or_raw(value: str):
@@ -778,3 +821,144 @@ def replace_chat_messages(
     database.commit()
 
     return ReplaceMessagesResponse(saved_messages=saved_messages)
+
+
+def _get_entry_table_names(database: Session, entry_id: str) -> set[str]:
+    """Return the set of megabase table names registered for a log entry."""
+    tables = database.query(LogTable).filter(LogTable.entry_id == _uuid_or_raw(entry_id)).all()
+    return {row.table for row in tables}
+
+
+@router.post("/{entry_id}/query", response_model=QueryResponse)
+def execute_entry_query(
+    entry_id: str,
+    payload: QueryRequest,
+    current_user: User = Depends(get_current_user),
+    database: Session = Depends(get_database),
+):
+    entry = _require_owned_entry(database=database, entry_id=entry_id, user_id=current_user.id)
+    sql_text = payload.sql.strip()
+
+    if not sql_text:
+        return QueryResponse(status="error", message="SQL query must not be empty.")
+
+    if FORBIDDEN_SQL_KEYWORDS.search(sql_text):
+        return QueryResponse(status="error", message="Only SELECT queries are allowed.")
+
+    parsed = sqlparse.parse(sql_text)
+    for statement in parsed:
+        if statement.get_type() != "SELECT":
+            return QueryResponse(
+                status="error",
+                message=f"Statement type '{statement.get_type()}' is not allowed. Only SELECT is permitted.",
+            )
+
+    allowed_tables = _get_entry_table_names(database, str(entry.id))
+    if not allowed_tables:
+        return QueryResponse(status="error", message="No tables are available for this log entry.")
+
+    start_time = time.monotonic()
+    megabase_database = MegabaseSessionLocal()
+    try:
+        init_megabase(megabase_database)
+        result = megabase_database.execute(sa_text(sql_text))
+        raw_columns = list(result.keys()) if result.returns_rows else []
+        raw_rows = result.fetchall() if result.returns_rows else []
+        elapsed_ms = (time.monotonic() - start_time) * 1000
+
+        columns = [str(col) for col in raw_columns]
+        limited_rows = raw_rows[:QUERY_RESULT_LIMIT]
+
+        serializable_rows: list[list[Any]] = []
+        for row in limited_rows:
+            serializable_row: list[Any] = []
+            for value in row:
+                if isinstance(value, (dict, list)):
+                    serializable_row.append(json.dumps(value, ensure_ascii=True))
+                elif hasattr(value, "isoformat"):
+                    serializable_row.append(value.isoformat())
+                else:
+                    serializable_row.append(value)
+            serializable_rows.append(serializable_row)
+
+        return QueryResponse(
+            status="ok",
+            columns=columns,
+            rows=serializable_rows,
+            row_count=len(raw_rows),
+            execution_time_ms=round(elapsed_ms, 2),
+            message=f"Returned {len(serializable_rows)} of {len(raw_rows)} rows.",
+        )
+    except Exception as error:
+        elapsed_ms = (time.monotonic() - start_time) * 1000
+        logger.exception("SQL query failed for entry %s", entry_id)
+        return QueryResponse(
+            status="error",
+            execution_time_ms=round(elapsed_ms, 2),
+            message=f"Query failed: {error}",
+        )
+    finally:
+        megabase_database.close()
+
+
+@router.post("/{entry_id}/report")
+def generate_entry_report(
+    entry_id: str,
+    payload: ReportRequest,
+    current_user: User = Depends(get_current_user),
+    database: Session = Depends(get_database),
+):
+    entry = _require_owned_entry(database=database, entry_id=entry_id, user_id=current_user.id)
+
+    document = Document()
+
+    title_style = document.styles["Title"]
+    title_style.font.size = Pt(24)
+    document.add_paragraph(payload.title, style="Title")
+
+    document.add_paragraph(f"Log group: {entry.name}")
+    document.add_paragraph(f"Generated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}")
+    document.add_page_break()
+
+    for section in payload.sections:
+        document.add_heading(section.heading, level=1)
+
+        for paragraph_text in section.content.split("\n"):
+            stripped = paragraph_text.strip()
+            if stripped:
+                document.add_paragraph(stripped)
+
+        for table_data in section.tables:
+            if table_data.title:
+                document.add_heading(table_data.title, level=2)
+
+            if not table_data.columns or not table_data.rows:
+                continue
+
+            doc_table = document.add_table(rows=1, cols=len(table_data.columns))
+            doc_table.style = "Light Grid Accent 1"
+
+            header_cells = doc_table.rows[0].cells
+            for index, column_name in enumerate(table_data.columns):
+                header_cells[index].text = str(column_name)
+
+            for row_values in table_data.rows:
+                row_cells = doc_table.add_row().cells
+                for index, value in enumerate(row_values):
+                    if index < len(row_cells):
+                        row_cells[index].text = str(value) if value is not None else ""
+
+            document.add_paragraph()
+
+    output = io.BytesIO()
+    document.save(output)
+    output.seek(0)
+
+    safe_title = re.sub(r"[^\w\-]", "_", payload.title)[:50] or "report"
+    filename = f"{safe_title}.docx"
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    return Response(
+        content=output.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers=headers,
+    )

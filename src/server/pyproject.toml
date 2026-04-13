@@ -12,9 +12,11 @@ dependencies = [
   "openpyxl",
   "psycopg2-binary",
   "pydantic>=2.0.0,<2.12",
+  "python-docx",
   "python-dotenv",
   "python-jose[cryptography]",
   "sqlalchemy",
+  "sqlparse",
   "uvicorn",
 ]
 

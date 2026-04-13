@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { type ColumnDef, type PaginationState, type SortingState, type VisibilityState } from "@tanstack/react-table";
+import type { ColumnDef, PaginationState, SortingState, VisibilityState } from "@tanstack/react-table";
 import { format } from "date-fns";
 import { ChevronDownIcon, DownloadIcon, FileSpreadsheetIcon, FileTextIcon, InfoIcon, TableIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
