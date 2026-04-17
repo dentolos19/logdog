@@ -1,7 +1,8 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { MoreHorizontalIcon, PencilIcon, Trash2Icon } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { z } from "zod";
 import { Alert, AlertDescription, AlertTitle } from "#/components/ui/alert";
 import {
   AlertDialog,
@@ -44,13 +45,28 @@ import { ProcessesTab } from "#/routes/(platform)/logs/-components/processes-tab
 import { TablesTab } from "#/routes/(platform)/logs/-components/tables-tab";
 import { UploadSection } from "#/routes/(platform)/logs/-components/upload-section";
 
+const logEntryTabs = ["data", "processes", "chatbot"] as const;
+type LogEntryTab = (typeof logEntryTabs)[number];
+
+type TableHighlightRequest = {
+  key: number;
+  fileId: string | null;
+  tableIds: string[];
+};
+
 export const Route = createFileRoute("/(platform)/logs/$id/")({
+  validateSearch: z
+    .object({
+      tab: z.enum(logEntryTabs).optional(),
+    })
+    .catch({}),
   component: LogEntryPage,
 });
 
 function LogEntryPage() {
   const { id } = Route.useParams();
-  const navigate = useNavigate();
+  const search = Route.useSearch();
+  const navigate = Route.useNavigate();
 
   const [entry, setEntry] = useState<LogEntry | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -62,7 +78,8 @@ function LogEntryPage() {
   const [files, setFiles] = useState<LogFile[]>([]);
   const [filesError, setFilesError] = useState<string | null>(null);
 
-  const [activeTab, setActiveTab] = useState("data");
+  const [activeTab, setActiveTab] = useState<LogEntryTab>(search.tab ?? "data");
+  const [tableHighlightRequest, setTableHighlightRequest] = useState<TableHighlightRequest | null>(null);
 
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
@@ -157,6 +174,11 @@ function LogEntryPage() {
     void fetchProcesses();
     void fetchFiles();
   }, [fetchEntry, fetchFiles, fetchProcesses]);
+
+  useEffect(() => {
+    const nextTab = search.tab ?? "data";
+    setActiveTab((previous) => (previous === nextTab ? previous : nextTab));
+  }, [search.tab]);
 
   useEffect(() => {
     if (activeTab !== "processes") {
@@ -254,6 +276,44 @@ function LogEntryPage() {
     return [...names];
   }, [processes]);
 
+  const onTabChange = useCallback(
+    (nextTab: string) => {
+      if (!logEntryTabs.includes(nextTab as LogEntryTab)) {
+        return;
+      }
+
+      const normalizedTab = nextTab as LogEntryTab;
+      setActiveTab(normalizedTab);
+      void navigate({
+        replace: true,
+        search: (previous) => ({
+          ...previous,
+          tab: normalizedTab,
+        }),
+      });
+    },
+    [navigate],
+  );
+
+  const onShowProcessTables = useCallback(
+    (payload: { fileId: string | null; tableIds: string[] }) => {
+      if (payload.tableIds.length > 0 || payload.fileId !== null) {
+        setTableHighlightRequest({
+          key: Date.now(),
+          fileId: payload.fileId,
+          tableIds: payload.tableIds,
+        });
+      }
+
+      onTabChange("data");
+    },
+    [onTabChange],
+  );
+
+  const onTableHighlightHandled = useCallback(() => {
+    setTableHighlightRequest(null);
+  }, []);
+
   return (
     <div className={"flex h-full flex-col"}>
       <PageHeader
@@ -306,8 +366,8 @@ function LogEntryPage() {
         )}
 
         {entry !== null && (
-          <Tabs className={"gap-0"} onValueChange={setActiveTab} value={activeTab}>
-            <TabsList className={"w-full border-b bg-sidebar rounded-none"}>
+          <Tabs className={"gap-0"} onValueChange={onTabChange} value={activeTab}>
+            <TabsList className={"w-full rounded-none border-b bg-sidebar"}>
               <TabsTrigger value={"data"}>Data</TabsTrigger>
               <TabsTrigger value={"processes"}>Processes</TabsTrigger>
               <TabsTrigger value={"chatbot"}>Chatbot</TabsTrigger>
@@ -316,7 +376,7 @@ function LogEntryPage() {
             <TabsContent className={"flex flex-col gap-6 p-4"} value={"data"}>
               <UploadSection
                 logEntryId={id}
-                onNavigateToProcesses={() => setActiveTab("processes")}
+                onNavigateToProcesses={() => onTabChange("processes")}
                 onUploadSuccess={onUploadSuccess}
               />
 
@@ -330,7 +390,13 @@ function LogEntryPage() {
                     <AlertDescription>{filesError}</AlertDescription>
                   </Alert>
                 )}
-                <TablesTab entryId={id} files={files} processes={processes} />
+                <TablesTab
+                  entryId={id}
+                  files={files}
+                  highlightRequest={tableHighlightRequest}
+                  onHighlightHandled={onTableHighlightHandled}
+                  processes={processes}
+                />
               </section>
             </TabsContent>
 
@@ -342,6 +408,7 @@ function LogEntryPage() {
                 error={processesError}
                 isLoading={processesLoading}
                 onRetryProcess={onRetryProcess}
+                onShowTables={onShowProcessTables}
                 processes={processes}
                 retryingProcessIds={retryingProcessIds}
               />

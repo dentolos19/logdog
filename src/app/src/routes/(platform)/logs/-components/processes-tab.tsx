@@ -1,5 +1,5 @@
 import { format } from "date-fns";
-import { AlertCircleIcon, CheckCircle2Icon, ClockIcon, InfoIcon, RotateCcwIcon } from "lucide-react";
+import { AlertCircleIcon, CheckCircle2Icon, ClockIcon, InfoIcon, RotateCcwIcon, Table2Icon } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "#/components/ui/accordion";
 import { Alert, AlertDescription, AlertTitle } from "#/components/ui/alert";
@@ -17,6 +17,7 @@ type ProcessesTabProps = {
   isLoading: boolean;
   error: string | null;
   onRetryProcess: (process: LogProcess) => Promise<void>;
+  onShowTables: (payload: { fileId: string | null; tableIds: string[] }) => void;
   retryingProcessIds: Set<string>;
 };
 
@@ -44,7 +45,14 @@ type ProcessInsights = {
   resultWarnings: string[];
 };
 
-export function ProcessesTab({ processes, isLoading, error, onRetryProcess, retryingProcessIds }: ProcessesTabProps) {
+export function ProcessesTab({
+  processes,
+  isLoading,
+  error,
+  onRetryProcess,
+  onShowTables,
+  retryingProcessIds,
+}: ProcessesTabProps) {
   const [selectedProcessId, setSelectedProcessId] = useState<string | null>(null);
 
   const selectedProcess = useMemo(() => {
@@ -115,6 +123,7 @@ export function ProcessesTab({ processes, isLoading, error, onRetryProcess, retr
           <ProcessRow
             key={process.id}
             onRetryProcess={onRetryProcess}
+            onShowTables={onShowTables}
             onViewDetails={hasProcessDetails(process) ? () => setSelectedProcessId(process.id) : undefined}
             process={process}
             retrying={retryingProcessIds.has(process.id)}
@@ -133,17 +142,20 @@ function ProcessRow({
   process,
   onViewDetails,
   onRetryProcess,
+  onShowTables,
   retrying,
 }: {
   process: LogProcess;
   onViewDetails?: () => void;
   onRetryProcess: (process: LogProcess) => Promise<void>;
+  onShowTables: (payload: { fileId: string | null; tableIds: string[] }) => void;
   retrying: boolean;
 }) {
   const formattedDate = format(new Date(process.created_at), "MMM d, yyyy 'at' h:mm a");
   const insights = getProcessInsights(process);
   const isInProgress = process.status === "queued" || process.status === "processing";
   const processName = getProcessName(process, insights);
+  const warningCount = insights.classificationWarnings.length + insights.resultWarnings.length;
 
   const getStatusLabel = () => {
     if (process.status === "completed") {
@@ -168,13 +180,26 @@ function ProcessRow({
             {getStatusLabel()} · {formattedDate}
           </span>
         </div>
-        {!isInProgress && onViewDetails !== undefined && (
-          <Button className={"shrink-0"} onClick={onViewDetails} size={"sm"} variant={"ghost"}>
-            <InfoIcon />
-            Details
+        {insights.tableCount > 0 && (
+          <Button
+            className={"shrink-0"}
+            onClick={() => {
+              onShowTables({
+                fileId: process.file_id,
+                tableIds: insights.tableSummaries.map((summary) => summary.name),
+              });
+            }}
+            size={"sm"}
+            variant={"ghost"}
+          >
+            <Table2Icon />
+            Tables
+            <Badge className={"px-1.5 font-mono text-[10px]"} variant={"secondary"}>
+              {insights.tableCount}
+            </Badge>
           </Button>
         )}
-        {(process.status === "completed" || process.status === "failed") && (
+        {process.status === "failed" && (
           <Button
             className={"shrink-0"}
             disabled={retrying || process.file_id === null}
@@ -186,6 +211,12 @@ function ProcessRow({
           >
             {retrying ? <Spinner className={"size-4"} /> : <RotateCcwIcon />}
             Retry
+          </Button>
+        )}
+        {!isInProgress && onViewDetails !== undefined && (
+          <Button className={"shrink-0"} onClick={onViewDetails} size={"sm"} variant={"ghost"}>
+            <InfoIcon />
+            Details
           </Button>
         )}
       </div>
@@ -206,21 +237,7 @@ function ProcessRow({
         </div>
       )}
 
-      <div className={"text-muted-foreground text-xs"}>
-        <span>
-          {insights.structuralClass ?? "unknown"}
-          {" · "}
-          {insights.dominantFormat ?? "unknown"}
-          {" · parser: "}
-          {insights.parserKey ?? insights.selectedParserKey ?? "unified"}
-        </span>
-        {(insights.classificationWarnings.length > 0 || insights.resultWarnings.length > 0) && (
-          <span>
-            {" · "}
-            {insights.classificationWarnings.length + insights.resultWarnings.length} warning(s)
-          </span>
-        )}
-      </div>
+      {warningCount > 0 && <div className={"text-muted-foreground text-xs"}>{warningCount} warning(s)</div>}
 
       {process.status === "failed" && process.error !== null && (
         <p className={"rounded bg-destructive/10 px-2 py-1 font-mono text-destructive text-xs"}>{process.error}</p>

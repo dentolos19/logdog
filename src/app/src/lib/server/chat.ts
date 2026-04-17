@@ -45,6 +45,13 @@ const executeSqlQueryInputSchema = z.object({
   sql: z.string().min(1).describe("A SELECT SQL query to execute against the parsed log tables."),
 });
 
+const getSqlCommandTemplatesInputSchema = z.object({
+  table_name: z
+    .string()
+    .optional()
+    .describe("Optional table name to substitute into SQL templates. Double quotes are applied automatically."),
+});
+
 const widgetStatsItemSchema = z.object({
   label: z.string(),
   value: z.union([z.string(), z.number()]),
@@ -292,11 +299,21 @@ function buildSystemPrompt(entryId: string) {
   return [
     "You are Logdog's data analyst assistant for a specific log group.",
     `Log group id: ${entryId}.`,
-    "Always start by calling list_available_tables to discover what data is available.",
+    "Before any analysis or SQL assumptions, call list_available_tables(include_columns=true) to discover available data.",
+    "If no tables are available, stop querying and tell the user to upload/process logs first.",
+    "Use get_sql_command_templates to quickly choose valid exploration queries before writing custom SQL.",
     "Use execute_sql_query to run SELECT queries against the parsed log tables for data exploration and analysis.",
+    "Always use double quotes around table and column identifiers in SQL.",
+    "Avoid ROUND(); when you need integer/decimal averages, prefer CAST(AVG(...) AS INTEGER/REAL).",
+    "If a query fails, immediately retry with a simpler inspection query (for example SELECT * ... LIMIT 5) before further analysis.",
+    "SQL exploration playbook:",
+    '1) Preview rows: SELECT * FROM "<table_name>" LIMIT 5;',
+    '2) Count rows: SELECT COUNT(*) AS row_count FROM "<table_name>";',
+    '3) Inspect schema: SELECT "column_name", "data_type" FROM information_schema.columns WHERE "table_name" = \'<table_name>\' ORDER BY "ordinal_position";',
+    '4) Grouped averages: SELECT "group_col", CAST(AVG("volume") AS INTEGER) AS avg_volume, CAST(AVG("value_col") AS REAL) AS avg_value FROM "<table_name>" GROUP BY "group_col" LIMIT 20;',
     "Use render_widget to present results visually: type 'data_table' for tabular data, 'chart' for bar/line/pie charts, 'stats' for key metrics.",
     "Use generate_report to compile a full analysis report as a downloadable DOCX file when the user asks for a report or when you have gathered sufficient insights.",
-    "Report workflow: list tables -> query data -> render widgets -> compile findings into generate_report.",
+    "Report workflow: list tables -> get_sql_command_templates -> query data -> render widgets -> compile findings into generate_report.",
     "Rely only on user-provided information and tool outputs.",
     "If the available data is insufficient, explicitly say what is missing and suggest the next query or upload.",
     "Keep answers concise, actionable, and focused on insights from the log data.",
@@ -358,6 +375,71 @@ function createLogChatServerTools(options: { entryId: string; origin: string; au
         tables: [],
       };
     }
+  });
+
+  const getSqlCommandTemplates = toolDefinition({
+    name: "get_sql_command_templates",
+    description:
+      "Return SQL exploration command templates that are safe for this environment. Use this before writing custom SQL.",
+    inputSchema: getSqlCommandTemplatesInputSchema,
+    outputSchema: z.object({
+      status: z.literal("ok"),
+      dialect: z.string(),
+      notes: z.array(z.string()),
+      commands: z.array(
+        z.object({
+          name: z.string(),
+          purpose: z.string(),
+          sql: z.string(),
+        }),
+      ),
+    }),
+  }).server(async ({ table_name }) => {
+    const normalizedTableName = typeof table_name === "string" ? table_name.trim() : "";
+    const escapedTableName = normalizedTableName.replaceAll('"', '""');
+    const tableTarget = escapedTableName.length > 0 ? `"${escapedTableName}"` : '"<table_name>"';
+
+    return {
+      status: "ok" as const,
+      dialect: "SQLAlchemy backend SQL dialect",
+      notes: [
+        "Use double quotes around table and column identifiers.",
+        "Use SELECT-only queries.",
+        "Prefer CAST(AVG(...)) over ROUND(...) for compatibility.",
+      ],
+      commands: [
+        {
+          name: "preview_rows",
+          purpose: "Inspect sample rows before analysis.",
+          sql: `SELECT * FROM ${tableTarget} LIMIT 5;`,
+        },
+        {
+          name: "row_count",
+          purpose: "Check table size.",
+          sql: `SELECT COUNT(*) AS row_count FROM ${tableTarget};`,
+        },
+        {
+          name: "column_types",
+          purpose: "Inspect schema metadata from information_schema.",
+          sql: 'SELECT "column_name", "data_type" FROM information_schema.columns WHERE "table_name" = \'<table_name>\' ORDER BY "ordinal_position";',
+        },
+        {
+          name: "value_distribution",
+          purpose: "Get top grouped values with frequencies.",
+          sql: `SELECT "<group_col>", COUNT(*) AS count_rows FROM ${tableTarget} GROUP BY "<group_col>" ORDER BY count_rows DESC LIMIT 20;`,
+        },
+        {
+          name: "time_range",
+          purpose: "Get observed timestamp boundaries.",
+          sql: `SELECT MIN("<timestamp_col>") AS min_timestamp, MAX("<timestamp_col>") AS max_timestamp FROM ${tableTarget};`,
+        },
+        {
+          name: "casted_averages",
+          purpose: "Compute averages without ROUND().",
+          sql: `SELECT "<group_col>", CAST(AVG("<volume_col>") AS INTEGER) AS avg_volume, CAST(AVG("<metric_col>") AS REAL) AS avg_metric FROM ${tableTarget} GROUP BY "<group_col>" ORDER BY avg_volume DESC LIMIT 20;`,
+        },
+      ],
+    };
   });
 
   const executeSqlQuery = toolDefinition({
@@ -464,7 +546,7 @@ function createLogChatServerTools(options: { entryId: string; origin: string; au
     }
   });
 
-  return [listAvailableTables, executeSqlQuery, renderWidget, generateReport];
+  return [listAvailableTables, getSqlCommandTemplates, executeSqlQuery, renderWidget, generateReport];
 }
 
 export const streamLogChat = createServerFn({ method: "POST" })
@@ -489,7 +571,7 @@ export const streamLogChat = createServerFn({ method: "POST" })
     } = getEnv();
 
     const chatStream = chat({
-      adapter: createOpenRouterText(orModel as any, orApiKey, {
+      adapter: createOpenRouterText(orModel, orApiKey, {
         xTitle: orTitle,
         httpReferer: orReferer,
       }),
