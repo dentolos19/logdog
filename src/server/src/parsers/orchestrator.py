@@ -331,6 +331,16 @@ def _parse_and_merge(file_inputs: list[FileInput], classification: Classificatio
     merged_records: dict[str, list[dict[str, Any]]] = {}
     merged_warnings: list[str] = []
     confidence_values: list[float] = []
+    used_parser_keys: list[str] = []
+    merged_diagnostics: dict[str, Any] = {
+        "parsers": {},
+        "fallbacks": [],
+        "table_row_counts": {},
+        "per_column_null_ratios": {},
+        "per_table_null_ratios": {},
+        "validation_warnings": [],
+    }
+    structured_quality_gate_parsers = {"csv", "json_lines", "xml"}
 
     for parser_key, parser_inputs in grouped_inputs.items():
         try:
@@ -342,27 +352,79 @@ def _parse_and_merge(file_inputs: list[FileInput], classification: Classificatio
         grouped_classification = classification.model_copy(update={"selected_parser_key": parser_key})
         try:
             grouped_result = pipeline.ingest(parser_inputs, grouped_classification)
+
+            quality_gate_failed = bool(getattr(grouped_result, "diagnostics", {}).get("quality_gate_failed"))
+            if parser_key in structured_quality_gate_parsers and quality_gate_failed:
+                merged_warnings.append(
+                    f"Parser '{parser_key}' failed quality gate; falling back to controlled unified repair path."
+                )
+                merged_diagnostics["fallbacks"].append(
+                    {
+                        "from_parser": parser_key,
+                        "to_parser": "unified",
+                        "reason": "quality_gate_failed",
+                        "input_files": [file_input.filename for file_input in parser_inputs],
+                    }
+                )
+                fallback_parser = ParserRegistry.route("unified")
+                fallback_classification = classification.model_copy(update={"selected_parser_key": "unified"})
+                fallback_result = fallback_parser.ingest(parser_inputs, fallback_classification)
+                fallback_result.confidence = round(min(fallback_result.confidence, 0.45), 2)
+                fallback_result.warnings.append(
+                    f"Fallback confidence capped after deterministic parser '{parser_key}' quality-gate failure."
+                )
+                fallback_result.diagnostics = {
+                    **fallback_result.diagnostics,
+                    "fallback_from": parser_key,
+                    "fallback_reason": "quality_gate_failed",
+                    "deterministic_validation_warnings": grouped_result.diagnostics.get("validation_warnings", []),
+                }
+                grouped_result = fallback_result
+
             merged_table_definitions.extend(grouped_result.table_definitions)
             merged_records.update(grouped_result.records)
             merged_warnings.extend(grouped_result.warnings)
             confidence_values.append(grouped_result.confidence)
+            used_parser_keys.append(grouped_result.parser_key)
+
+            merged_diagnostics["parsers"][parser_key] = grouped_result.diagnostics or {}
+            table_row_counts = grouped_result.diagnostics.get("table_row_counts")
+            if isinstance(table_row_counts, dict):
+                merged_diagnostics["table_row_counts"].update(table_row_counts)
+            column_nulls = grouped_result.diagnostics.get("per_column_null_ratios")
+            if isinstance(column_nulls, dict):
+                merged_diagnostics["per_column_null_ratios"].update(column_nulls)
+            table_nulls = grouped_result.diagnostics.get("per_table_null_ratios")
+            if isinstance(table_nulls, dict):
+                merged_diagnostics["per_table_null_ratios"].update(table_nulls)
+            validation_warnings = grouped_result.diagnostics.get("validation_warnings")
+            if isinstance(validation_warnings, list):
+                merged_diagnostics["validation_warnings"].extend(validation_warnings)
         except Exception as error:  # noqa: BLE001
             logger.exception("Parser '%s' failed", parser_key)
             merged_warnings.append(f"Parser '{parser_key}' failed: {error}")
 
     final_confidence = round(sum(confidence_values) / len(confidence_values), 2) if confidence_values else 0.0
+    final_parser_key = "mixed"
+    if len(set(used_parser_keys)) == 1 and used_parser_keys:
+        final_parser_key = used_parser_keys[0]
+
+    merged_diagnostics["parser_used"] = final_parser_key
+    merged_diagnostics["row_counts"] = {table_name: len(rows) for table_name, rows in merged_records.items()}
     return ParserPipelineResult(
         table_definitions=merged_table_definitions,
         records=merged_records,
-        parser_key=classification.selected_parser_key or "mixed",
+        parser_key=final_parser_key,
         warnings=merged_warnings,
         confidence=final_confidence,
+        diagnostics=merged_diagnostics,
     )
 
 
 def _parser_key_for_file(detected_format: str) -> str:
     parser_by_format = {
         "json_lines": "json_lines",
+        "xml": "xml",
         "csv": "csv",
         "syslog": "syslog",
         "apache_access": "apache_access",

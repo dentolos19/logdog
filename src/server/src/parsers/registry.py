@@ -176,9 +176,11 @@ class _ParserRegistry:
                 LogfmtPipeline,
                 NginxAccessPipeline,
                 SyslogPipeline,
+                XmlPipeline,
             )
 
             self.register(JsonLinesPipeline())
+            self.register(XmlPipeline())
             self.register(CsvPipeline())
             self.register(SyslogPipeline())
             self.register(ApacheAccessPipeline())

@@ -27,6 +27,20 @@ def test_selects_csv_parser_key() -> None:
     assert result.selected_parser_key == "csv"
 
 
+def test_selects_csv_parser_key_for_tsv() -> None:
+    content = "sample_ts\ttool_id\tvalue\n2026-03-01T10:00:00Z\tETCH-01\t1.0\n2026-03-01T10:00:01Z\tETCH-01\t1.1"
+    result = _classify_single(content, "sensor.tsv")
+    assert result.dominant_format == DetectedFormat.CSV.value
+    assert result.selected_parser_key == "csv"
+
+
+def test_selects_xml_parser_key() -> None:
+    content = '<recipe tool="ETCH-01" chamber="A" name="ETCH_OXIDE_V3" version="3.4" author="eng" />'
+    result = _classify_single(content, "recipe.xml")
+    assert result.dominant_format == DetectedFormat.XML.value
+    assert result.selected_parser_key == "xml"
+
+
 def test_selects_syslog_parser_key() -> None:
     content = "Mar 10 10:15:23 host app[123]: started\nMar 10 10:15:24 host app[123]: warning threshold"
     result = _classify_single(content, "syslog.log")

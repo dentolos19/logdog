@@ -465,6 +465,7 @@ class LogPreprocessorService:
 
         parser_by_format = {
             DetectedFormat.JSON_LINES.value: "json_lines",
+            DetectedFormat.XML.value: "xml",
             DetectedFormat.CSV.value: "csv",
             DetectedFormat.SYSLOG.value: "syslog",
             DetectedFormat.APACHE_ACCESS.value: "apache_access",
@@ -479,6 +480,8 @@ class LogPreprocessorService:
         if not sample:
             return DetectedFormat.UNKNOWN, 0.0
 
+        full_content = "\n".join(lines).strip()
+
         try:
             from parsers.unified.fingerprint import FingerprintEngine
 
@@ -491,9 +494,12 @@ class LogPreprocessorService:
 
         scores: dict[DetectedFormat, float] = {}
 
+        if self._is_json_document(full_content):
+            scores[DetectedFormat.JSON_LINES] = 0.98
+
         json_hits = sum(1 for line in sample if self._is_json_object(line))
         if json_hits > 0:
-            scores[DetectedFormat.JSON_LINES] = json_hits / len(sample)
+            scores[DetectedFormat.JSON_LINES] = max(scores.get(DetectedFormat.JSON_LINES, 0.0), json_hits / len(sample))
 
         xml_score = self._score_xml(sample)
         if xml_score > 0:
@@ -629,25 +635,44 @@ class LogPreprocessorService:
         if len(sample) < 2:
             return 0.0
 
-        header = sample[0]
-        if "," not in header:
-            return 0.0
+        best_score = 0.0
+        for delimiter in [",", "\t", "|", ";"]:
+            header = sample[0]
+            if delimiter not in header:
+                continue
 
-        expected_columns = header.count(",") + 1
-        if expected_columns < 2:
-            return 0.0
+            expected_columns = header.count(delimiter) + 1
+            if expected_columns < 2:
+                continue
 
-        matching = 0
-        data_sample = sample[1:10]
-        for line in data_sample:
-            actual_columns = line.count(",") + 1
-            if actual_columns == expected_columns:
-                matching += 1
+            matching = 0
+            data_sample = sample[1:10]
+            for line in data_sample:
+                actual_columns = line.count(delimiter) + 1
+                if actual_columns == expected_columns:
+                    matching += 1
 
-        if not data_sample:
-            return 0.0
+            if not data_sample:
+                continue
 
-        return matching / len(data_sample)
+            score = matching / len(data_sample)
+            if score > best_score:
+                best_score = score
+
+        return best_score
+
+    @staticmethod
+    def _is_json_document(content: str) -> bool:
+        if not content:
+            return False
+        stripped = content.strip()
+        if not stripped or stripped[0] not in {"{", "["}:
+            return False
+        try:
+            parsed = json.loads(stripped)
+        except (json.JSONDecodeError, ValueError):
+            return False
+        return isinstance(parsed, (dict, list))
 
     @staticmethod
     def _dominant_format_from_classifications(
