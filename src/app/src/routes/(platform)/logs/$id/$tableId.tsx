@@ -309,10 +309,6 @@ function LogTablePage() {
 }
 
 function TableRowsDataTable({ table }: { table: TableSummary }) {
-  const [sorting, setSorting] = useState<SortingState>([]);
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
-  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 20 });
-
   const columnKeys = useMemo(() => {
     const keys = new Set(table.columns.map((column) => column.name));
     for (const row of table.rows) {
@@ -323,23 +319,55 @@ function TableRowsDataTable({ table }: { table: TableSummary }) {
     return [...keys];
   }, [table.columns, table.rows]);
 
+  const [sorting, setSorting] = useState<SortingState>([]);
+  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 20 });
+  const defaultColumnVisibility = useMemo(
+    () => getDefaultColumnVisibility(columnKeys, table.rows),
+    [columnKeys, table.rows],
+  );
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(defaultColumnVisibility);
+  const [jsonPreview, setJsonPreview] = useState<{ title: string; value: unknown } | null>(null);
+
+  useEffect(() => {
+    setColumnVisibility(defaultColumnVisibility);
+  }, [defaultColumnVisibility, table.id]);
+
   const columns = useMemo<ColumnDef<Record<string, unknown>>[]>(() => {
     return columnKeys.map((key) => ({
       id: key,
       accessorKey: key,
       meta: { label: key },
       header: ({ column }) => <DataTableColumnHeader column={column} title={key} />,
-      cell: ({ getValue }) => {
+      cell: ({ getValue, row }) => {
         const value = getValue();
+        const previewValue = getPreviewableJsonValue(value);
+        if (previewValue !== null) {
+          return (
+            <Button
+              className={"h-7 px-2 font-mono text-xs"}
+              onClick={() =>
+                setJsonPreview({
+                  title: `${key} · row ${row.index + 1}`,
+                  value: previewValue,
+                })
+              }
+              size={"sm"}
+              variant={"outline"}
+            >
+              View
+            </Button>
+          );
+        }
+
         if (value === null || value === undefined) {
-          return <span className="text-muted-foreground">null</span>;
+          return <span className={"text-muted-foreground"}>null</span>;
         }
 
         if (typeof value === "object") {
-          return <span className="font-mono text-xs">{safeSerialize(value)}</span>;
+          return <span className={"font-mono text-xs"}>{safeSerialize(value)}</span>;
         }
 
-        return <span className="font-mono text-xs">{String(value)}</span>;
+        return <span className={"font-mono text-xs"}>{String(value)}</span>;
       },
       enableHiding: true,
       enableSorting: true,
@@ -348,9 +376,9 @@ function TableRowsDataTable({ table }: { table: TableSummary }) {
 
   if (table.rows.length === 0) {
     return (
-      <Empty className="border">
+      <Empty className={"border"}>
         <EmptyHeader>
-          <EmptyMedia variant="icon">
+          <EmptyMedia variant={"icon"}>
             <TableIcon />
           </EmptyMedia>
           <EmptyTitle>No table rows available</EmptyTitle>
@@ -363,19 +391,104 @@ function TableRowsDataTable({ table }: { table: TableSummary }) {
   }
 
   return (
-    <DataTable
-      columns={columns}
-      data={table.rows}
-      onColumnVisibilityChange={setColumnVisibility}
-      onPaginationChange={setPagination}
-      onSortingChange={setSorting}
-      state={{ sorting, columnVisibility, pagination }}
-      toolbar={(reactTable) => (
-        <div className="flex items-center justify-end">
-          <DataTableViewOptions table={reactTable} />
-        </div>
+    <>
+      <DataTable
+        columns={columns}
+        data={table.rows}
+        onColumnVisibilityChange={setColumnVisibility}
+        onPaginationChange={setPagination}
+        onSortingChange={setSorting}
+        state={{ sorting, columnVisibility, pagination }}
+        toolbar={(reactTable) => (
+          <div className={"flex items-center justify-end"}>
+            <DataTableViewOptions table={reactTable} />
+          </div>
+        )}
+      />
+
+      {jsonPreview !== null && (
+        <JsonPreviewDialog onClose={() => setJsonPreview(null)} title={jsonPreview.title} value={jsonPreview.value} />
       )}
-    />
+    </>
+  );
+}
+
+function JsonPreviewDialog({ onClose, title, value }: { onClose: () => void; title: string; value: unknown }) {
+  return (
+    <Dialog
+      onOpenChange={(open) => {
+        if (!open) {
+          onClose();
+        }
+      }}
+      open
+    >
+      <DialogContent className={"flex max-h-[90vh] flex-col overflow-hidden sm:max-w-3xl"}>
+        <DialogHeader className={"shrink-0"}>
+          <DialogTitle>JSON preview</DialogTitle>
+          <DialogDescription>{title}</DialogDescription>
+        </DialogHeader>
+
+        <div className={"min-h-0 flex-1 overflow-auto rounded-md border bg-muted/20 p-3"}>
+          <JsonTreeNode depth={0} label={null} value={value} />
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function JsonTreeNode({ label, value, depth }: { label: string | null; value: unknown; depth: number }) {
+  const indentation = { paddingLeft: `${depth * 0.9}rem` };
+
+  if (Array.isArray(value)) {
+    return (
+      <div className={"space-y-1"}>
+        <div className={"font-mono text-xs"} style={indentation}>
+          {label !== null && <span className={"text-muted-foreground"}>{label}: </span>}
+          <span>[{value.length}]</span>
+        </div>
+
+        {value.length === 0 ? (
+          <div className={"font-mono text-xs text-muted-foreground"} style={{ paddingLeft: `${(depth + 1) * 0.9}rem` }}>
+            Empty array.
+          </div>
+        ) : (
+          value.map((item, index) => (
+            <JsonTreeNode depth={depth + 1} key={`${depth}-${index}`} label={String(index)} value={item} />
+          ))
+        )}
+      </div>
+    );
+  }
+
+  if (isJsonRecord(value)) {
+    const entries = Object.entries(value);
+
+    return (
+      <div className={"space-y-1"}>
+        <div className={"font-mono text-xs"} style={indentation}>
+          {label !== null && <span className={"text-muted-foreground"}>{label}: </span>}
+          <span>{`{${entries.length}}`}</span>
+        </div>
+
+        {entries.length === 0 ? (
+          <div className={"font-mono text-xs text-muted-foreground"} style={{ paddingLeft: `${(depth + 1) * 0.9}rem` }}>
+            Empty object.
+          </div>
+        ) : (
+          entries.map(([entryKey, entryValue]) => (
+            <JsonTreeNode depth={depth + 1} key={`${depth}-${entryKey}`} label={entryKey} value={entryValue} />
+          ))
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className={"font-mono text-xs"} style={indentation}>
+      {label !== null && <span className={"text-muted-foreground"}>{label}: </span>}
+      <span className={getJsonValueClassName(value)}>{formatJsonPrimitive(value)}</span>
+    </div>
   );
 }
 
@@ -438,4 +551,95 @@ function safeSerialize(value: unknown) {
   } catch {
     return "[unserializable value]";
   }
+}
+
+function getDefaultColumnVisibility(columnKeys: string[], rows: Record<string, unknown>[]) {
+  const visibility: VisibilityState = {};
+
+  for (const key of columnKeys) {
+    if (isDefaultHiddenColumn(key) || isAllNullColumn(key, rows)) {
+      visibility[key] = false;
+    }
+  }
+
+  return visibility;
+}
+
+function isDefaultHiddenColumn(key: string) {
+  const normalizedKey = key.trim().toLowerCase();
+  return normalizedKey === "raw" || normalizedKey === "id" || normalizedKey.endsWith("_id");
+}
+
+function isAllNullColumn(key: string, rows: Record<string, unknown>[]) {
+  if (rows.length === 0) {
+    return false;
+  }
+
+  return rows.every((row) => row[key] === null || row[key] === undefined);
+}
+
+function getPreviewableJsonValue(value: unknown) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (typeof value === "object") {
+    return value;
+  }
+
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalizedValue = value.trim();
+  if (normalizedValue === "") {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(normalizedValue);
+    return parsed !== null && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function isJsonRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function formatJsonPrimitive(value: unknown) {
+  if (value === null) {
+    return "null";
+  }
+
+  if (typeof value === "string") {
+    return `"${value}"`;
+  }
+
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+
+  return "[unsupported value]";
+}
+
+function getJsonValueClassName(value: unknown) {
+  if (value === null) {
+    return "text-muted-foreground";
+  }
+
+  if (typeof value === "string") {
+    return "text-blue-600";
+  }
+
+  if (typeof value === "number") {
+    return "text-violet-600";
+  }
+
+  if (typeof value === "boolean") {
+    return "text-emerald-600";
+  }
+
+  return "text-muted-foreground";
 }

@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { format } from "date-fns";
-import { DatabaseZapIcon, DownloadIcon, EyeIcon, FileTextIcon, InfoIcon } from "lucide-react";
+import { DatabaseZapIcon, DownloadIcon, FileSpreadsheetIcon, FileTextIcon, InfoIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "#/components/ui/badge";
@@ -118,8 +118,8 @@ function TableItem({ table, entryId, onInfoClick }: { table: TableSummary; entry
       <div className={"flex items-center gap-2"}>
         <Button asChild size={"sm"} variant={"ghost"}>
           <Link params={{ id: entryId, tableId: table.id }} to={"/logs/$id/$tableId"}>
-            <EyeIcon />
-            View data
+            <FileSpreadsheetIcon />
+            View
           </Link>
         </Button>
         <Button onClick={() => onInfoClick()} size={"sm"} variant={"ghost"}>
