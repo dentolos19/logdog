@@ -326,7 +326,7 @@ function TableRowsDataTable({ table }: { table: TableSummary }) {
     [columnKeys, table.rows],
   );
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(defaultColumnVisibility);
-  const [jsonPreview, setJsonPreview] = useState<{ title: string; value: unknown } | null>(null);
+  const [cellPreview, setCellPreview] = useState<{ title: string; value: unknown } | null>(null);
 
   useEffect(() => {
     setColumnVisibility(defaultColumnVisibility);
@@ -340,34 +340,23 @@ function TableRowsDataTable({ table }: { table: TableSummary }) {
       header: ({ column }) => <DataTableColumnHeader column={column} title={key} />,
       cell: ({ getValue, row }) => {
         const value = getValue();
-        const previewValue = getPreviewableJsonValue(value);
-        if (previewValue !== null) {
-          return (
-            <Button
-              className={"h-7 px-2 font-mono text-xs"}
-              onClick={() =>
-                setJsonPreview({
-                  title: `${key} · row ${row.index + 1}`,
-                  value: previewValue,
-                })
-              }
-              size={"sm"}
-              variant={"outline"}
-            >
-              View
-            </Button>
-          );
-        }
+        const displayValue = formatTableCellValue(value);
 
-        if (value === null || value === undefined) {
-          return <span className={"text-muted-foreground"}>null</span>;
-        }
-
-        if (typeof value === "object") {
-          return <span className={"font-mono text-xs"}>{safeSerialize(value)}</span>;
-        }
-
-        return <span className={"font-mono text-xs"}>{String(value)}</span>;
+        return (
+          <button
+            className={"block max-w-[36ch] cursor-pointer truncate text-left font-mono text-xs hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"}
+            onClick={() =>
+              setCellPreview({
+                title: `${key} · row ${row.index + 1}`,
+                value,
+              })
+            }
+            title={displayValue}
+            type={"button"}
+          >
+            <span className={value === null || value === undefined ? "text-muted-foreground" : undefined}>{displayValue}</span>
+          </button>
+        );
       },
       enableHiding: true,
       enableSorting: true,
@@ -406,14 +395,16 @@ function TableRowsDataTable({ table }: { table: TableSummary }) {
         )}
       />
 
-      {jsonPreview !== null && (
-        <JsonPreviewDialog onClose={() => setJsonPreview(null)} title={jsonPreview.title} value={jsonPreview.value} />
+      {cellPreview !== null && (
+        <CellValuePreviewDialog onClose={() => setCellPreview(null)} title={cellPreview.title} value={cellPreview.value} />
       )}
     </>
   );
 }
 
-function JsonPreviewDialog({ onClose, title, value }: { onClose: () => void; title: string; value: unknown }) {
+function CellValuePreviewDialog({ onClose, title, value }: { onClose: () => void; title: string; value: unknown }) {
+  const previewValue = getPreviewableJsonValue(value);
+
   return (
     <Dialog
       onOpenChange={(open) => {
@@ -425,12 +416,16 @@ function JsonPreviewDialog({ onClose, title, value }: { onClose: () => void; tit
     >
       <DialogContent className={"flex max-h-[90vh] flex-col overflow-hidden sm:max-w-3xl"}>
         <DialogHeader className={"shrink-0"}>
-          <DialogTitle>JSON preview</DialogTitle>
+          <DialogTitle>Cell value</DialogTitle>
           <DialogDescription>{title}</DialogDescription>
         </DialogHeader>
 
         <div className={"min-h-0 flex-1 overflow-auto rounded-md border bg-muted/20 p-3"}>
-          <JsonTreeNode depth={0} label={null} value={value} />
+          {previewValue !== null ? (
+            <JsonTreeNode depth={0} label={null} value={previewValue} />
+          ) : (
+            <pre className={"font-mono text-xs whitespace-pre-wrap break-all"}>{formatTableCellValue(value)}</pre>
+          )}
         </div>
       </DialogContent>
     </Dialog>
@@ -642,4 +637,16 @@ function getJsonValueClassName(value: unknown) {
   }
 
   return "text-muted-foreground";
+}
+
+function formatTableCellValue(value: unknown) {
+  if (value === null || value === undefined) {
+    return "null";
+  }
+
+  if (typeof value === "object") {
+    return safeSerialize(value);
+  }
+
+  return String(value);
 }
