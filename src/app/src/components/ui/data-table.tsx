@@ -290,13 +290,21 @@ function DataTablePagination<TData>({ table, children }: { table: TanstackTable<
   );
 }
 
-function DataTableViewOptions<TData>({ table }: { table: TanstackTable<TData> }) {
+function DataTableViewOptions<TData>({
+  table,
+  label = "View",
+  className,
+}: {
+  table: TanstackTable<TData>;
+  label?: string;
+  className?: string;
+}) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button className="ml-auto" size="sm" variant="outline">
+        <Button className={cn("ml-auto", className)} size="sm" variant="outline">
           <Settings2Icon />
-          View
+          {label}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">

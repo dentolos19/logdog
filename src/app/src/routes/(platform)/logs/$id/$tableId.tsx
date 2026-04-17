@@ -524,6 +524,66 @@ function TableRowsDataTable({ table, entryId }: { table: TableSummary; entryId: 
 
   return (
     <>
+      <div className={"flex w-full flex-wrap items-center gap-2 rounded-md border p-2"}>
+        <Input
+          className={"h-8 w-56"}
+          onChange={(event) => setSearchText(event.target.value)}
+          placeholder={"Search table..."}
+          value={searchText}
+        />
+
+        {filterableFieldKeys.map((fieldKey) => (
+          <Input
+            className={"h-8 w-40"}
+            key={fieldKey}
+            onChange={(event) => onChangeFieldFilter(fieldKey, event.target.value)}
+            placeholder={`Filter ${fieldKey}`}
+            value={fieldFilters[fieldKey] ?? ""}
+          />
+        ))}
+
+        <Input
+          className={"h-8 w-52"}
+          onChange={(event) => setTimestampFrom(event.target.value)}
+          type={"datetime-local"}
+          value={timestampFrom}
+        />
+        <Input
+          className={"h-8 w-52"}
+          onChange={(event) => setTimestampTo(event.target.value)}
+          type={"datetime-local"}
+          value={timestampTo}
+        />
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size={"sm"} variant={"outline"}>
+              Levels {selectedLevels.length > 0 ? `(${selectedLevels.length})` : ""}
+              <ChevronDownIcon />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align={"start"}>
+            {availableLevelOptions.length === 0 ? (
+              <DropdownMenuItem disabled>No level values</DropdownMenuItem>
+            ) : (
+              availableLevelOptions.map((level) => (
+                <DropdownMenuCheckboxItem
+                  checked={selectedLevels.includes(level)}
+                  key={level}
+                  onCheckedChange={(checked) => onToggleLevel(level, checked === true)}
+                >
+                  {level}
+                </DropdownMenuCheckboxItem>
+              ))
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <Badge className={"ml-auto"} variant={"secondary"}>
+          {filteredRows.length.toLocaleString()} of {table.rows.length.toLocaleString()} rows
+        </Badge>
+      </div>
+
       <DataTable
         columns={columns}
         data={filteredRows}
@@ -532,61 +592,7 @@ function TableRowsDataTable({ table, entryId }: { table: TableSummary; entryId: 
         onSortingChange={setSorting}
         state={{ sorting, columnVisibility, pagination }}
         toolbar={(reactTable) => (
-          <div className={"flex w-full flex-wrap items-center gap-2"}>
-            <Input
-              className={"h-8 w-56"}
-              onChange={(event) => setSearchText(event.target.value)}
-              placeholder={"Search table..."}
-              value={searchText}
-            />
-
-            {filterableFieldKeys.map((fieldKey) => (
-              <Input
-                className={"h-8 w-40"}
-                key={fieldKey}
-                onChange={(event) => onChangeFieldFilter(fieldKey, event.target.value)}
-                placeholder={`Filter ${fieldKey}`}
-                value={fieldFilters[fieldKey] ?? ""}
-              />
-            ))}
-
-            <Input
-              className={"h-8 w-52"}
-              onChange={(event) => setTimestampFrom(event.target.value)}
-              type={"datetime-local"}
-              value={timestampFrom}
-            />
-            <Input
-              className={"h-8 w-52"}
-              onChange={(event) => setTimestampTo(event.target.value)}
-              type={"datetime-local"}
-              value={timestampTo}
-            />
-
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button size={"sm"} variant={"outline"}>
-                  Levels {selectedLevels.length > 0 ? `(${selectedLevels.length})` : ""}
-                  <ChevronDownIcon />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align={"start"}>
-                {availableLevelOptions.length === 0 ? (
-                  <DropdownMenuItem disabled>No level values</DropdownMenuItem>
-                ) : (
-                  availableLevelOptions.map((level) => (
-                    <DropdownMenuCheckboxItem
-                      checked={selectedLevels.includes(level)}
-                      key={level}
-                      onCheckedChange={(checked) => onToggleLevel(level, checked === true)}
-                    >
-                      {level}
-                    </DropdownMenuCheckboxItem>
-                  ))
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-
+          <div className={"flex flex-wrap items-center gap-2"}>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button disabled={isExportingFiltered} size={"sm"} variant={"outline"}>
@@ -601,11 +607,7 @@ function TableRowsDataTable({ table, entryId }: { table: TableSummary; entryId: 
               </DropdownMenuContent>
             </DropdownMenu>
 
-            <Badge className={"ml-auto"} variant={"secondary"}>
-              {filteredRows.length.toLocaleString()} of {table.rows.length.toLocaleString()} rows
-            </Badge>
-
-            <DataTableViewOptions table={reactTable} />
+            <DataTableViewOptions className={"ml-0"} label={"Columns"} table={reactTable} />
           </div>
         )}
       />
@@ -827,7 +829,15 @@ function getDefaultColumnVisibility(columnKeys: string[], rows: Record<string, u
 
 function isDefaultHiddenColumn(key: string) {
   const normalizedKey = key.trim().toLowerCase();
-  return normalizedKey === "raw" || normalizedKey === "id" || normalizedKey.endsWith("_id");
+  return (
+    normalizedKey === "raw" ||
+    normalizedKey === "id" ||
+    normalizedKey === "source" ||
+    normalizedKey === "parse_confidence" ||
+    normalizedKey === "message" ||
+    normalizedKey === "extra" ||
+    normalizedKey.endsWith("_id")
+  );
 }
 
 function isAllNullColumn(key: string, rows: Record<string, unknown>[]) {
