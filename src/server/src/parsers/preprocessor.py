@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import xml.etree.ElementTree as ET
 from enum import Enum
@@ -9,6 +10,8 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from parsers.contracts import INGESTION_SCHEMA_VERSION, ClassificationResult, FileClassification, StructuralClass
+
+logger = logging.getLogger(__name__)
 
 MAX_SAMPLE_LINES = 30
 MAX_SAMPLE_RECORDS = 5
@@ -121,13 +124,15 @@ LOG_LEVEL_PATTERN = re.compile(
 
 
 class LogPreprocessorService:
-    def __init__(self, table_name: str = "logs") -> None:
+    def __init__(self, table_name: str = "logs", use_llm: bool = True) -> None:
         self.table_name = table_name
+        self.use_llm = use_llm
 
     def classify(self, files: list[FileInput]) -> ClassificationResult:
         warnings: list[str] = []
         file_classifications: list[FileClassification] = []
         observations: list[FileObservation] = []
+        diagnostics: dict[str, Any] = {"mode": "heuristic", "files": []}
 
         for file_input in files:
             lines = file_input.content.splitlines()
@@ -176,6 +181,15 @@ class LogPreprocessorService:
                     warnings=file_warnings,
                 )
             )
+            diagnostics["files"].append(
+                {
+                    "filename": file_input.filename,
+                    "detected_format": detected_format.value,
+                    "format_confidence": format_confidence,
+                    "line_count": len(lines),
+                    "segmentation": segmentation.strategy.value,
+                }
+            )
 
         dominant_format = self._dominant_format(observations)
         structural_class_overall = self._dominant_structural_class(file_classifications)
@@ -190,7 +204,140 @@ class LogPreprocessorService:
             file_classifications=file_classifications,
             warnings=warnings,
             confidence=confidence,
+            diagnostics=diagnostics,
         )
+
+    def classify_with_llm(self, files: list[FileInput]) -> ClassificationResult:
+        heuristic_result = self.classify(files)
+        if heuristic_result.confidence >= 0.7:
+            return heuristic_result
+
+        if not self.use_llm:
+            return heuristic_result
+
+        from parsers.llm_engine import LlmEngine
+
+        llm_engine = LlmEngine()
+        warnings = list(heuristic_result.warnings)
+        file_classifications: list[FileClassification] = []
+        diagnostics: dict[str, Any] = {"mode": "llm_hybrid", "files": []}
+
+        for file_input in files:
+            lines = file_input.content.splitlines()
+            if not lines:
+                file_classifications.append(
+                    FileClassification(
+                        file_id=file_input.file_id,
+                        filename=file_input.filename,
+                        detected_format=DetectedFormat.UNKNOWN.value,
+                        structural_class=StructuralClass.UNSTRUCTURED,
+                        format_confidence=0.0,
+                        line_count=0,
+                        warnings=["File is empty."],
+                    )
+                )
+                continue
+
+            file_classification = next(
+                (fc for fc in heuristic_result.file_classifications if fc.file_id == file_input.file_id),
+                None,
+            )
+            if file_classification and file_classification.format_confidence >= 0.7:
+                file_classifications.append(file_classification)
+                continue
+
+            sample_lines = [line for line in lines[:30] if line.strip()]
+            if not sample_lines:
+                file_classifications.append(
+                    FileClassification(
+                        file_id=file_input.file_id,
+                        filename=file_input.filename,
+                        detected_format=DetectedFormat.UNKNOWN.value,
+                        structural_class=StructuralClass.UNSTRUCTURED,
+                        format_confidence=0.0,
+                        line_count=len(lines),
+                    )
+                )
+                continue
+
+            llm_result = llm_engine.detect_format(sample_lines=sample_lines)
+            if llm_result.success and llm_result.response:
+                response = llm_result.response
+                structural_class = self._llm_category_to_structural_class(response.format_category)
+                file_classifications.append(
+                    FileClassification(
+                        file_id=file_input.file_id,
+                        filename=file_input.filename,
+                        detected_format=response.format_name,
+                        structural_class=structural_class,
+                        format_confidence=response.confidence,
+                        line_count=len(lines),
+                        warnings=response.warnings,
+                    )
+                )
+                logger.info(
+                    "LLM detected format '%s' for '%s' (confidence: %.2f)",
+                    response.format_name,
+                    file_input.filename,
+                    response.confidence,
+                )
+                diagnostics["files"].append(
+                    {
+                        "filename": file_input.filename,
+                        "detected_format": response.format_name,
+                        "format_confidence": response.confidence,
+                        "source": "llm",
+                    }
+                )
+            else:
+                if file_classification:
+                    file_classifications.append(file_classification)
+                else:
+                    file_classifications.append(
+                        FileClassification(
+                            file_id=file_input.file_id,
+                            filename=file_input.filename,
+                            detected_format=DetectedFormat.UNKNOWN.value,
+                            structural_class=StructuralClass.UNSTRUCTURED,
+                            format_confidence=0.0,
+                            line_count=len(lines),
+                            warnings=[llm_result.warning] if llm_result.warning else [],
+                        )
+                    )
+                warnings.append(f"LLM format detection failed for '{file_input.filename}': {llm_result.warning}")
+                diagnostics["files"].append(
+                    {
+                        "filename": file_input.filename,
+                        "source": "heuristic_fallback",
+                        "warning": llm_result.warning,
+                    }
+                )
+
+        dominant_format = self._dominant_format_from_classifications(file_classifications)
+        structural_class_overall = self._dominant_structural_class(file_classifications)
+        selected_parser_key = self._select_parser_key(structural_class_overall)
+        confidence = self._compute_confidence_from_classifications(file_classifications)
+
+        return ClassificationResult(
+            schema_version=INGESTION_SCHEMA_VERSION,
+            dominant_format=dominant_format,
+            structural_class=structural_class_overall,
+            selected_parser_key=selected_parser_key,
+            file_classifications=file_classifications,
+            warnings=warnings,
+            confidence=confidence,
+            diagnostics=diagnostics,
+        )
+
+    @staticmethod
+    def _llm_category_to_structural_class(category: Any) -> StructuralClass:
+        from parsers.llm_contracts import LogFormatCategory
+
+        if category == LogFormatCategory.STRUCTURED:
+            return StructuralClass.STRUCTURED
+        if category == LogFormatCategory.SEMI_STRUCTURED:
+            return StructuralClass.SEMI_STRUCTURED
+        return StructuralClass.UNSTRUCTURED
 
     @staticmethod
     def _format_to_structural_class(fmt: DetectedFormat, confidence: float) -> StructuralClass:
@@ -221,16 +368,23 @@ class LogPreprocessorService:
 
     @staticmethod
     def _select_parser_key(structural_class: StructuralClass) -> str:
-        if structural_class == StructuralClass.STRUCTURED:
-            return "structured"
-        if structural_class == StructuralClass.SEMI_STRUCTURED:
-            return "semi_structured"
-        return "unstructured"
+        _ = structural_class
+        return "unified"
 
     def _detect_format(self, lines: list[str]) -> tuple[DetectedFormat, float]:
         sample = [line for line in lines[:50] if line.strip()]
         if not sample:
             return DetectedFormat.UNKNOWN, 0.0
+
+        try:
+            from parsers.unified.fingerprint import FingerprintEngine
+
+            fingerprint = FingerprintEngine().fingerprint(sample)
+            mapped = self._map_fingerprint_format(fingerprint.format_name)
+            if mapped is not None and fingerprint.confidence >= 0.85:
+                return mapped, round(min(fingerprint.confidence, 1.0), 2)
+        except Exception as error:  # noqa: BLE001
+            logger.debug("Fingerprint detection unavailable: %s", error)
 
         scores: dict[DetectedFormat, float] = {}
 
@@ -271,6 +425,23 @@ class LogPreprocessorService:
 
         best_format = max(scores, key=lambda key: scores[key])
         return best_format, round(min(scores[best_format], 1.0), 2)
+
+    @staticmethod
+    def _map_fingerprint_format(format_name: str) -> DetectedFormat | None:
+        mapping = {
+            "json_lines": DetectedFormat.JSON_LINES,
+            "json_document": DetectedFormat.JSON_LINES,
+            "xml": DetectedFormat.XML,
+            "csv": DetectedFormat.CSV,
+            "syslog": DetectedFormat.SYSLOG,
+            "apache_clf": DetectedFormat.APACHE_ACCESS,
+            "logfmt": DetectedFormat.LOGFMT,
+            "key_value": DetectedFormat.KEY_VALUE,
+            "section_delimited": DetectedFormat.KEY_VALUE,
+            "hex_dump": DetectedFormat.PLAIN_TEXT,
+            "plain_text": DetectedFormat.PLAIN_TEXT,
+        }
+        return mapping.get(format_name)
 
     def _detect_segmentation(self, lines: list[str], detected_format: DetectedFormat) -> SegmentationResult:
         if detected_format == DetectedFormat.XML:
@@ -374,3 +545,30 @@ class LogPreprocessorService:
             return 0.0
 
         return matching / len(data_sample)
+
+    @staticmethod
+    def _dominant_format_from_classifications(
+        file_classifications: list[FileClassification],
+    ) -> str:
+        if not file_classifications:
+            return DetectedFormat.UNKNOWN.value
+
+        format_counts: dict[str, int] = {}
+        for fc in file_classifications:
+            format_counts[fc.detected_format] = format_counts.get(fc.detected_format, 0) + 1
+        return max(format_counts, key=lambda fmt: format_counts[fmt])
+
+    @staticmethod
+    def _compute_confidence_from_classifications(
+        file_classifications: list[FileClassification],
+    ) -> float:
+        if not file_classifications:
+            return 0.0
+
+        average_confidence = sum(fc.format_confidence for fc in file_classifications) / len(file_classifications)
+        total_warnings = sum(len(fc.warnings) for fc in file_classifications)
+        base = average_confidence * 0.7
+        if total_warnings > 0:
+            base -= min(total_warnings * 0.05, 0.2)
+
+        return round(max(0.0, min(base, 1.0)), 2)

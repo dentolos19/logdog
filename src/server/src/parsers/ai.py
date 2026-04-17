@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import dataclass
 from typing import Any, Generic, TypeVar
 

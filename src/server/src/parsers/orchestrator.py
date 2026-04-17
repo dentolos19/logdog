@@ -18,6 +18,7 @@ from lib.megabase import (
 )
 from lib.models import Asset, LogEntry, LogFile, LogProcess, LogTable
 from lib.storage import download_file
+from parsers.unified.binary import BinaryHandler
 from parsers.contracts import ClassificationResult, ParserPipelineResult
 from parsers.preprocessor import FileInput, LogPreprocessorService
 from parsers.registry import ParserRegistry
@@ -113,6 +114,7 @@ def orchestrate_files(
     entry_id: str,
     file_inputs: list[FileInput],
     persist: bool = True,
+    use_llm: bool = True,
 ) -> ParserPipelineResult:
     db = SessionLocal()
     megabase_db = MegabaseSessionLocal()
@@ -120,7 +122,12 @@ def orchestrate_files(
         register_pipelines()
         init_megabase(megabase_db)
 
-        classification = LogPreprocessorService(table_name="logs").classify(file_inputs)
+        preprocessor = LogPreprocessorService(table_name="logs", use_llm=use_llm)
+        if use_llm:
+            classification = preprocessor.classify_with_llm(file_inputs)
+        else:
+            classification = preprocessor.classify(file_inputs)
+
         pipeline_result = _parse_and_merge(file_inputs=file_inputs, classification=classification)
 
         if persist:
@@ -164,7 +171,8 @@ def run_parse_job(
             _fail(db, process, "No file inputs available to parse.")
             return
 
-        classification = LogPreprocessorService(table_name="logs").classify(file_inputs)
+        preprocessor = LogPreprocessorService(table_name="logs", use_llm=True)
+        classification = preprocessor.classify_with_llm(file_inputs)
         process.classification = classification.model_dump_json()
         db.commit()
 
@@ -174,6 +182,8 @@ def run_parse_job(
             return
 
         _persist_artifacts(db=db, megabase_db=megabase_db, entry_id=entry_id, result=pipeline_result)
+
+        _record_feedback(file_inputs=file_inputs, classification=classification, result=pipeline_result)
 
         process.result = pipeline_result.model_dump_json()
         process.status = "completed"
@@ -233,6 +243,12 @@ def _resolve_file_inputs(
 
 
 def _decode_bytes(raw_bytes: bytes) -> str:
+    binary_handler = BinaryHandler()
+    if binary_handler.is_binary_extension("file.bin"):
+        decode_result = binary_handler.analyze_and_decode(raw_bytes)
+        if decode_result.decoded_lines:
+            return "\n".join(decode_result.decoded_lines)
+
     try:
         return raw_bytes.decode("utf-8")
     except UnicodeDecodeError:
@@ -243,66 +259,30 @@ def _decode_bytes(raw_bytes: bytes) -> str:
 
 
 def _parse_and_merge(file_inputs: list[FileInput], classification: ClassificationResult) -> ParserPipelineResult:
-    preferred_keys: list[str] = []
-    if classification.selected_parser_key:
-        preferred_keys.append(classification.selected_parser_key)
+    parser_key = classification.selected_parser_key or "unified"
 
-    grouped_inputs, selections, routing_warnings = ParserRegistry.resolve_for_files(
-        file_inputs=file_inputs,
-        preferred_keys=preferred_keys,
-    )
-
-    if not grouped_inputs:
+    try:
+        pipeline = ParserRegistry.route(parser_key)
+    except KeyError as error:
         return ParserPipelineResult(
             table_definitions=[],
             records={},
             parser_key="none",
-            warnings=routing_warnings or ["No parser could be selected for the uploaded files."],
+            warnings=[str(error)],
             confidence=0.0,
         )
 
-    table_definitions = []
-    merged_records: dict[str, list[dict[str, Any]]] = {}
-    merged_warnings = list(routing_warnings)
-    parser_keys_used: list[str] = []
-    confidence_total = 0.0
-    confidence_count = 0
-
-    for parser_key, parser_files in grouped_inputs.items():
-        try:
-            pipeline = ParserRegistry.route(parser_key)
-        except KeyError as error:
-            merged_warnings.append(str(error))
-            continue
-
-        try:
-            group_result = pipeline.ingest(parser_files, classification)
-        except Exception as error:  # noqa: BLE001
-            logger.exception("Parser '%s' failed", parser_key)
-            merged_warnings.append(f"Parser '{parser_key}' failed: {error}")
-            continue
-
-        table_definitions.extend(group_result.table_definitions)
-        merged_records.update(group_result.records)
-        merged_warnings.extend(group_result.warnings)
-        parser_keys_used.append(parser_key)
-        confidence_total += group_result.confidence
-        confidence_count += 1
-
-    if not table_definitions:
-        selection_summary = ", ".join(
-            f"{selection.filename}->{selection.parser_key} ({selection.score:.2f})" for selection in selections
+    try:
+        return pipeline.ingest(file_inputs, classification)
+    except Exception as error:  # noqa: BLE001
+        logger.exception("Parser '%s' failed", parser_key)
+        return ParserPipelineResult(
+            table_definitions=[],
+            records={},
+            parser_key=parser_key,
+            warnings=[f"Parser '{parser_key}' failed: {error}"],
+            confidence=0.0,
         )
-        if selection_summary:
-            merged_warnings.append(f"Routing summary: {selection_summary}")
-
-    return ParserPipelineResult(
-        table_definitions=table_definitions,
-        records=merged_records,
-        parser_key=parser_keys_used[0] if len(parser_keys_used) == 1 else "multi_parser",
-        warnings=merged_warnings,
-        confidence=round((confidence_total / confidence_count) if confidence_count else 0.0, 2),
-    )
 
 
 def _persist_artifacts(
@@ -430,3 +410,70 @@ def _fail(db: Session, process: LogProcess | None, message: str) -> None:
         db.commit()
     except Exception:  # noqa: BLE001
         logger.exception("Could not persist failure for process %s", getattr(process, "id", "?"))
+
+
+def _record_feedback(
+    file_inputs: list[FileInput],
+    classification: ClassificationResult,
+    result: ParserPipelineResult,
+) -> None:
+    from parsers.few_shot_store import FewShotStore
+    from parsers.schema_cache import SchemaCache
+
+    few_shot_store = FewShotStore()
+    schema_cache = SchemaCache()
+
+    for file_input in file_inputs:
+        file_classification = next(
+            (fc for fc in classification.file_classifications if fc.file_id == file_input.file_id),
+            None,
+        )
+        if not file_classification:
+            continue
+
+        lines = file_input.content.splitlines()
+        sample_lines = [line for line in lines[:10] if line.strip()]
+        if not sample_lines:
+            continue
+
+        few_shot_store.record_successful_parse(
+            format_name=file_classification.detected_format,
+            domain="unknown",
+            sample_lines=sample_lines,
+            schema={
+                "tables": [
+                    {
+                        "name": td.table_name,
+                        "columns": [col.name for col in td.columns],
+                    }
+                    for td in result.table_definitions
+                ],
+            },
+            confidence=file_classification.format_confidence,
+        )
+
+    for table_definition in result.table_definitions:
+        schema_cache.put(
+            sample_lines=file_inputs[0].content.splitlines()[:10] if file_inputs else [],
+            format_name=classification.dominant_format,
+            domain="unknown",
+            columns=[
+                {"name": col.name, "sql_type": col.sql_type, "description": col.description, "nullable": col.nullable}
+                for col in table_definition.columns
+            ],
+            extraction_strategy="per_line",
+        )
+
+
+def get_pipeline_stats() -> dict[str, Any]:
+    from parsers.few_shot_store import FewShotStore
+    from parsers.schema_cache import SchemaCache
+
+    few_shot_store = FewShotStore()
+    schema_cache = SchemaCache()
+
+    return {
+        "few_shot_store": few_shot_store.stats(),
+        "schema_cache": schema_cache.stats(),
+        "registered_parsers": sorted(ParserRegistry.registered_keys()),
+    }

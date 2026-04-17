@@ -143,6 +143,7 @@ function ProcessRow({
   const formattedDate = format(new Date(process.created_at), "MMM d, yyyy 'at' h:mm a");
   const insights = getProcessInsights(process);
   const isInProgress = process.status === "queued" || process.status === "processing";
+  const processName = getProcessName(process, insights);
 
   const getStatusLabel = () => {
     if (process.status === "completed") {
@@ -162,10 +163,11 @@ function ProcessRow({
       <div className={"flex items-center gap-3"}>
         <ProcessStatusIcon status={process.status} />
         <div className={"flex flex-1 flex-col gap-0.5"}>
-          <span className={"font-medium text-sm"}>{getStatusLabel()}</span>
-          <span className={"text-muted-foreground text-xs"}>{formattedDate}</span>
+          <span className={"font-medium text-sm"}>{processName}</span>
+          <span className={"text-muted-foreground text-xs"}>
+            {getStatusLabel()} · {formattedDate}
+          </span>
         </div>
-        <ProcessStatusBadge status={process.status} />
         {!isInProgress && onViewDetails !== undefined && (
           <Button className={"shrink-0"} onClick={onViewDetails} size={"sm"} variant={"ghost"}>
             <InfoIcon />
@@ -204,31 +206,19 @@ function ProcessRow({
         </div>
       )}
 
-      <div className={"flex flex-wrap items-center gap-1.5"}>
-        {process.file_id !== null && (
-          <Badge className={"font-mono text-xs"} variant={"outline"}>
-            file_id: {process.file_id}
-          </Badge>
-        )}
-        {insights.structuralClass !== null && (
-          <Badge className={"text-xs"} variant={"outline"}>
-            {insights.structuralClass}
-          </Badge>
-        )}
-        {insights.dominantFormat !== null && (
-          <Badge className={"text-xs"} variant={"secondary"}>
-            {insights.dominantFormat}
-          </Badge>
-        )}
-        {(insights.parserKey ?? insights.selectedParserKey) !== null && (
-          <Badge className={"text-xs"} variant={"outline"}>
-            parser: {insights.parserKey ?? insights.selectedParserKey}
-          </Badge>
-        )}
+      <div className={"text-muted-foreground text-xs"}>
+        <span>
+          {insights.structuralClass ?? "unknown"}
+          {" · "}
+          {insights.dominantFormat ?? "unknown"}
+          {" · parser: "}
+          {insights.parserKey ?? insights.selectedParserKey ?? "unified"}
+        </span>
         {(insights.classificationWarnings.length > 0 || insights.resultWarnings.length > 0) && (
-          <Badge className={"text-xs"} variant={"destructive"}>
+          <span>
+            {" · "}
             {insights.classificationWarnings.length + insights.resultWarnings.length} warning(s)
-          </Badge>
+          </span>
         )}
       </div>
 
@@ -247,19 +237,6 @@ function ProcessStatusIcon({ status }: { status: string }) {
     return <AlertCircleIcon className={"size-4 shrink-0 text-destructive"} />;
   }
   return <Spinner className={"size-4 shrink-0"} />;
-}
-
-function ProcessStatusBadge({ status }: { status: string }) {
-  if (status === "completed") {
-    return <Badge variant={"secondary"}>Completed</Badge>;
-  }
-  if (status === "failed") {
-    return <Badge variant={"destructive"}>Failed</Badge>;
-  }
-  if (status === "processing") {
-    return <Badge variant={"outline"}>Processing</Badge>;
-  }
-  return <Badge variant={"outline"}>Queued</Badge>;
 }
 
 function ProcessDetailsDialog({ process, onClose }: { process: LogProcess; onClose: () => void }) {
@@ -548,6 +525,27 @@ function getWarningEntries(prefix: string, warnings: string[]) {
       message: warning,
     };
   });
+}
+
+function getProcessName(process: LogProcess, insights: ProcessInsights) {
+  const filenames = insights.fileClassifications
+    .map((classification) => asNullableString(classification.filename))
+    .filter((name): name is string => name !== null && name.length > 0);
+  const uniqueFilenames = Array.from(new Set(filenames));
+
+  if (uniqueFilenames.length === 1) {
+    return uniqueFilenames[0];
+  }
+
+  if (uniqueFilenames.length > 1) {
+    return `${uniqueFilenames[0]} +${uniqueFilenames.length - 1} more`;
+  }
+
+  if (process.file_id !== null) {
+    return `file ${process.file_id}`;
+  }
+
+  return "batch process";
 }
 
 function hasProcessDetails(process: LogProcess) {

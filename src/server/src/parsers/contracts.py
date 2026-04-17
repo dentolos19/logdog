@@ -13,6 +13,7 @@ class StructuralClass(str, Enum):
     STRUCTURED = "structured"
     SEMI_STRUCTURED = "semi_structured"
     UNSTRUCTURED = "unstructured"
+    BINARY = "binary"
 
 
 class ColumnDefinition(BaseModel):
@@ -35,6 +36,7 @@ class ParserPipelineResult(BaseModel):
     parser_key: str
     warnings: list[str] = Field(default_factory=list)
     confidence: float = Field(ge=0.0, le=1.0, default=1.0)
+    diagnostics: dict[str, Any] = Field(default_factory=dict)
 
     @property
     def row_counts(self) -> dict[str, int]:
@@ -59,6 +61,7 @@ class ClassificationResult(BaseModel):
     file_classifications: list[FileClassification]
     warnings: list[str] = Field(default_factory=list)
     confidence: float = Field(ge=0.0, le=1.0, default=1.0)
+    diagnostics: dict[str, Any] = Field(default_factory=dict)
 
 
 class ParserSupportRequest(BaseModel):

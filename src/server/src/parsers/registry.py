@@ -1,11 +1,7 @@
 from __future__ import annotations
 
-import importlib
-import inspect
 import logging
-import pkgutil
 from abc import ABC, abstractmethod
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -45,11 +41,7 @@ class ParserPipeline(ABC):
 class _ParserRegistry:
     def __init__(self) -> None:
         self._pipelines: dict[str, ParserPipeline] = {}
-        self._fallback_order = {
-            "structured": 0,
-            "semi_structured": 1,
-            "unstructured": 2,
-        }
+        self._fallback_order = {"unified": 0}
         self._discovery_done = False
 
     def register(self, pipeline: ParserPipeline) -> None:
@@ -172,41 +164,15 @@ class _ParserRegistry:
         if self._discovery_done and not force:
             return
 
-        base_package = "parsers"
-        base_path = Path(__file__).resolve().parent
+        if force:
+            self._pipelines.clear()
 
-        for module in pkgutil.walk_packages([str(base_path)], prefix=f"{base_package}."):
-            module_name = module.name
-            if (
-                module_name.endswith(".registry")
-                or module_name.endswith(".contracts")
-                or module_name.endswith(".orchestrator")
-                or module_name.endswith(".preprocessor")
-                or module_name.endswith(".ai_wrappers")
-            ):
-                continue
+        try:
+            from parsers.unified.pipeline import UnifiedPipeline
 
-            try:
-                imported = importlib.import_module(module_name)
-            except Exception as error:  # noqa: BLE001
-                logger.warning("Skipping parser module '%s' during discovery: %s", module_name, error)
-                continue
-
-            for _, obj in inspect.getmembers(imported, inspect.isclass):
-                if obj is ParserPipeline:
-                    continue
-                if not issubclass(obj, ParserPipeline):
-                    continue
-                if not obj.parser_key:
-                    continue
-
-                if obj.parser_key in self._pipelines:
-                    continue
-
-                try:
-                    self.register(obj())
-                except Exception as error:  # noqa: BLE001
-                    logger.warning("Could not instantiate parser '%s': %s", obj.__name__, error)
+            self.register(UnifiedPipeline())
+        except Exception as error:  # noqa: BLE001
+            logger.warning("Could not register unified pipeline: %s", error)
 
         self._discovery_done = True
 
