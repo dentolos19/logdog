@@ -1,10 +1,10 @@
 import { mermaid } from "@streamdown/mermaid";
 import type { UIMessage } from "@tanstack/ai-react";
-import { BotIcon, CheckIcon, CopyIcon, UserIcon } from "lucide-react";
+import { BotIcon, CheckIcon, CopyIcon, UserIcon, WrenchIcon } from "lucide-react";
 import { useCallback, useState } from "react";
 import { Streamdown } from "streamdown";
+import { Badge } from "#/components/ui/badge";
 import { Button } from "#/components/ui/button";
-import { isWidgetTool, ToolCallBadge, WidgetToolOutput } from "#/routes/(platform)/logs/-components/chat-tool-call";
 
 type ChatMessageItemProps = {
   message: UIMessage;
@@ -55,12 +55,9 @@ function CopyButton({ text }: { text: string }) {
 export function ChatMessageItem({ message }: ChatMessageItemProps) {
   const isUser = message.role === "user";
   const text = parseTextFromMessage(message);
+  const toolCallCount = message.parts.filter((part) => part.type === "tool-call").length;
 
-  const toolParts = message.parts.filter((part) => part.type === "tool-call");
-  const widgetParts = toolParts.filter(isWidgetTool);
-  const nonWidgetParts = toolParts.filter((part) => !isWidgetTool(part));
-
-  if (text.length === 0 && toolParts.length === 0) {
+  if (text.length === 0) {
     return null;
   }
 
@@ -84,33 +81,23 @@ export function ChatMessageItem({ message }: ChatMessageItemProps) {
               : "border bg-card text-card-foreground rounded-bl-md")
           }
         >
-          {text.length > 0 && (
-            <div className={"text-sm"}>
-              <MarkdownMessage content={text} isUser={isUser} />
-            </div>
-          )}
+          <div className={"text-sm"}>
+            <MarkdownMessage content={text} isUser={isUser} />
+          </div>
 
-          {!isUser && text.length > 0 && (
+          {!isUser && (
             <div className={"absolute top-2 right-2"}>
               <CopyButton text={text} />
             </div>
           )}
         </div>
 
-        {!isUser && nonWidgetParts.length > 0 && (
-          <div className={"mt-1.5 flex flex-wrap gap-1.5"}>
-            {nonWidgetParts.map((part, index) => (
-              <ToolCallBadge key={`badge-${message.id}-${index}`} part={part} />
-            ))}
-          </div>
+        {!isUser && toolCallCount > 0 && (
+          <Badge className={"mt-1.5"} variant={"outline"}>
+            <WrenchIcon className={"size-3"} />
+            {toolCallCount}
+          </Badge>
         )}
-
-        {!isUser &&
-          widgetParts.map((part, index) => (
-            <div className={"mt-2 w-full"} key={`widget-${message.id}-${index}`}>
-              <WidgetToolOutput part={part} />
-            </div>
-          ))}
       </div>
     </div>
   );

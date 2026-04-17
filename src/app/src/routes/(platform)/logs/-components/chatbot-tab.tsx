@@ -1,12 +1,10 @@
-import { type ModelMessage, modelMessagesToUIMessages } from "@tanstack/ai";
-import { fetchServerSentEvents, type UIMessage, useChat } from "@tanstack/ai-react";
+import type { UIMessage } from "@tanstack/ai-react";
+import { fetchServerSentEvents, useChat } from "@tanstack/ai-react";
 import {
   AlertCircleIcon,
   BotIcon,
   ChevronDownIcon,
   ChevronUpIcon,
-  FileTextIcon,
-  LightbulbIcon,
   SendHorizontalIcon,
   SparklesIcon,
   Trash2Icon,
@@ -16,7 +14,7 @@ import { Button } from "#/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "#/components/ui/collapsible";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "#/components/ui/input-group";
 import { Spinner } from "#/components/ui/spinner";
-import { type ChatMessage, getAccessToken, getLogChatMessages, replaceLogChatMessages } from "#/lib/server";
+import { getAccessToken, getLogChatMessages, replaceLogChatMessages } from "#/lib/server";
 import { streamLogChat } from "#/lib/server/chat";
 import { ChatMessageItem } from "#/routes/(platform)/logs/-components/chat-message";
 
@@ -25,123 +23,40 @@ type ChatbotTabProps = {
   tableNames: string[];
 };
 
-function createSuggestions(tableNames: string[]) {
-  if (tableNames.length === 0) {
-    return [
-      "List available tables and schemas for this log group.",
-      "What should I upload next for better analysis?",
-      "What missing tables or fields are blocking deeper analysis?",
-    ];
-  }
-
-  const selected = tableNames.slice(0, 3);
-  return [
-    "Summarize key insights from all available tables.",
-    `Analyze ${selected.join(", ")} for anomalies.`,
-    "Show error rate trends over time.",
-  ];
-}
-
-const REPORT_PROMPT =
-  "Generate a comprehensive analysis report for this log group. " +
-  "Query all available tables, identify key insights, anomalies, and trends. " +
-  "Present findings with data tables and charts, then compile everything into a structured report using generate_report";
-
-function safeSerialize(value: unknown) {
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
-}
-
-function parsePersistableTextFromMessage(message: UIMessage) {
-  const textContent = message.parts
-    .map((part) => {
-      if (part.type === "text" && typeof part.content === "string") {
-        return part.content;
-      }
-      return "";
-    })
-    .filter((value) => value.length > 0)
-    .join("\n");
-
-  if (textContent.length > 0) {
-    return textContent;
-  }
-
-  const toolEntries = message.parts
-    .map((part) => {
-      if (part.type !== "tool-call") {
-        return "";
-      }
-
-      const toolName = typeof part.name === "string" ? part.name : "tool";
-      const output = "output" in part ? part.output : undefined;
-      if (output !== undefined) {
-        return `[Tool output: ${toolName}] ${safeSerialize(output)}`;
-      }
-
-      return `[Tool call: ${toolName}]`;
-    })
-    .filter((value) => value.length > 0);
-
-  return toolEntries.join("\n");
-}
-
-function normalizePersistedMessages(messages: ChatMessage[]) {
-  const modelMessages: ModelMessage[] = [];
-  for (const message of messages) {
-    const role = message.role === "user" || message.role === "assistant" ? message.role : null;
-    if (role === null) {
-      continue;
-    }
-
-    const content = typeof message.content === "string" ? message.content : "";
-    if (content.length === 0) {
-      continue;
-    }
-
-    modelMessages.push({ role, content });
-  }
-
-  return modelMessagesToUIMessages(modelMessages);
-}
+const STARTER_MESSAGES = [
+  "What tables are available in this log group?",
+  "Show me a summary of all uploaded data.",
+  "Are there any anomalies or errors in the logs?",
+];
 
 function toPersistedMessages(messages: UIMessage[]) {
-  const persisted: ChatMessage[] = [];
-
-  for (const message of messages) {
-    if (message.role !== "user" && message.role !== "assistant") {
-      continue;
-    }
-
-    const content = parsePersistableTextFromMessage(message);
-    if (content.length === 0) {
-      continue;
-    }
-
-    persisted.push({
+  return messages
+    .filter((message) => message.role === "user" || message.role === "assistant")
+    .map((message) => ({
       id: message.id,
       role: message.role,
-      content,
-      parts: [{ type: "text", content }],
-    });
-  }
+      content: message.parts
+        .filter((part) => part.type === "text" && typeof part.content === "string")
+        .map((part) => (part as { content: string }).content)
+        .join("\n"),
+      parts: message.parts as Array<Record<string, unknown>>,
+    }));
+}
 
-  return persisted;
+function restoreUIMessages(messages: Array<{ role: string; parts?: Array<Record<string, unknown>>; id?: string }>) {
+  return messages
+    .filter((msg) => msg.role === "user" || msg.role === "assistant")
+    .map((msg) => ({
+      id: msg.id ?? crypto.randomUUID(),
+      role: msg.role as "user" | "assistant",
+      parts: (msg.parts ?? []) as UIMessage["parts"],
+    })) as UIMessage[];
 }
 
 function hasVisibleContent(message: UIMessage) {
-  return message.parts.some((part) => {
-    if (part.type === "text" && typeof part.content === "string" && part.content.length > 0) {
-      return true;
-    }
-    if (part.type === "tool-call") {
-      return true;
-    }
-    return false;
-  });
+  return message.parts.some(
+    (part) => part.type === "text" && typeof part.content === "string" && part.content.length > 0,
+  );
 }
 
 function ErrorBadge({ label, message }: { label: string; message: string }) {
@@ -169,18 +84,28 @@ function ErrorBadge({ label, message }: { label: string; message: string }) {
   );
 }
 
+function messagesEqual(a: UIMessage[], b: UIMessage[]) {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i].id !== b[i].id) return false;
+    if (a[i].role !== b[i].role) return false;
+    if (a[i].parts.length !== b[i].parts.length) return false;
+  }
+  return true;
+}
+
 export function ChatbotTab({ entryId, tableNames }: ChatbotTabProps) {
   const [draftMessage, setDraftMessage] = useState("");
   const [hydrateError, setHydrateError] = useState<string | null>(null);
   const [persistError, setPersistError] = useState<string | null>(null);
   const [isHydrating, setIsHydrating] = useState(true);
-  const [isPersisting, setIsPersisting] = useState(false);
   const [isAtBottom, setIsAtBottom] = useState(true);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const hydratedMessagesRef = useRef<UIMessage[]>([]);
+  const hasHydratedRef = useRef(false);
 
-  const suggestions = useMemo(() => createSuggestions(tableNames), [tableNames]);
   const token = getAccessToken();
   const authorizationHeader = token ? `Bearer ${token}` : "";
   const origin = typeof window === "undefined" ? "http://localhost" : window.location.origin;
@@ -247,8 +172,10 @@ export function ChatbotTab({ entryId, tableNames }: ChatbotTabProps) {
           return;
         }
 
-        const normalizedMessages = normalizePersistedMessages(savedMessages);
-        setMessages(normalizedMessages);
+        const restoredMessages = restoreUIMessages(savedMessages);
+        hydratedMessagesRef.current = restoredMessages;
+        hasHydratedRef.current = true;
+        setMessages(restoredMessages);
       } catch (hydrateError) {
         if (!cancelled) {
           setHydrateError(hydrateError instanceof Error ? hydrateError.message : "Failed to load chat history.");
@@ -273,11 +200,14 @@ export function ChatbotTab({ entryId, tableNames }: ChatbotTabProps) {
       return;
     }
 
+    if (hasHydratedRef.current && messagesEqual(messages, hydratedMessagesRef.current)) {
+      return;
+    }
+
     let cancelled = false;
 
     const persist = async () => {
       setPersistError(null);
-      setIsPersisting(true);
 
       try {
         await replaceLogChatMessages(entryId, {
@@ -286,10 +216,6 @@ export function ChatbotTab({ entryId, tableNames }: ChatbotTabProps) {
       } catch (persistError) {
         if (!cancelled) {
           setPersistError(persistError instanceof Error ? persistError.message : "Failed to save chat history.");
-        }
-      } finally {
-        if (!cancelled) {
-          setIsPersisting(false);
         }
       }
     };
@@ -320,6 +246,7 @@ export function ChatbotTab({ entryId, tableNames }: ChatbotTabProps) {
     stop();
     setDraftMessage("");
     setMessages([]);
+    hydratedMessagesRef.current = [];
     try {
       await replaceLogChatMessages(entryId, { messages: [] });
     } catch {
@@ -369,16 +296,16 @@ export function ChatbotTab({ entryId, tableNames }: ChatbotTabProps) {
                 </p>
               </div>
               <div className={"flex w-full flex-col gap-2"}>
-                {suggestions.map((suggestion) => (
+                {STARTER_MESSAGES.map((message) => (
                   <Button
                     className={"h-auto w-full justify-start gap-3 px-4 py-3 text-left text-sm"}
                     disabled={isLoading}
-                    key={suggestion}
-                    onClick={() => void sendMessage(suggestion)}
+                    key={message}
+                    onClick={() => void sendMessage(message)}
                     variant={"outline"}
                   >
                     <SparklesIcon className={"size-4 shrink-0 text-muted-foreground"} />
-                    <span className={"line-clamp-2"}>{suggestion}</span>
+                    <span className={"line-clamp-2"}>{message}</span>
                   </Button>
                 ))}
               </div>
@@ -415,32 +342,7 @@ export function ChatbotTab({ entryId, tableNames }: ChatbotTabProps) {
       >
         <div className={"mx-auto max-w-3xl"}>
           {hasMessages && (
-            <div className={"flex flex-wrap items-center gap-2 px-4 pt-3 pb-2"}>
-              {suggestions.map((suggestion) => (
-                <Button
-                  className={"max-w-[200px] shrink-0 rounded-full"}
-                  disabled={isLoading}
-                  key={suggestion}
-                  onClick={() => void sendMessage(suggestion)}
-                  size={"sm"}
-                  type={"button"}
-                  variant={"secondary"}
-                >
-                  <LightbulbIcon className={"size-3 shrink-0"} />
-                  <span className={"truncate"}>{suggestion}</span>
-                </Button>
-              ))}
-              <Button
-                className={"shrink-0 rounded-full"}
-                disabled={isLoading}
-                onClick={() => void sendMessage(REPORT_PROMPT)}
-                size={"sm"}
-                type={"button"}
-                variant={"outline"}
-              >
-                <FileTextIcon className={"size-3 shrink-0"} />
-                <span className={"truncate"}>Generate Report</span>
-              </Button>
+            <div className={"flex items-center justify-end gap-2 px-4 pt-3 pb-2"}>
               <Button
                 className={"shrink-0 rounded-full"}
                 disabled={isLoading}
@@ -467,9 +369,7 @@ export function ChatbotTab({ entryId, tableNames }: ChatbotTabProps) {
                     void submitMessage();
                   }
                 }}
-                placeholder={
-                  hasMessages ? "Ask a follow-up question..." : "Ask about anomalies, trends, or table insights..."
-                }
+                placeholder={"Ask about anomalies, trends, or table insights..."}
                 rows={1}
                 value={draftMessage}
               />
