@@ -1,0 +1,8 @@
+[2026-04-17 08:03:15.441 UTC] INFO ETCH-01/A Run started for LOT9001 wafer W01 recipe ETCH_OXIDE_V3.
+[2026-04-17 08:04:40.012 UTC] INFO ETCH-01/A Pressure stabilized within tolerance at 93.2 mTorr.
+[2026-04-17 08:05:55.103 UTC] WARN ETCH-01/A Pressure drift observed: 112.6 mTorr for 3 consecutive samples.
+[2026-04-17 08:06:10.774 UTC] WARN ETCH-01/A Endpoint signal delayed by 2.1 s relative to baseline.
+[2026-04-17 08:06:28.207 UTC] ERROR ETCH-01/A Vacuum fault E2331. Actual pressure 146.0 mTorr exceeds abort threshold 140.0.
+[2026-04-17 08:06:29.998 UTC] ERROR ETCH-01/A Auto-recovery sequence failed after 2 retries.
+[2026-04-17 08:06:35.552 UTC] ACTION Operator note: inspect foreline pump and gate valve GV-14.
+[2026-04-17 08:06:41.100 UTC] STATE ETCH-01/A Run aborted. Lot placed on hold for engineering review.

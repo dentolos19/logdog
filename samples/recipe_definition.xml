@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<recipe tool="ETCH-01" chamber="A" name="ETCH_OXIDE_V3" version="3.4" author="process_eng_07">
+  <metadata created_ts="2026-04-10T02:15:00Z" approved_by="qa_bot" product="NAND_176L" />
+  <step seq="1" name="PUMPDOWN" duration_s="90">
+    <setpoint name="target_pressure_mTorr" value="95" />
+    <interlock name="door_closed" required="true" />
+    <interlock name="helium_backside_ok" required="true" />
+  </step>
+  <step seq="2" name="STABILIZE" duration_s="30">
+    <setpoint name="electrode_temp_C" value="84.5" />
+    <setpoint name="gas_cf4_sccm" value="10" />
+  </step>
+  <step seq="3" name="ETCH" duration_s="120">
+    <setpoint name="rf_power_W" value="150" />
+    <setpoint name="gas_cf4_sccm" value="50" />
+    <setpoint name="gas_o2_sccm" value="8" />
+    <tolerance name="pressure_mTorr" low="88" high="110" />
+    <tolerance name="electrode_temp_C" low="82" high="90" />
+  </step>
+  <step seq="4" name="OVERETCH" duration_s="20">
+    <setpoint name="rf_power_W" value="120" />
+    <setpoint name="gas_cf4_sccm" value="35" />
+  </step>
+  <step seq="5" name="VENT" duration_s="15">
+    <setpoint name="n2_purge_sccm" value="120" />
+  </step>
+</recipe>

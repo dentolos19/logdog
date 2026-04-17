@@ -1,0 +1,8 @@
+{"ts": "2026-04-17T08:00:00Z", "event": "LOT_START", "tool_id": "ETCH-01", "lot_id": "LOT9001", "run_id": "RUN-20260417-ETCH-001", "recipe": "ETCH_OXIDE_V3"}
+{"ts": "2026-04-17T08:01:10Z", "event": "WAFER_IN", "tool_id": "ETCH-01", "lot_id": "LOT9001", "wafer_id": "W01", "slot": 1}
+{"ts": "2026-04-17T08:03:15Z", "event": "STEP_START", "tool_id": "ETCH-01", "wafer_id": "W01", "step": "PUMPDOWN"}
+{"ts": "2026-04-17T08:04:45Z", "event": "STEP_START", "tool_id": "ETCH-01", "wafer_id": "W01", "step": "ETCH"}
+{"ts": "2026-04-17T08:05:55Z", "event": "ALARM", "tool_id": "ETCH-01", "wafer_id": "W01", "severity": "WARN", "code": "W201", "message": "Pressure drift"}
+{"ts": "2026-04-17T08:06:28Z", "event": "ALARM", "tool_id": "ETCH-01", "wafer_id": "W01", "severity": "ERROR", "code": "E2331", "message": "Vacuum fault"}
+{"ts": "2026-04-17T08:06:41Z", "event": "RUN_ABORT", "tool_id": "ETCH-01", "lot_id": "LOT9001", "wafer_id": "W01", "reason": "VACUUM_FAULT"}
+{"ts": "2026-04-17T08:06:50Z", "event": "LOT_HOLD", "tool_id": "ETCH-01", "lot_id": "LOT9001", "hold_code": "ENG_REVIEW"}

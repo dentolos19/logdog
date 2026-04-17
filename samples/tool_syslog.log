@@ -1,0 +1,7 @@
+Apr 17 08:03:15 fabhost1 tool-agent[2241]: tool=ETCH-01 chamber=A severity=INFO event=RUN_START run_id=RUN-20260417-ETCH-001 lot=LOT9001 wafer=W01 recipe=ETCH_OXIDE_V3
+Apr 17 08:04:39 fabhost1 pressured[991]: tool=ETCH-01 chamber=A severity=INFO event=PRESSURE_OK actual_mTorr=93.2 low=88 high=110
+Apr 17 08:05:54 fabhost1 pressured[991]: tool=ETCH-01 chamber=A severity=WARN event=PRESSURE_DRIFT actual_mTorr=112.6 slope_mTorr_per_s=1.9
+Apr 17 08:06:09 fabhost1 endpointd[1550]: tool=ETCH-01 chamber=A severity=WARN event=ENDPOINT_DELAY actual_s=2.1 baseline_s=0.5
+Apr 17 08:06:28 fabhost1 vacuumd[1442]: tool=ETCH-01 chamber=A severity=ERROR event=VACUUM_FAULT code=E2331 actual_mTorr=146.0 threshold_mTorr=140.0
+Apr 17 08:06:29 fabhost1 tool-agent[2241]: tool=ETCH-01 chamber=A severity=ERROR event=RECOVERY_FAILED retries=2 next_action=ENGINEERING_HOLD
+Apr 17 08:06:41 fabhost1 mes-bridge[808]: tool=ETCH-01 chamber=A severity=INFO event=LOT_HOLD lot=LOT9001 disposition=ENG_REVIEW

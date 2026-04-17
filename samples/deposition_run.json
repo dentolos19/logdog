@@ -1,0 +1,88 @@
+{
+  "tool_id": "CVD-02",
+  "run_id": "RUN-20260417-CVD-002",
+  "lot_id": "LOT9002",
+  "recipe": "OXIDE_DEP_V5",
+  "operator": "auto_scheduler",
+  "start_ts": "2026-04-17T09:00:00Z",
+  "end_ts": "2026-04-17T09:06:20Z",
+  "chambers": [
+    "PROC-A"
+  ],
+  "wafers": [
+    {
+      "wafer_id": "W01",
+      "slot": 1,
+      "incoming_thickness_nm": 102.2
+    },
+    {
+      "wafer_id": "W02",
+      "slot": 2,
+      "incoming_thickness_nm": 101.8
+    },
+    {
+      "wafer_id": "W03",
+      "slot": 3,
+      "incoming_thickness_nm": 102.4
+    }
+  ],
+  "steps": [
+    {
+      "seq": 1,
+      "name": "LOAD",
+      "duration_s": 15,
+      "status": "OK"
+    },
+    {
+      "seq": 2,
+      "name": "PUMPDOWN",
+      "duration_s": 45,
+      "target_pressure_mTorr": 85,
+      "actual_pressure_mTorr": 87.2,
+      "status": "OK"
+    },
+    {
+      "seq": 3,
+      "name": "HEAT",
+      "duration_s": 120,
+      "target_temp_C": 390,
+      "actual_max_temp_C": 402.7,
+      "status": "WARN"
+    },
+    {
+      "seq": 4,
+      "name": "DEPOSIT",
+      "duration_s": 180,
+      "target_gas_sih4_sccm": 45,
+      "target_gas_n2o_sccm": 120,
+      "avg_rate_nm_min": 98.3,
+      "status": "OK"
+    },
+    {
+      "seq": 5,
+      "name": "COOLDOWN",
+      "duration_s": 20,
+      "status": "OK"
+    },
+    {
+      "seq": 6,
+      "name": "UNLOAD",
+      "duration_s": 10,
+      "status": "OK"
+    }
+  ],
+  "alarms": [
+    {
+      "ts": "2026-04-17T09:03:05Z",
+      "code": "TEMP_DRIFT",
+      "severity": "WARN",
+      "message": "Heater zone 2 exceeded target by 12.7 C"
+    }
+  ],
+  "result": {
+    "status": "COMPLETE_WITH_WARNING",
+    "film_uniformity_pct": 2.8,
+    "avg_final_thickness_nm": 398.6,
+    "released_to_metrology": true
+  }
+}
