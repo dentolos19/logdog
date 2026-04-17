@@ -45,7 +45,7 @@ function createSuggestions(tableNames: string[]) {
 const REPORT_PROMPT =
   "Generate a comprehensive analysis report for this log group. " +
   "Query all available tables, identify key insights, anomalies, and trends. " +
-  "Present findings with data tables and charts, then compile everything into a structured report using generate_report.";
+  "Present findings with data tables and charts, then compile everything into a structured report using generate_report";
 
 function safeSerialize(value: unknown) {
   try {
@@ -328,6 +328,7 @@ export function ChatbotTab({ entryId, tableNames }: ChatbotTabProps) {
   }, [entryId, setMessages, stop]);
 
   const visibleMessages = useMemo(() => messages.filter(hasVisibleContent), [messages]);
+  const hasMessages = visibleMessages.length > 0;
 
   return (
     <div className={"flex min-h-0 flex-1 flex-col"}>
@@ -341,20 +342,28 @@ export function ChatbotTab({ entryId, tableNames }: ChatbotTabProps) {
         </div>
       )}
 
-      <div className={"flex min-h-0 flex-1 overflow-y-auto"} onScroll={handleScroll} ref={scrollContainerRef}>
+      <div
+        className={
+          "flex min-h-0 flex-1 overflow-y-auto " + (hasMessages ? "" : "bg-gradient-to-b from-muted/30 to-background")
+        }
+        onScroll={handleScroll}
+        ref={scrollContainerRef}
+      >
         {isHydrating ? (
-          <div className={"flex items-center justify-center py-12"}>
+          <div className={"flex flex-1 items-center justify-center"}>
             <Spinner />
           </div>
-        ) : visibleMessages.length === 0 ? (
-          <div className={"flex flex-1 flex-col items-center justify-center px-4"}>
-            <div className={"flex max-w-md flex-col items-center gap-6 text-center"}>
-              <div className={"flex size-14 items-center justify-center rounded-2xl bg-muted"}>
-                <BotIcon className={"size-7 text-muted-foreground"} />
+        ) : !hasMessages ? (
+          <div className={"flex flex-1 flex-col items-center justify-center px-6"}>
+            <div className={"flex max-w-lg flex-col items-center gap-8 text-center"}>
+              <div
+                className={"flex size-16 items-center justify-center rounded-3xl bg-primary/10 ring-1 ring-primary/20"}
+              >
+                <BotIcon className={"size-8 text-primary"} />
               </div>
-              <div className={"flex flex-col gap-2"}>
-                <h2 className={"font-semibold text-lg"}>Log Analysis Chatbot</h2>
-                <p className={"text-muted-foreground text-sm"}>
+              <div className={"flex flex-col gap-1.5"}>
+                <h2 className={"font-semibold text-xl"}>Log Analysis Chatbot</h2>
+                <p className={"mx-auto max-w-sm text-muted-foreground text-sm"}>
                   Ask questions about your log data. I can query tables, find anomalies, generate charts, and compile
                   reports.
                 </p>
@@ -362,21 +371,21 @@ export function ChatbotTab({ entryId, tableNames }: ChatbotTabProps) {
               <div className={"flex w-full flex-col gap-2"}>
                 {suggestions.map((suggestion) => (
                   <Button
-                    className={"h-auto w-full justify-start gap-2 px-4 py-3 text-left text-sm"}
+                    className={"h-auto w-full justify-start gap-3 px-4 py-3 text-left text-sm"}
                     disabled={isLoading}
                     key={suggestion}
                     onClick={() => void sendMessage(suggestion)}
                     variant={"outline"}
                   >
                     <SparklesIcon className={"size-4 shrink-0 text-muted-foreground"} />
-                    {suggestion}
+                    <span className={"line-clamp-2"}>{suggestion}</span>
                   </Button>
                 ))}
               </div>
             </div>
           </div>
         ) : (
-          <div className={"mx-auto max-w-3xl space-y-6 py-6"}>
+          <div className={"mx-auto w-full max-w-3xl space-y-4 px-4 py-6"}>
             {visibleMessages.map((message) => (
               <ChatMessageItem key={message.id} message={message} />
             ))}
@@ -385,21 +394,31 @@ export function ChatbotTab({ entryId, tableNames }: ChatbotTabProps) {
         )}
       </div>
 
-      {!isAtBottom && visibleMessages.length > 0 && (
-        <div className={"flex justify-center py-1"}>
-          <Button className={"rounded-full shadow-md"} onClick={scrollToBottom} size={"sm"} variant={"secondary"}>
+      {!isAtBottom && hasMessages && (
+        <div className={"absolute right-4 bottom-24 z-10"}>
+          <Button
+            className={"rounded-full shadow-lg ring-1 ring-border"}
+            onClick={scrollToBottom}
+            size={"sm"}
+            variant={"secondary"}
+          >
             Scroll to bottom
           </Button>
         </div>
       )}
 
-      <div className={"shrink-0 border-t bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60"}>
+      <div
+        className={
+          "shrink-0 border-t bg-background/80 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60 " +
+          (hasMessages ? "" : "border-t-transparent")
+        }
+      >
         <div className={"mx-auto max-w-3xl"}>
-          {visibleMessages.length > 0 && (
-            <div className={"flex flex-wrap gap-2 px-4 pt-3 pb-2"}>
+          {hasMessages && (
+            <div className={"flex flex-wrap items-center gap-2 px-4 pt-3 pb-2"}>
               {suggestions.map((suggestion) => (
                 <Button
-                  className={"max-w-full shrink rounded-full"}
+                  className={"max-w-[200px] shrink-0 rounded-full"}
                   disabled={isLoading}
                   key={suggestion}
                   onClick={() => void sendMessage(suggestion)}
@@ -412,7 +431,7 @@ export function ChatbotTab({ entryId, tableNames }: ChatbotTabProps) {
                 </Button>
               ))}
               <Button
-                className={"max-w-full shrink rounded-full"}
+                className={"shrink-0 rounded-full"}
                 disabled={isLoading}
                 onClick={() => void sendMessage(REPORT_PROMPT)}
                 size={"sm"}
@@ -423,7 +442,7 @@ export function ChatbotTab({ entryId, tableNames }: ChatbotTabProps) {
                 <span className={"truncate"}>Generate Report</span>
               </Button>
               <Button
-                className={"max-w-full shrink rounded-full"}
+                className={"shrink-0 rounded-full"}
                 disabled={isLoading}
                 onClick={() => void handleClearChat()}
                 size={"sm"}
@@ -436,7 +455,7 @@ export function ChatbotTab({ entryId, tableNames }: ChatbotTabProps) {
             </div>
           )}
 
-          <form className={"flex items-center justify-center gap-2 px-4 pt-4 pb-4"} onSubmit={onSubmit}>
+          <form className={"flex items-center justify-center gap-2 px-4 pt-3 pb-4"} onSubmit={onSubmit}>
             <InputGroup className={"bg-background shadow-sm"}>
               <InputGroupTextarea
                 className={"max-h-[200px] min-h-[44px] py-3"}
@@ -448,7 +467,9 @@ export function ChatbotTab({ entryId, tableNames }: ChatbotTabProps) {
                     void submitMessage();
                   }
                 }}
-                placeholder={"Ask about anomalies, trends, or table insights..."}
+                placeholder={
+                  hasMessages ? "Ask a follow-up question..." : "Ask about anomalies, trends, or table insights..."
+                }
                 rows={1}
                 value={draftMessage}
               />
