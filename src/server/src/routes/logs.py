@@ -7,7 +7,7 @@ import logging
 import re
 import time
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 import sqlparse
@@ -29,7 +29,6 @@ from lib.megabase import query_records as megabase_query_records
 from lib.models import Asset, LogEntry, LogFile, LogMessage, LogProcess, LogTable, User
 from lib.storage import delete_file, download_file, upload_file
 from parsers.orchestrator import create_process, enqueue_process, mark_process_failed
-from parsers.preprocessor import FileInput
 from routes.auth import get_current_user
 
 router = APIRouter(prefix="/logs", tags=["logs"])
@@ -42,10 +41,12 @@ class MessageResponse(BaseModel):
 
 class CreateLogEntryRequest(BaseModel):
     name: str
+    profile_name: str | None = "default"
 
 
 class UpdateLogEntryRequest(BaseModel):
     name: str
+    profile_name: str | None = None
 
 
 class CreateProcessRequest(BaseModel):
@@ -56,6 +57,7 @@ class LogEntryResponse(BaseModel):
     id: str
     user_id: str
     name: str
+    profile_name: str | None
     created_at: datetime
 
 
@@ -116,6 +118,15 @@ class ReplaceMessagesResponse(BaseModel):
 
 class QueryRequest(BaseModel):
     sql: str
+
+
+class FilteredExportRequest(BaseModel):
+    format: str = "csv"
+    search: str | None = None
+    levels: list[str] = Field(default_factory=list)
+    field_filters: dict[str, str] = Field(default_factory=dict)
+    timestamp_from: str | None = None
+    timestamp_to: str | None = None
 
 
 class QueryResponse(BaseModel):
@@ -193,6 +204,7 @@ def _entry_response(entry: LogEntry):
         id=str(entry.id),
         user_id=str(entry.user_id),
         name=entry.name,
+        profile_name=entry.profile_name,
         created_at=entry.created_at,
     )
 
@@ -341,7 +353,9 @@ def create_log_entry(
     if not name:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Entry name must not be empty.")
 
-    entry = LogEntry(user_id=current_user.id, name=name)
+    profile_name = (payload.profile_name or "default").strip() or "default"
+
+    entry = LogEntry(user_id=current_user.id, name=name, profile_name=profile_name)
     database.add(entry)
     database.commit()
     database.refresh(entry)
@@ -371,6 +385,8 @@ def update_log_entry(
 
     entry = _require_owned_entry(database=database, entry_id=entry_id, user_id=current_user.id)
     entry.name = name
+    if payload.profile_name is not None:
+        entry.profile_name = payload.profile_name.strip() or "default"
     database.commit()
     database.refresh(entry)
     return _entry_response(entry)
@@ -497,6 +513,99 @@ def _serialize_value(value: Any) -> str:
     return str(value)
 
 
+def _normalize_level(value: Any) -> str:
+    if value is None:
+        return ""
+    normalized = str(value).strip().upper()
+    if normalized == "WARNING":
+        return "WARN"
+    return normalized
+
+
+def _extract_row_level(record: dict[str, Any]) -> str:
+    for key in ("log_level", "level", "severity"):
+        if key in record:
+            return _normalize_level(record.get(key))
+    return ""
+
+
+def _extract_row_timestamp(record: dict[str, Any]) -> datetime | None:
+    for key in ("timestamp", "ts", "time"):
+        value = record.get(key)
+        if value is None:
+            continue
+        text = str(value).strip()
+        if not text:
+            continue
+        normalized = text.replace("Z", "+00:00")
+        try:
+            parsed = datetime.fromisoformat(normalized)
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=UTC)
+            return parsed.astimezone(UTC)
+        except ValueError:
+            continue
+    return None
+
+
+def _coerce_datetime(raw_value: str | None) -> datetime | None:
+    if raw_value is None:
+        return None
+    normalized = raw_value.strip().replace("Z", "+00:00")
+    if normalized == "":
+        return None
+    try:
+        parsed = datetime.fromisoformat(normalized)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=UTC)
+        return parsed.astimezone(UTC)
+    except ValueError:
+        return None
+
+
+def _record_matches_filters(record: dict[str, Any], payload: FilteredExportRequest) -> bool:
+    if payload.search:
+        search_text = payload.search.strip().lower()
+        if search_text:
+            haystack = json.dumps(record, ensure_ascii=True, sort_keys=True).lower()
+            if search_text not in haystack:
+                return False
+
+    if payload.levels:
+        allowed_levels = {_normalize_level(level) for level in payload.levels if level.strip()}
+        if allowed_levels:
+            record_level = _extract_row_level(record)
+            if record_level not in allowed_levels:
+                return False
+
+    if payload.field_filters:
+        for key, expected in payload.field_filters.items():
+            expected_text = expected.strip().lower()
+            if expected_text == "":
+                continue
+            actual = record.get(key)
+            actual_text = "" if actual is None else str(actual).lower()
+            if expected_text not in actual_text:
+                return False
+
+    from_dt = _coerce_datetime(payload.timestamp_from)
+    to_dt = _coerce_datetime(payload.timestamp_to)
+    if from_dt is not None or to_dt is not None:
+        row_timestamp = _extract_row_timestamp(record)
+        if row_timestamp is None:
+            return False
+        if from_dt is not None and row_timestamp < from_dt:
+            return False
+        if to_dt is not None and row_timestamp > to_dt:
+            return False
+
+    return True
+
+
+def _apply_export_filters(records: list[dict[str, Any]], payload: FilteredExportRequest) -> list[dict[str, Any]]:
+    return [record for record in records if _record_matches_filters(record, payload)]
+
+
 @router.get("/{entry_id}/tables/{table_name}/download/csv")
 def download_table_csv(
     entry_id: str,
@@ -569,6 +678,45 @@ def download_table_xlsx(
     )
 
 
+@router.post("/{entry_id}/tables/{table_name}/download/filtered")
+def download_table_filtered(
+    entry_id: str,
+    table_name: str,
+    payload: FilteredExportRequest,
+    current_user: User = Depends(get_current_user),
+    database: Session = Depends(get_database),
+):
+    _require_owned_entry(database=database, entry_id=entry_id, user_id=current_user.id)
+    records = _get_table_records(entry_id, table_name, current_user, database)
+    filtered_records = _apply_export_filters(records, payload)
+
+    export_format = payload.format.strip().lower()
+    if export_format not in {"csv", "json"}:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="format must be csv or json")
+
+    if export_format == "json":
+        content = json.dumps(filtered_records, ensure_ascii=True)
+        headers = {"Content-Disposition": f'attachment; filename="{table_name}.filtered.json"'}
+        return Response(content=content, media_type="application/json", headers=headers)
+
+    columns: list[str] = []
+    if filtered_records:
+        seen_columns: dict[str, None] = {}
+        for row in filtered_records:
+            for key in row.keys():
+                seen_columns.setdefault(key, None)
+        columns = list(seen_columns.keys())
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(columns)
+    for record in filtered_records:
+        writer.writerow([_serialize_value(record.get(column)) for column in columns])
+
+    headers = {"Content-Disposition": f'attachment; filename="{table_name}.filtered.csv"'}
+    return Response(content=output.getvalue(), media_type="text/csv", headers=headers)
+
+
 @router.delete("/{entry_id}/files/{file_id}", response_model=MessageResponse)
 def delete_log_file_route(
     entry_id: str,
@@ -622,25 +770,18 @@ async def upload_log_files(
         database.refresh(log_file)
 
         file_id = str(log_file.id)
-        file_input = FileInput(
-            file_id=file_id,
-            filename=asset.name,
-            content=file_data.decode("utf-8", errors="ignore"),
-        )
         uploaded_files.append(_log_file_response(log_file, asset))
 
         process_id: str | None = None
         try:
             process_id = create_process(
                 entry_id=str(entry.id),
-                file_inputs=[file_input],
                 file_ids=[file_id],
                 file_id=file_id,
             )
             enqueue_process(
                 process_id=process_id,
                 entry_id=str(entry.id),
-                file_inputs_json=json.dumps([file_input.model_dump()], ensure_ascii=True),
                 file_ids_json=json.dumps([file_id], ensure_ascii=True),
             )
             process_ids.append(process_id)

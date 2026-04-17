@@ -85,7 +85,7 @@ class UnifiedPipeline(ParserPipeline):
 
         for file_input in file_inputs:
             try:
-                parsed = self._parse_single_file(file_input)
+                parsed = self._parse_single_file(file_input, classification)
             except Exception as error:
                 logger.exception("Unified pipeline failed for '%s'", file_input.filename)
                 warnings.append(f"{file_input.filename}: unified parse failed: {error}")
@@ -109,7 +109,11 @@ class UnifiedPipeline(ParserPipeline):
             confidence=round(confidence_total / max(confidence_count, 1), 2),
         )
 
-    def _parse_single_file(self, file_input: "FileInput") -> _ParsedFileResult | None:
+    def _parse_single_file(
+        self,
+        file_input: "FileInput",
+        classification: "ClassificationResult",
+    ) -> _ParsedFileResult | None:
         file_warnings: list[str] = []
         raw_lines = file_input.content.splitlines()
 
@@ -170,10 +174,22 @@ class UnifiedPipeline(ParserPipeline):
         if template_changes > 0:
             file_warnings.append(f"Template evolution detected {template_changes} merge/split change(s).")
 
+        profile_context = {}
+        profile_name: str | None = None
+        if isinstance(classification.diagnostics, dict):
+            maybe_profile = classification.diagnostics.get("profile")
+            if isinstance(maybe_profile, dict):
+                profile_context = maybe_profile
+                name_value = maybe_profile.get("name")
+                if isinstance(name_value, str):
+                    profile_name = name_value
+
         schema_result = self.schema_inferer.infer(
             sample_lines=[unit.raw for unit in all_units[:100]],
             format_name=normalized_format,
             domain="unified",
+            profile_name=profile_name,
+            profile_context=profile_context,
         )
         file_warnings.extend(schema_result.warnings)
 

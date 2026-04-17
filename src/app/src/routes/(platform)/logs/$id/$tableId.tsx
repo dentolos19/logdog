@@ -11,14 +11,17 @@ import { DataTable, DataTableColumnHeader, DataTableViewOptions } from "#/compon
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "#/components/ui/dialog";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "#/components/ui/dropdown-menu";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "#/components/ui/empty";
+import { Input } from "#/components/ui/input";
 import { Skeleton } from "#/components/ui/skeleton";
 import { Spinner } from "#/components/ui/spinner";
 import {
+  downloadFilteredTable,
   downloadLogFile,
   downloadTableCsv,
   downloadTableXlsx,
@@ -298,7 +301,7 @@ function LogTablePage() {
               {downloadError !== null && <p className={"text-destructive text-xs"}>{downloadError}</p>}
             </section>
 
-            <TableRowsDataTable table={table} />
+            <TableRowsDataTable entryId={id} table={table} />
 
             {isDetailsOpen && <TableDetailsDialog onClose={() => setIsDetailsOpen(false)} table={table} />}
           </>
@@ -308,7 +311,7 @@ function LogTablePage() {
   );
 }
 
-function TableRowsDataTable({ table }: { table: TableSummary }) {
+function TableRowsDataTable({ table, entryId }: { table: TableSummary; entryId: string }) {
   const columnKeys = useMemo(() => {
     const keys = new Set(table.columns.map((column) => column.name));
     for (const row of table.rows) {
@@ -327,10 +330,146 @@ function TableRowsDataTable({ table }: { table: TableSummary }) {
   );
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(defaultColumnVisibility);
   const [cellPreview, setCellPreview] = useState<{ title: string; value: unknown } | null>(null);
+  const [searchText, setSearchText] = useState("");
+  const [selectedLevels, setSelectedLevels] = useState<string[]>([]);
+  const [timestampFrom, setTimestampFrom] = useState("");
+  const [timestampTo, setTimestampTo] = useState("");
+  const [fieldFilters, setFieldFilters] = useState<Record<string, string>>({});
+  const [isExportingFiltered, setIsExportingFiltered] = useState(false);
 
   useEffect(() => {
     setColumnVisibility(defaultColumnVisibility);
-  }, [defaultColumnVisibility, table.id]);
+  }, [defaultColumnVisibility]);
+
+  useEffect(() => {
+    const currentTableId = table.id;
+    if (currentTableId === "") {
+      return;
+    }
+    setSearchText("");
+    setSelectedLevels([]);
+    setTimestampFrom("");
+    setTimestampTo("");
+    setFieldFilters({});
+    setPagination({ pageIndex: 0, pageSize: 20 });
+  }, [table.id]);
+
+  const availableLevelOptions = useMemo(() => {
+    const levels = new Set<string>();
+    for (const row of table.rows) {
+      const level = getRowLevel(row);
+      if (level !== "") {
+        levels.add(level);
+      }
+    }
+    return [...levels].sort();
+  }, [table.rows]);
+
+  const filterableFieldKeys = useMemo(() => {
+    const preferred = ["tool_id", "tool", "chamber_id", "wafer_id", "lot_id"];
+    return preferred.filter((key) => columnKeys.includes(key));
+  }, [columnKeys]);
+
+  const filteredRows = useMemo(() => {
+    const normalizedSearch = searchText.trim().toLowerCase();
+    const fromTime = parseTimestampInput(timestampFrom);
+    const toTime = parseTimestampInput(timestampTo);
+    const levelSet = new Set(selectedLevels.map((level) => normalizeLevel(level)));
+
+    return table.rows.filter((row) => {
+      if (normalizedSearch !== "") {
+        const serialized = safeSerialize(row).toLowerCase();
+        if (!serialized.includes(normalizedSearch)) {
+          return false;
+        }
+      }
+
+      if (levelSet.size > 0) {
+        const level = getRowLevel(row);
+        if (!levelSet.has(level)) {
+          return false;
+        }
+      }
+
+      for (const [key, value] of Object.entries(fieldFilters)) {
+        const normalizedFilter = value.trim().toLowerCase();
+        if (normalizedFilter === "") {
+          continue;
+        }
+        const actualValue = row[key];
+        const normalizedValue =
+          actualValue === null || actualValue === undefined ? "" : String(actualValue).toLowerCase();
+        if (!normalizedValue.includes(normalizedFilter)) {
+          return false;
+        }
+      }
+
+      if (fromTime !== null || toTime !== null) {
+        const rowTime = getRowTimestamp(row);
+        if (rowTime === null) {
+          return false;
+        }
+        if (fromTime !== null && rowTime < fromTime) {
+          return false;
+        }
+        if (toTime !== null && rowTime > toTime) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [fieldFilters, searchText, selectedLevels, table.rows, timestampFrom, timestampTo]);
+
+  const onToggleLevel = useCallback((level: string, checked: boolean) => {
+    setSelectedLevels((previous) => {
+      if (checked) {
+        if (previous.includes(level)) {
+          return previous;
+        }
+        return [...previous, level];
+      }
+      return previous.filter((item) => item !== level);
+    });
+  }, []);
+
+  const onChangeFieldFilter = useCallback((field: string, value: string) => {
+    setFieldFilters((previous) => ({
+      ...previous,
+      [field]: value,
+    }));
+  }, []);
+
+  const exportFiltered = useCallback(
+    async (format: "csv" | "json") => {
+      setIsExportingFiltered(true);
+      try {
+        const blob = await downloadFilteredTable(entryId, table.name, {
+          format,
+          search: searchText,
+          levels: selectedLevels,
+          field_filters: fieldFilters,
+          timestamp_from: timestampFrom === "" ? undefined : timestampFrom,
+          timestamp_to: timestampTo === "" ? undefined : timestampTo,
+        });
+        const filename = `${table.name}.filtered.${format}`;
+        const blobUrl = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = blobUrl;
+        anchor.download = filename;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        URL.revokeObjectURL(blobUrl);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to export filtered rows.";
+        toast.error(message);
+      } finally {
+        setIsExportingFiltered(false);
+      }
+    },
+    [entryId, fieldFilters, searchText, selectedLevels, table.name, timestampFrom, timestampTo],
+  );
 
   const columns = useMemo<ColumnDef<Record<string, unknown>>[]>(() => {
     return columnKeys.map((key) => ({
@@ -344,7 +483,9 @@ function TableRowsDataTable({ table }: { table: TableSummary }) {
 
         return (
           <button
-            className={"block max-w-[36ch] cursor-pointer truncate text-left font-mono text-xs hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"}
+            className={
+              "block max-w-[36ch] cursor-pointer truncate text-left font-mono text-xs hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            }
             onClick={() =>
               setCellPreview({
                 title: `${key} · row ${row.index + 1}`,
@@ -354,7 +495,9 @@ function TableRowsDataTable({ table }: { table: TableSummary }) {
             title={displayValue}
             type={"button"}
           >
-            <span className={value === null || value === undefined ? "text-muted-foreground" : undefined}>{displayValue}</span>
+            <span className={value === null || value === undefined ? "text-muted-foreground" : undefined}>
+              {displayValue}
+            </span>
           </button>
         );
       },
@@ -383,20 +526,96 @@ function TableRowsDataTable({ table }: { table: TableSummary }) {
     <>
       <DataTable
         columns={columns}
-        data={table.rows}
+        data={filteredRows}
         onColumnVisibilityChange={setColumnVisibility}
         onPaginationChange={setPagination}
         onSortingChange={setSorting}
         state={{ sorting, columnVisibility, pagination }}
         toolbar={(reactTable) => (
-          <div className={"flex items-center justify-end"}>
+          <div className={"flex w-full flex-wrap items-center gap-2"}>
+            <Input
+              className={"h-8 w-56"}
+              onChange={(event) => setSearchText(event.target.value)}
+              placeholder={"Search table..."}
+              value={searchText}
+            />
+
+            {filterableFieldKeys.map((fieldKey) => (
+              <Input
+                className={"h-8 w-40"}
+                key={fieldKey}
+                onChange={(event) => onChangeFieldFilter(fieldKey, event.target.value)}
+                placeholder={`Filter ${fieldKey}`}
+                value={fieldFilters[fieldKey] ?? ""}
+              />
+            ))}
+
+            <Input
+              className={"h-8 w-52"}
+              onChange={(event) => setTimestampFrom(event.target.value)}
+              type={"datetime-local"}
+              value={timestampFrom}
+            />
+            <Input
+              className={"h-8 w-52"}
+              onChange={(event) => setTimestampTo(event.target.value)}
+              type={"datetime-local"}
+              value={timestampTo}
+            />
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size={"sm"} variant={"outline"}>
+                  Levels {selectedLevels.length > 0 ? `(${selectedLevels.length})` : ""}
+                  <ChevronDownIcon />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align={"start"}>
+                {availableLevelOptions.length === 0 ? (
+                  <DropdownMenuItem disabled>No level values</DropdownMenuItem>
+                ) : (
+                  availableLevelOptions.map((level) => (
+                    <DropdownMenuCheckboxItem
+                      checked={selectedLevels.includes(level)}
+                      key={level}
+                      onCheckedChange={(checked) => onToggleLevel(level, checked === true)}
+                    >
+                      {level}
+                    </DropdownMenuCheckboxItem>
+                  ))
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button disabled={isExportingFiltered} size={"sm"} variant={"outline"}>
+                  {isExportingFiltered ? <Spinner /> : <DownloadIcon />}
+                  Export Filtered
+                  <ChevronDownIcon />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align={"start"}>
+                <DropdownMenuItem onClick={() => void exportFiltered("csv")}>CSV</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => void exportFiltered("json")}>JSON</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <Badge className={"ml-auto"} variant={"secondary"}>
+              {filteredRows.length.toLocaleString()} of {table.rows.length.toLocaleString()} rows
+            </Badge>
+
             <DataTableViewOptions table={reactTable} />
           </div>
         )}
       />
 
       {cellPreview !== null && (
-        <CellValuePreviewDialog onClose={() => setCellPreview(null)} title={cellPreview.title} value={cellPreview.value} />
+        <CellValuePreviewDialog
+          onClose={() => setCellPreview(null)}
+          title={cellPreview.title}
+          value={cellPreview.value}
+        />
       )}
     </>
   );
@@ -424,7 +643,7 @@ function CellValuePreviewDialog({ onClose, title, value }: { onClose: () => void
           {previewValue !== null ? (
             <JsonTreeNode depth={0} label={null} value={previewValue} />
           ) : (
-            <pre className={"font-mono text-xs whitespace-pre-wrap break-all"}>{formatTableCellValue(value)}</pre>
+            <pre className={"whitespace-pre-wrap break-all font-mono text-xs"}>{formatTableCellValue(value)}</pre>
           )}
         </div>
       </DialogContent>
@@ -444,12 +663,12 @@ function JsonTreeNode({ label, value, depth }: { label: string | null; value: un
         </div>
 
         {value.length === 0 ? (
-          <div className={"font-mono text-xs text-muted-foreground"} style={{ paddingLeft: `${(depth + 1) * 0.9}rem` }}>
+          <div className={"font-mono text-muted-foreground text-xs"} style={{ paddingLeft: `${(depth + 1) * 0.9}rem` }}>
             Empty array.
           </div>
         ) : (
-          value.map((item, index) => (
-            <JsonTreeNode depth={depth + 1} key={`${depth}-${index}`} label={String(index)} value={item} />
+          value.map((item) => (
+            <JsonTreeNode depth={depth + 1} key={`${depth}-${safeSerialize(item)}`} label={null} value={item} />
           ))
         )}
       </div>
@@ -467,7 +686,7 @@ function JsonTreeNode({ label, value, depth }: { label: string | null; value: un
         </div>
 
         {entries.length === 0 ? (
-          <div className={"font-mono text-xs text-muted-foreground"} style={{ paddingLeft: `${(depth + 1) * 0.9}rem` }}>
+          <div className={"font-mono text-muted-foreground text-xs"} style={{ paddingLeft: `${(depth + 1) * 0.9}rem` }}>
             Empty object.
           </div>
         ) : (
@@ -546,6 +765,52 @@ function safeSerialize(value: unknown) {
   } catch {
     return "[unserializable value]";
   }
+}
+
+function normalizeLevel(value: string) {
+  const normalized = value.trim().toUpperCase();
+  if (normalized === "WARNING") {
+    return "WARN";
+  }
+  return normalized;
+}
+
+function getRowLevel(row: Record<string, unknown>) {
+  for (const key of ["log_level", "level", "severity"]) {
+    const value = row[key];
+    if (typeof value === "string" && value.trim() !== "") {
+      return normalizeLevel(value);
+    }
+  }
+  return "";
+}
+
+function parseTimestampInput(value: string) {
+  const trimmed = value.trim();
+  if (trimmed === "") {
+    return null;
+  }
+
+  const date = new Date(trimmed);
+  if (Number.isNaN(date.valueOf())) {
+    return null;
+  }
+  return date;
+}
+
+function getRowTimestamp(row: Record<string, unknown>) {
+  for (const key of ["timestamp", "ts", "time"]) {
+    const value = row[key];
+    if (typeof value !== "string") {
+      continue;
+    }
+
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.valueOf())) {
+      return parsed;
+    }
+  }
+  return null;
 }
 
 function getDefaultColumnVisibility(columnKeys: string[], rows: Record<string, unknown>[]) {

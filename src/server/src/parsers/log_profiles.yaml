@@ -1,0 +1,84 @@
+profiles:
+  default:
+    domain: "unknown"
+    cache_confidence_threshold: 0.8
+    llm_heuristic_fallback_threshold: 0.7
+    expected_fields: []
+    expected_types: {}
+    hints: {}
+  etch_sensor_csv:
+    domain: "semiconductor"
+    cache_confidence_threshold: 0.8
+    llm_heuristic_fallback_threshold: 0.7
+    expected_fields:
+      - "timestamp"
+      - "tool_id"
+      - "chamber_id"
+      - "wafer_id"
+      - "lot_id"
+      - "sensor_name"
+      - "sensor_value"
+      - "unit"
+    expected_types:
+      timestamp: "TEXT"
+      tool_id: "TEXT"
+      chamber_id: "TEXT"
+      wafer_id: "TEXT"
+      lot_id: "TEXT"
+      sensor_name: "TEXT"
+      sensor_value: "REAL"
+      unit: "TEXT"
+    hints:
+      time_column: "timestamp"
+      primary_key: "timestamp"
+      units_column: "unit"
+  lam_alarm_json:
+    domain: "semiconductor"
+    cache_confidence_threshold: 0.8
+    llm_heuristic_fallback_threshold: 0.7
+    expected_fields:
+      - "timestamp"
+      - "tool_id"
+      - "chamber_id"
+      - "alarm_code"
+      - "severity"
+      - "message"
+      - "wafer_id"
+      - "lot_id"
+    expected_types:
+      timestamp: "TEXT"
+      tool_id: "TEXT"
+      chamber_id: "TEXT"
+      alarm_code: "TEXT"
+      severity: "TEXT"
+      message: "TEXT"
+      wafer_id: "TEXT"
+      lot_id: "TEXT"
+    hints:
+      time_column: "timestamp"
+      primary_key: "alarm_code"
+      severity_column: "severity"
+  recipe_xml:
+    domain: "semiconductor"
+    cache_confidence_threshold: 0.8
+    llm_heuristic_fallback_threshold: 0.7
+    expected_fields:
+      - "timestamp"
+      - "tool_id"
+      - "recipe_name"
+      - "step_id"
+      - "parameter_name"
+      - "parameter_value"
+      - "unit"
+    expected_types:
+      timestamp: "TEXT"
+      tool_id: "TEXT"
+      recipe_name: "TEXT"
+      step_id: "TEXT"
+      parameter_name: "TEXT"
+      parameter_value: "TEXT"
+      unit: "TEXT"
+    hints:
+      time_column: "timestamp"
+      primary_key: "step_id"
+      units_column: "unit"

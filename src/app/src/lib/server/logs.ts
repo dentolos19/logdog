@@ -4,6 +4,7 @@ export type LogEntry = {
   id: string;
   user_id: string;
   name: string;
+  profile_name?: string | null;
   created_at: string;
 };
 
@@ -69,6 +70,15 @@ export type ProcessEnqueuedResponse = {
   errors: string[];
 };
 
+export type FilteredExportPayload = {
+  format: "csv" | "json";
+  search?: string;
+  levels?: string[];
+  field_filters?: Record<string, string>;
+  timestamp_from?: string;
+  timestamp_to?: string;
+};
+
 export type DashboardStats = {
   log_group_count: number;
   total_files: number;
@@ -107,10 +117,12 @@ type MessageResponse = {
 
 type CreateLogEntryPayload = {
   name: string;
+  profile_name?: string;
 };
 
 type UpdateLogEntryPayload = {
   name: string;
+  profile_name?: string;
 };
 
 type CreateProcessPayload = {
@@ -221,6 +233,22 @@ export async function downloadTableXlsx(entryId: string, tableName: string) {
   if (!response.ok) {
     const payload = await response.text();
     throw new Error(`Request failed (${response.status}): ${payload}`);
+  }
+
+  return response.blob();
+}
+
+export async function downloadFilteredTable(entryId: string, tableName: string, payload: FilteredExportPayload) {
+  const response = await $fetch(`/logs/${entryId}/tables/${tableName}/download/filtered`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const rawPayload = await response.text();
+    throw new Error(`Request failed (${response.status}): ${rawPayload}`);
   }
 
   return response.blob();

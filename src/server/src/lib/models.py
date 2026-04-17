@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import declarative_base, relationship
 
@@ -56,6 +56,7 @@ class LogEntry(Base):
     )
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     name = Column(String, nullable=False)
+    profile_name = Column(String, nullable=True, default="default")
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     user = relationship("User", back_populates="entries")
@@ -145,3 +146,57 @@ class LogProcess(Base):
 
     entry = relationship("LogEntry", back_populates="processes")
     file = relationship("LogFile", back_populates="processes")
+
+
+class LogSchemaCacheEntry(Base):
+    __tablename__ = "log_schema_cache_entries"
+
+    id = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        index=True,
+        nullable=False,
+        default=uuid.uuid4,
+    )
+    cache_key = Column(String(128), nullable=False, unique=True, index=True)
+    format_name = Column(String, nullable=False, index=True)
+    detected_format = Column(String, nullable=False, index=True)
+    structural_class = Column(String, nullable=False)
+    domain = Column(String, nullable=False, default="unknown", index=True)
+    profile_name = Column(String, nullable=True, index=True)
+    parser_key = Column(String, nullable=False, default="unified")
+    format_confidence = Column(Float, nullable=False, default=0.0)
+    sample_hash = Column(String(64), nullable=False, index=True)
+    fingerprint = Column(String(64), nullable=False, index=True)
+    columns = Column(Text, nullable=False)
+    extraction_strategy = Column(String, nullable=False, default="per_line")
+    success_count = Column(Integer, nullable=False, default=0)
+    failure_count = Column(Integer, nullable=False, default=0)
+    access_count = Column(Integer, nullable=False, default=0)
+    last_accessed = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class LogFewShotExample(Base):
+    __tablename__ = "log_few_shot_examples"
+
+    id = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        index=True,
+        nullable=False,
+        default=uuid.uuid4,
+    )
+    signature = Column(String(64), nullable=False, unique=True, index=True)
+    format_name = Column(String, nullable=False, index=True)
+    domain = Column(String, nullable=False, default="unknown", index=True)
+    profile_name = Column(String, nullable=True, index=True)
+    fingerprint = Column(String(64), nullable=True, index=True)
+    confidence = Column(Float, nullable=False, default=1.0)
+    usage_count = Column(Integer, nullable=False, default=0)
+    sample_lines = Column(Text, nullable=False)
+    schema = Column(Text, nullable=False)
+    last_used = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())

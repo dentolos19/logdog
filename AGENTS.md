@@ -41,3 +41,23 @@ This repository is composed of two projects.
 ## Coding Conventions
 
 - Use existing components under `src/app/src/components/ui/*` instead of introducing new UI primitives.
+
+## Parsing Pipeline Notes
+
+- The preprocessor now supports profile-aware adaptive cache lookup before heuristic and LLM format classification.
+- Known structured formats are routed to deterministic parser keys (`json_lines`, `csv`, `syslog`, `apache_access`, `nginx_access`, `logfmt`, `key_value`) and unknown formats fall back to `unified`.
+- Archive payloads (`zip`, `gzip`, `tar`) are expanded into synthetic file names (`outer:inner`) before classification and parsing.
+
+## Evaluation CLI
+
+- Run parser quality evaluation with gold data from the server project root:
+  - `python -m tools.eval_logs --input ./samples/eval`
+- Supported case layouts:
+  - `name.<raw_ext>` paired with `name.gold.json`
+  - `<case_dir>/raw.<ext>` paired with `<case_dir>/gold.json`
+
+## Filtered Export API
+
+- Server-side filtered exports are available at `POST /logs/{entry_id}/tables/{table_name}/download/filtered`.
+- Supported export formats: `csv`, `json`.
+- Supported filters: `search`, `levels`, `field_filters`, `timestamp_from`, `timestamp_to`.

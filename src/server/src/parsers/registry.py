@@ -168,6 +168,27 @@ class _ParserRegistry:
             self._pipelines.clear()
 
         try:
+            from parsers.deterministic import (
+                ApacheAccessPipeline,
+                CsvPipeline,
+                JsonLinesPipeline,
+                KeyValuePipeline,
+                LogfmtPipeline,
+                NginxAccessPipeline,
+                SyslogPipeline,
+            )
+
+            self.register(JsonLinesPipeline())
+            self.register(CsvPipeline())
+            self.register(SyslogPipeline())
+            self.register(ApacheAccessPipeline())
+            self.register(NginxAccessPipeline())
+            self.register(LogfmtPipeline())
+            self.register(KeyValuePipeline())
+        except Exception as error:  # noqa: BLE001
+            logger.warning("Could not register deterministic pipelines: %s", error)
+
+        try:
             from parsers.unified.pipeline import UnifiedPipeline
 
             self.register(UnifiedPipeline())

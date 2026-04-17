@@ -6,6 +6,7 @@ from typing import Any, TypeVar
 from pydantic import BaseModel
 
 from lib.ai import get_generative_model, DEFAULT_MODEL, DEFAULT_TEMPERATURE, DEFAULT_MAX_TOKENS
+from parsers.few_shot_store import FewShotStore
 from parsers.llm_contracts import (
     LlmInvocationResult,
     LlmSchemaResponse,
@@ -30,11 +31,15 @@ class LlmEngine:
         temperature: float = DEFAULT_TEMPERATURE,
         max_tokens: int = DEFAULT_MAX_TOKENS,
         budget_usd: float | None = None,
+        few_shot_store: FewShotStore | None = None,
+        profile_definition: dict[str, Any] | None = None,
     ):
         self.model = model or DEFAULT_MODEL
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.budget_usd = budget_usd
+        self.few_shot_store = few_shot_store or FewShotStore()
+        self.profile_definition = profile_definition or {}
         self._total_input_tokens = 0
         self._total_output_tokens = 0
         self._total_cost_usd = 0.0
@@ -59,6 +64,7 @@ class LlmEngine:
         sample_lines: list[str],
         few_shot_examples: list[str] | None = None,
         max_tokens: int | None = None,
+        profile_context: dict[str, Any] | None = None,
     ) -> LlmInvocationResult:
         system_prompt = (
             "You are an expert log format analyst. Analyze the provided log samples and detect the format, "
@@ -67,6 +73,27 @@ class LlmEngine:
 
         sample_text = "\n".join(line[:2000] for line in sample_lines[:50])
         prompt = f"Analyze these log lines and detect the format:\n\n```\n{sample_text}\n```"
+
+        merged_profile_context = dict(self.profile_definition)
+        if profile_context:
+            merged_profile_context.update(profile_context)
+        if merged_profile_context:
+            prompt = (
+                f"{prompt}\n\n"
+                "Profile hints for this dataset:\n"
+                f"```json\n{_truncate_json(merged_profile_context, max_length=1200)}\n```"
+            )
+
+        if few_shot_examples is None:
+            format_hint = str(merged_profile_context.get("detected_format", "unknown"))
+            domain = str(merged_profile_context.get("domain", "unknown"))
+            profile_name = merged_profile_context.get("name")
+            few_shot_examples = self.few_shot_store.get_example_texts(
+                format_name=format_hint,
+                domain=domain,
+                profile_name=str(profile_name) if isinstance(profile_name, str) else None,
+                max_count=3,
+            )
 
         if few_shot_examples:
             examples_text = "\n\n".join(
@@ -87,6 +114,7 @@ class LlmEngine:
         detected_format: str = "unknown",
         few_shot_schemas: list[dict[str, Any]] | None = None,
         max_tokens: int | None = None,
+        profile_context: dict[str, Any] | None = None,
     ) -> LlmInvocationResult:
         system_prompt = (
             "You are an expert log schema inference engine. Given sample log lines, infer a database schema "
@@ -100,6 +128,16 @@ class LlmEngine:
             f"Infer a schema from these log lines:\n\n```\n{sample_text}\n```\n\n"
             "Return column definitions with appropriate SQL types and descriptions."
         )
+
+        merged_profile_context = dict(self.profile_definition)
+        if profile_context:
+            merged_profile_context.update(profile_context)
+        if merged_profile_context:
+            prompt = (
+                f"{prompt}\n\n"
+                "Profile schema expectations:\n"
+                f"```json\n{_truncate_json(merged_profile_context, max_length=1400)}\n```"
+            )
 
         if few_shot_schemas:
             schema_examples = "\n\n".join(

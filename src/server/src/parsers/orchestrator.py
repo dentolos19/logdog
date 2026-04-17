@@ -1,9 +1,13 @@
 from __future__ import annotations
 
-import os
+import gzip
+import io
 import json
 import logging
+import os
+import tarfile
 import uuid
+import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
@@ -21,6 +25,7 @@ from lib.storage import download_file
 from parsers.unified.binary import BinaryHandler
 from parsers.contracts import ClassificationResult, ParserPipelineResult
 from parsers.preprocessor import FileInput, LogPreprocessorService
+from parsers.profiles import get_profile
 from parsers.registry import ParserRegistry
 
 logger = logging.getLogger(__name__)
@@ -60,7 +65,9 @@ def create_process(
 
         classification_json: str | None = None
         if file_inputs:
-            classification = LogPreprocessorService(table_name="logs").classify(file_inputs)
+            classification = LogPreprocessorService(table_name="logs", profile_name=entry.profile_name).classify(
+                file_inputs
+            )
             classification_json = classification.model_dump_json()
 
         process = LogProcess(
@@ -122,7 +129,9 @@ def orchestrate_files(
         register_pipelines()
         init_megabase(megabase_db)
 
-        preprocessor = LogPreprocessorService(table_name="logs", use_llm=use_llm)
+        entry = db.query(LogEntry).filter_by(id=_uuid_or_raw(entry_id)).first()
+        profile_name = entry.profile_name if entry is not None else "default"
+        preprocessor = LogPreprocessorService(table_name="logs", use_llm=use_llm, profile_name=profile_name)
         if use_llm:
             classification = preprocessor.classify_with_llm(file_inputs)
         else:
@@ -161,6 +170,9 @@ def run_parse_job(
         process.error = None
         db.commit()
 
+        entry = db.query(LogEntry).filter_by(id=_uuid_or_raw(entry_id)).first()
+        profile_name = entry.profile_name if entry is not None else "default"
+
         file_inputs = _resolve_file_inputs(
             db=db,
             entry_id=entry_id,
@@ -171,7 +183,7 @@ def run_parse_job(
             _fail(db, process, "No file inputs available to parse.")
             return
 
-        preprocessor = LogPreprocessorService(table_name="logs", use_llm=True)
+        preprocessor = LogPreprocessorService(table_name="logs", use_llm=True, profile_name=profile_name)
         classification = preprocessor.classify_with_llm(file_inputs)
         process.classification = classification.model_dump_json()
         db.commit()
@@ -183,7 +195,12 @@ def run_parse_job(
 
         _persist_artifacts(db=db, megabase_db=megabase_db, entry_id=entry_id, result=pipeline_result)
 
-        _record_feedback(file_inputs=file_inputs, classification=classification, result=pipeline_result)
+        _record_feedback(
+            file_inputs=file_inputs,
+            classification=classification,
+            result=pipeline_result,
+            profile_name=profile_name,
+        )
 
         process.result = pipeline_result.model_dump_json()
         process.status = "completed"
@@ -230,21 +247,22 @@ def _resolve_file_inputs(
             logger.warning("Skipping file %s because storage payload could not be downloaded.", asset.name)
             continue
 
-        content = _decode_bytes(raw_bytes)
-        file_inputs.append(
-            FileInput(
-                file_id=str(file_row.id),
-                filename=asset.name,
-                content=content,
+        decoded_members = _decode_payload(asset.name, raw_bytes)
+        for synthetic_name, content in decoded_members:
+            file_inputs.append(
+                FileInput(
+                    file_id=str(file_row.id),
+                    filename=synthetic_name,
+                    content=content,
+                )
             )
-        )
 
     return file_inputs
 
 
-def _decode_bytes(raw_bytes: bytes) -> str:
+def _decode_bytes(raw_bytes: bytes, filename: str) -> str:
     binary_handler = BinaryHandler()
-    if binary_handler.is_binary_extension("file.bin"):
+    if binary_handler.is_binary_extension(filename):
         decode_result = binary_handler.analyze_and_decode(raw_bytes)
         if decode_result.decoded_lines:
             return "\n".join(decode_result.decoded_lines)
@@ -258,31 +276,101 @@ def _decode_bytes(raw_bytes: bytes) -> str:
             return raw_bytes.decode("utf-8", errors="ignore")
 
 
+def _decode_payload(filename: str, raw_bytes: bytes) -> list[tuple[str, str]]:
+    archive_members = _extract_archive_members(filename, raw_bytes)
+    if archive_members:
+        expanded: list[tuple[str, str]] = []
+        for member_name, member_bytes in archive_members:
+            synthetic_name = f"{filename}:{member_name}"
+            expanded.append((synthetic_name, _decode_bytes(member_bytes, synthetic_name)))
+        return expanded
+
+    return [(filename, _decode_bytes(raw_bytes, filename))]
+
+
+def _extract_archive_members(filename: str, raw_bytes: bytes) -> list[tuple[str, bytes]]:
+    if raw_bytes.startswith(b"PK\x03\x04"):
+        with zipfile.ZipFile(io.BytesIO(raw_bytes)) as zf:
+            members: list[tuple[str, bytes]] = []
+            for info in zf.infolist():
+                if info.is_dir():
+                    continue
+                members.append((info.filename, zf.read(info.filename)))
+            return members
+
+    if raw_bytes.startswith(b"\x1f\x8b\x08"):
+        decompressed = gzip.decompress(raw_bytes)
+        base_name = filename[:-3] if filename.lower().endswith(".gz") else f"{filename}.decompressed"
+        return [(base_name, decompressed)]
+
+    if len(raw_bytes) > 262 and raw_bytes[257:262] == b"ustar":
+        members = []
+        with tarfile.open(fileobj=io.BytesIO(raw_bytes), mode="r:*") as tf:
+            for member in tf.getmembers():
+                if not member.isfile():
+                    continue
+                extracted = tf.extractfile(member)
+                if extracted is None:
+                    continue
+                members.append((member.name, extracted.read()))
+        return members
+
+    return []
+
+
 def _parse_and_merge(file_inputs: list[FileInput], classification: ClassificationResult) -> ParserPipelineResult:
-    parser_key = classification.selected_parser_key or "unified"
+    grouped_inputs: dict[str, list[FileInput]] = {}
+    file_classifications = {(fc.file_id, fc.filename): fc for fc in classification.file_classifications}
 
-    try:
-        pipeline = ParserRegistry.route(parser_key)
-    except KeyError as error:
-        return ParserPipelineResult(
-            table_definitions=[],
-            records={},
-            parser_key="none",
-            warnings=[str(error)],
-            confidence=0.0,
-        )
+    for file_input in file_inputs:
+        file_classification = file_classifications.get((file_input.file_id, file_input.filename))
+        parser_key = _parser_key_for_file(file_classification.detected_format if file_classification else "unknown")
+        grouped_inputs.setdefault(parser_key, []).append(file_input)
 
-    try:
-        return pipeline.ingest(file_inputs, classification)
-    except Exception as error:  # noqa: BLE001
-        logger.exception("Parser '%s' failed", parser_key)
-        return ParserPipelineResult(
-            table_definitions=[],
-            records={},
-            parser_key=parser_key,
-            warnings=[f"Parser '{parser_key}' failed: {error}"],
-            confidence=0.0,
-        )
+    merged_table_definitions = []
+    merged_records: dict[str, list[dict[str, Any]]] = {}
+    merged_warnings: list[str] = []
+    confidence_values: list[float] = []
+
+    for parser_key, parser_inputs in grouped_inputs.items():
+        try:
+            pipeline = ParserRegistry.route(parser_key)
+        except KeyError as error:
+            merged_warnings.append(str(error))
+            continue
+
+        grouped_classification = classification.model_copy(update={"selected_parser_key": parser_key})
+        try:
+            grouped_result = pipeline.ingest(parser_inputs, grouped_classification)
+            merged_table_definitions.extend(grouped_result.table_definitions)
+            merged_records.update(grouped_result.records)
+            merged_warnings.extend(grouped_result.warnings)
+            confidence_values.append(grouped_result.confidence)
+        except Exception as error:  # noqa: BLE001
+            logger.exception("Parser '%s' failed", parser_key)
+            merged_warnings.append(f"Parser '{parser_key}' failed: {error}")
+
+    final_confidence = round(sum(confidence_values) / len(confidence_values), 2) if confidence_values else 0.0
+    return ParserPipelineResult(
+        table_definitions=merged_table_definitions,
+        records=merged_records,
+        parser_key=classification.selected_parser_key or "mixed",
+        warnings=merged_warnings,
+        confidence=final_confidence,
+    )
+
+
+def _parser_key_for_file(detected_format: str) -> str:
+    parser_by_format = {
+        "json_lines": "json_lines",
+        "csv": "csv",
+        "syslog": "syslog",
+        "apache_access": "apache_access",
+        "nginx_access": "nginx_access",
+        "logfmt": "logfmt",
+        "key_value": "key_value",
+    }
+    return parser_by_format.get(detected_format, "unified")
 
 
 def _persist_artifacts(
@@ -416,16 +504,22 @@ def _record_feedback(
     file_inputs: list[FileInput],
     classification: ClassificationResult,
     result: ParserPipelineResult,
+    profile_name: str | None = None,
 ) -> None:
     from parsers.few_shot_store import FewShotStore
     from parsers.schema_cache import SchemaCache
 
     few_shot_store = FewShotStore()
     schema_cache = SchemaCache()
+    profile = get_profile(profile_name)
 
     for file_input in file_inputs:
         file_classification = next(
-            (fc for fc in classification.file_classifications if fc.file_id == file_input.file_id),
+            (
+                fc
+                for fc in classification.file_classifications
+                if fc.file_id == file_input.file_id and fc.filename == file_input.filename
+            ),
             None,
         )
         if not file_classification:
@@ -436,9 +530,11 @@ def _record_feedback(
         if not sample_lines:
             continue
 
+        fingerprint = _fingerprint(sample_lines)
+
         few_shot_store.record_successful_parse(
             format_name=file_classification.detected_format,
-            domain="unknown",
+            domain=profile.domain,
             sample_lines=sample_lines,
             schema={
                 "tables": [
@@ -450,18 +546,30 @@ def _record_feedback(
                 ],
             },
             confidence=file_classification.format_confidence,
+            profile_name=profile_name,
+            fingerprint=fingerprint,
         )
 
     for table_definition in result.table_definitions:
+        sample_lines = (
+            [line for line in file_inputs[0].content.splitlines()[:10] if line.strip()] if file_inputs else []
+        )
+        fingerprint = _fingerprint(sample_lines)
         schema_cache.put(
-            sample_lines=file_inputs[0].content.splitlines()[:10] if file_inputs else [],
+            sample_lines=sample_lines,
             format_name=classification.dominant_format,
-            domain="unknown",
+            domain=profile.domain,
             columns=[
                 {"name": col.name, "sql_type": col.sql_type, "description": col.description, "nullable": col.nullable}
                 for col in table_definition.columns
             ],
             extraction_strategy="per_line",
+            profile_name=profile_name,
+            detected_format=classification.dominant_format,
+            structural_class=classification.structural_class.value,
+            parser_key=classification.selected_parser_key,
+            format_confidence=classification.confidence,
+            fingerprint=fingerprint,
         )
 
 
@@ -477,3 +585,12 @@ def get_pipeline_stats() -> dict[str, Any]:
         "schema_cache": schema_cache.stats(),
         "registered_parsers": sorted(ParserRegistry.registered_keys()),
     }
+
+
+def _fingerprint(sample_lines: list[str]) -> str:
+    if not sample_lines:
+        return "empty"
+
+    from parsers.unified.fingerprint import FingerprintEngine
+
+    return FingerprintEngine().fingerprint(sample_lines).fingerprint

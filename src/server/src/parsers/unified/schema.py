@@ -40,10 +40,17 @@ class SelfCorrectingSchemaInferer:
         sample_lines: list[str],
         format_name: str,
         domain: str = "unknown",
+        profile_name: str | None = None,
+        profile_context: dict[str, Any] | None = None,
     ) -> SchemaInferenceResult:
         warnings: list[str] = []
 
-        cached = self.schema_cache.get(sample_lines=sample_lines[:20], format_name=format_name, domain=domain)
+        cached = self.schema_cache.get(
+            sample_lines=sample_lines[:20],
+            format_name=format_name,
+            domain=domain,
+            profile_name=profile_name,
+        )
         if cached:
             columns = [
                 ColumnDefinition(
@@ -61,11 +68,17 @@ class SelfCorrectingSchemaInferer:
                 from_cache=True,
             )
 
-        few_shot_schemas = self.few_shot_store.get_example_schemas(format_name=format_name, domain=domain, max_count=3)
+        few_shot_schemas = self.few_shot_store.get_example_schemas(
+            format_name=format_name,
+            domain=domain,
+            profile_name=profile_name,
+            max_count=3,
+        )
         invocation = self.llm_engine.infer_schema(
             sample_lines=sample_lines,
             detected_format=format_name,
             few_shot_schemas=few_shot_schemas,
+            profile_context=profile_context,
         )
 
         if not invocation.success or invocation.response is None:
@@ -129,6 +142,11 @@ class SelfCorrectingSchemaInferer:
                 for column in columns
             ],
             extraction_strategy=extraction_strategy,
+            profile_name=profile_name,
+            detected_format=format_name,
+            structural_class=response.format_category.value,
+            parser_key="unified",
+            format_confidence=confidence,
         )
 
         self.few_shot_store.record_successful_parse(
@@ -140,6 +158,7 @@ class SelfCorrectingSchemaInferer:
                 "strategy": extraction_strategy,
             },
             confidence=confidence,
+            profile_name=profile_name,
         )
 
         return SchemaInferenceResult(

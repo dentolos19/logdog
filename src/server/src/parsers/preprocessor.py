@@ -10,6 +10,9 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from parsers.contracts import INGESTION_SCHEMA_VERSION, ClassificationResult, FileClassification, StructuralClass
+from parsers.few_shot_store import FewShotStore
+from parsers.profiles import LogProfileDefinition, get_profile
+from parsers.schema_cache import SchemaCache
 
 logger = logging.getLogger(__name__)
 
@@ -124,15 +127,30 @@ LOG_LEVEL_PATTERN = re.compile(
 
 
 class LogPreprocessorService:
-    def __init__(self, table_name: str = "logs", use_llm: bool = True) -> None:
+    def __init__(
+        self,
+        table_name: str = "logs",
+        use_llm: bool = True,
+        profile_name: str | None = None,
+        schema_cache: SchemaCache | None = None,
+        few_shot_store: FewShotStore | None = None,
+    ) -> None:
         self.table_name = table_name
         self.use_llm = use_llm
+        self.profile_name = (profile_name or "default").strip() or "default"
+        self.profile: LogProfileDefinition = get_profile(self.profile_name)
+        self.schema_cache = schema_cache or SchemaCache()
+        self.few_shot_store = few_shot_store or FewShotStore()
 
     def classify(self, files: list[FileInput]) -> ClassificationResult:
         warnings: list[str] = []
         file_classifications: list[FileClassification] = []
         observations: list[FileObservation] = []
-        diagnostics: dict[str, Any] = {"mode": "heuristic", "files": []}
+        diagnostics: dict[str, Any] = {
+            "mode": "heuristic",
+            "files": [],
+            "profile": self.profile.model_dump(),
+        }
 
         for file_input in files:
             lines = file_input.content.splitlines()
@@ -149,6 +167,55 @@ class LogPreprocessorService:
                         warnings=["File is empty."],
                     )
                 )
+                continue
+
+            sample = [line for line in lines[:50] if line.strip()]
+            fingerprint = self._fingerprint(sample)
+            cached = self.schema_cache.get_by_fingerprint(
+                fingerprint=fingerprint,
+                domain=self.profile.domain,
+                profile_name=self.profile_name,
+                min_confidence=self.profile.cache_confidence_threshold,
+            )
+            if cached is not None:
+                cached_confidence = max(cached.format_confidence, self.profile.cache_confidence_threshold)
+                cached_structural = self._normalize_structural_class(cached.structural_class)
+                observations.append(
+                    FileObservation(
+                        filename=file_input.filename,
+                        line_count=len(lines),
+                        detected_format=DetectedFormat(cached.detected_format)
+                        if cached.detected_format in {item.value for item in DetectedFormat}
+                        else DetectedFormat.UNKNOWN,
+                        format_confidence=round(min(cached_confidence, 1.0), 2),
+                        segmentation_hint=SegmentationStrategy.PER_LINE,
+                        sample_size=min(len(lines), MAX_SAMPLE_LINES),
+                        warnings=[],
+                    )
+                )
+                file_classifications.append(
+                    FileClassification(
+                        file_id=file_input.file_id,
+                        filename=file_input.filename,
+                        detected_format=cached.detected_format,
+                        structural_class=cached_structural,
+                        format_confidence=round(min(cached_confidence, 1.0), 2),
+                        line_count=len(lines),
+                        warnings=[],
+                    )
+                )
+                diagnostics["files"].append(
+                    {
+                        "filename": file_input.filename,
+                        "detected_format": cached.detected_format,
+                        "format_confidence": round(min(cached_confidence, 1.0), 2),
+                        "line_count": len(lines),
+                        "segmentation": SegmentationStrategy.PER_LINE.value,
+                        "source": "adaptive_cache",
+                        "fingerprint": fingerprint,
+                    }
+                )
+                self.schema_cache.record_success(cached.schema_key)
                 continue
 
             detected_format, format_confidence = self._detect_format(lines)
@@ -188,12 +255,14 @@ class LogPreprocessorService:
                     "format_confidence": format_confidence,
                     "line_count": len(lines),
                     "segmentation": segmentation.strategy.value,
+                    "source": "heuristic",
+                    "fingerprint": fingerprint,
                 }
             )
 
         dominant_format = self._dominant_format(observations)
         structural_class_overall = self._dominant_structural_class(file_classifications)
-        selected_parser_key = self._select_parser_key(structural_class_overall)
+        selected_parser_key = self._select_parser_key(structural_class_overall, dominant_format.value)
         confidence = self._compute_confidence(observations)
 
         return ClassificationResult(
@@ -209,7 +278,7 @@ class LogPreprocessorService:
 
     def classify_with_llm(self, files: list[FileInput]) -> ClassificationResult:
         heuristic_result = self.classify(files)
-        if heuristic_result.confidence >= 0.7:
+        if heuristic_result.confidence >= self.profile.llm_heuristic_fallback_threshold:
             return heuristic_result
 
         if not self.use_llm:
@@ -217,10 +286,17 @@ class LogPreprocessorService:
 
         from parsers.llm_engine import LlmEngine
 
-        llm_engine = LlmEngine()
+        llm_engine = LlmEngine(
+            few_shot_store=self.few_shot_store,
+            profile_definition=self.profile.model_dump(),
+        )
         warnings = list(heuristic_result.warnings)
         file_classifications: list[FileClassification] = []
-        diagnostics: dict[str, Any] = {"mode": "llm_hybrid", "files": []}
+        diagnostics: dict[str, Any] = {
+            "mode": "llm_hybrid",
+            "files": [],
+            "profile": self.profile.model_dump(),
+        }
 
         for file_input in files:
             lines = file_input.content.splitlines()
@@ -260,7 +336,22 @@ class LogPreprocessorService:
                 )
                 continue
 
-            llm_result = llm_engine.detect_format(sample_lines=sample_lines)
+            fingerprint = self._fingerprint(sample_lines)
+            few_shot_examples = self.few_shot_store.get_example_texts(
+                format_name=(
+                    file_classification.detected_format if file_classification else DetectedFormat.UNKNOWN.value
+                ),
+                domain=self.profile.domain,
+                profile_name=self.profile_name,
+                fingerprint=fingerprint,
+                max_count=3,
+            )
+
+            llm_result = llm_engine.detect_format(
+                sample_lines=sample_lines,
+                few_shot_examples=few_shot_examples,
+                profile_context=self.profile.model_dump(),
+            )
             if llm_result.success and llm_result.response:
                 response = llm_result.response
                 structural_class = self._llm_category_to_structural_class(response.format_category)
@@ -287,6 +378,7 @@ class LogPreprocessorService:
                         "detected_format": response.format_name,
                         "format_confidence": response.confidence,
                         "source": "llm",
+                        "fingerprint": fingerprint,
                     }
                 )
             else:
@@ -315,7 +407,7 @@ class LogPreprocessorService:
 
         dominant_format = self._dominant_format_from_classifications(file_classifications)
         structural_class_overall = self._dominant_structural_class(file_classifications)
-        selected_parser_key = self._select_parser_key(structural_class_overall)
+        selected_parser_key = self._select_parser_key(structural_class_overall, dominant_format)
         confidence = self._compute_confidence_from_classifications(file_classifications)
 
         return ClassificationResult(
@@ -367,9 +459,20 @@ class LogPreprocessorService:
         return max(counts, key=lambda item: counts[item])
 
     @staticmethod
-    def _select_parser_key(structural_class: StructuralClass) -> str:
-        _ = structural_class
-        return "unified"
+    def _select_parser_key(structural_class: StructuralClass, detected_format: str) -> str:
+        if structural_class == StructuralClass.UNSTRUCTURED:
+            return "unified"
+
+        parser_by_format = {
+            DetectedFormat.JSON_LINES.value: "json_lines",
+            DetectedFormat.CSV.value: "csv",
+            DetectedFormat.SYSLOG.value: "syslog",
+            DetectedFormat.APACHE_ACCESS.value: "apache_access",
+            DetectedFormat.NGINX_ACCESS.value: "nginx_access",
+            DetectedFormat.LOGFMT.value: "logfmt",
+            DetectedFormat.KEY_VALUE.value: "key_value",
+        }
+        return parser_by_format.get(detected_format, "unified")
 
     def _detect_format(self, lines: list[str]) -> tuple[DetectedFormat, float]:
         sample = [line for line in lines[:50] if line.strip()]
@@ -481,7 +584,7 @@ class LogPreprocessorService:
         average_format_confidence = sum(observation.format_confidence for observation in observations) / len(
             observations
         )
-        base = average_format_confidence * 0.7
+        base = average_format_confidence
 
         total_warnings = sum(len(observation.warnings) for observation in observations)
         if total_warnings > 0:
@@ -567,8 +670,31 @@ class LogPreprocessorService:
 
         average_confidence = sum(fc.format_confidence for fc in file_classifications) / len(file_classifications)
         total_warnings = sum(len(fc.warnings) for fc in file_classifications)
-        base = average_confidence * 0.7
+        base = average_confidence
         if total_warnings > 0:
             base -= min(total_warnings * 0.05, 0.2)
 
         return round(max(0.0, min(base, 1.0)), 2)
+
+    @staticmethod
+    def _fingerprint(sample_lines: list[str]) -> str:
+        if not sample_lines:
+            return "empty"
+        try:
+            from parsers.unified.fingerprint import FingerprintEngine
+
+            return FingerprintEngine().fingerprint(sample_lines).fingerprint
+        except Exception:
+            content = "\n".join(sample_lines[:20])
+            return str(abs(hash(content)))
+
+    @staticmethod
+    def _normalize_structural_class(value: str) -> StructuralClass:
+        normalized = (value or "").strip().lower()
+        if normalized == StructuralClass.STRUCTURED.value:
+            return StructuralClass.STRUCTURED
+        if normalized == StructuralClass.SEMI_STRUCTURED.value:
+            return StructuralClass.SEMI_STRUCTURED
+        if normalized == StructuralClass.BINARY.value:
+            return StructuralClass.BINARY
+        return StructuralClass.UNSTRUCTURED
