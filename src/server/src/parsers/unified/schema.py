@@ -7,6 +7,7 @@ from typing import Any
 from parsers.contracts import ColumnDefinition
 from parsers.few_shot_store import FewShotStore
 from parsers.llm_engine import LlmEngine
+from parsers.normalization import sanitize_identifier, unique_identifier
 from parsers.schema_cache import SchemaCache
 
 NULL_RATE_THRESHOLD = 0.6
@@ -176,9 +177,7 @@ class SelfCorrectingSchemaInferer:
         seen: set[str] = set()
 
         for column in columns:
-            safe_name = SelfCorrectingSchemaInferer._sanitize(column.name)
-            if safe_name in seen:
-                continue
+            safe_name = unique_identifier(SelfCorrectingSchemaInferer._sanitize(column.name), seen)
             seen.add(safe_name)
             result.append(
                 ColumnDefinition(
@@ -239,10 +238,4 @@ class SelfCorrectingSchemaInferer:
 
     @staticmethod
     def _sanitize(name: str) -> str:
-        sanitized = re.sub(r"[^a-zA-Z0-9_]", "_", name.strip())
-        sanitized = re.sub(r"_+", "_", sanitized).strip("_").lower()
-        if not sanitized:
-            return "field"
-        if sanitized[0].isdigit():
-            return f"field_{sanitized}"
-        return sanitized
+        return sanitize_identifier(name)

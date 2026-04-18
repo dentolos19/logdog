@@ -834,7 +834,6 @@ function isDefaultHiddenColumn(key: string) {
     normalizedKey === "id" ||
     normalizedKey === "parse_confidence" ||
     normalizedKey === "message" ||
-    normalizedKey === "extra" ||
     normalizedKey.startsWith("source") ||
     normalizedKey.endsWith("_id")
   );

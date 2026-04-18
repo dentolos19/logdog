@@ -6,6 +6,8 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from typing import Any
 
+from parsers.normalization import coerce_scalar, sanitize_identifier, unique_identifier
+
 MULTILINE_CONTINUATION_RE = re.compile(r"^(?:\s+at\s|Caused by:|\.{3}\s*\d+\s*more|\s{4,}\S|\t\S)")
 KEY_VALUE_RE = re.compile(r"(\w[\w.\-]*)\s*[:=]\s*(\"[^\"]*\"|\S+)")
 LOG_LEVEL_RE = re.compile(
@@ -253,17 +255,24 @@ class HierarchicalParser:
             return None
 
         fields: dict[str, Any] = {}
+        used_names: set[str] = set()
         for key, value in root.attrib.items():
-            fields[f"attr_{self._sanitize(key)}"] = value
+            field_name = unique_identifier(f"attr_{self._sanitize(key)}", used_names)
+            used_names.add(field_name)
+            fields[field_name] = value
 
         for child in root.iter():
             if child is root:
                 continue
             tag = self._sanitize(child.tag)
             if child.text and child.text.strip() and len(child) == 0:
-                fields[tag] = child.text.strip()
+                field_name = unique_identifier(tag, used_names)
+                used_names.add(field_name)
+                fields[field_name] = child.text.strip()
             for key, value in child.attrib.items():
-                fields[f"{tag}_attr_{self._sanitize(key)}"] = value
+                field_name = unique_identifier(f"{tag}_attr_{self._sanitize(key)}", used_names)
+                used_names.add(field_name)
+                fields[field_name] = value
 
         return fields or None
 
@@ -285,46 +294,39 @@ class HierarchicalParser:
             fields.setdefault("log_level", log_level_match.group(1).upper())
 
     def _flatten_dict(self, value: dict[str, Any], prefix: str = "", depth: int = 0) -> dict[str, Any]:
-        if depth > 4:
-            return {prefix.rstrip("_") or "value": json.dumps(value, ensure_ascii=True)}
+        used_names: set[str] = set()
 
-        result: dict[str, Any] = {}
-        for key, raw in value.items():
-            safe_key = self._sanitize(key)
-            full_key = f"{prefix}{safe_key}" if prefix else safe_key
-            if isinstance(raw, dict):
-                result.update(self._flatten_dict(raw, prefix=f"{full_key}_", depth=depth + 1))
-            elif isinstance(raw, list):
-                if len(raw) <= 10 and all(not isinstance(item, (dict, list)) for item in raw):
-                    result[full_key] = ",".join(str(item) for item in raw)
+        def _flatten(current: dict[str, Any], current_prefix: str = "", current_depth: int = 0) -> dict[str, Any]:
+            if current_depth > 4:
+                key = unique_identifier(current_prefix.rstrip("_") or "value", used_names)
+                used_names.add(key)
+                return {key: json.dumps(current, ensure_ascii=True)}
+
+            result: dict[str, Any] = {}
+            for key, raw in current.items():
+                safe_key = self._sanitize(key)
+                full_key = f"{current_prefix}{safe_key}" if current_prefix else safe_key
+                if isinstance(raw, dict):
+                    result.update(_flatten(raw, current_prefix=f"{full_key}_", current_depth=current_depth + 1))
+                elif isinstance(raw, list):
+                    unique_key = unique_identifier(full_key, used_names)
+                    used_names.add(unique_key)
+                    if len(raw) <= 10 and all(not isinstance(item, (dict, list)) for item in raw):
+                        result[unique_key] = ",".join(str(item) for item in raw)
+                    else:
+                        result[unique_key] = json.dumps(raw, ensure_ascii=True)
                 else:
-                    result[full_key] = json.dumps(raw, ensure_ascii=True)
-            else:
-                result[full_key] = raw
-        return result
+                    unique_key = unique_identifier(full_key, used_names)
+                    used_names.add(unique_key)
+                    result[unique_key] = raw
+            return result
+
+        return _flatten(value, prefix, depth)
 
     @staticmethod
     def _sanitize(value: str) -> str:
-        sanitized = re.sub(r"[^a-zA-Z0-9_]", "_", value.strip())
-        sanitized = re.sub(r"_+", "_", sanitized).strip("_").lower()
-        if not sanitized:
-            return "field"
-        if sanitized[0].isdigit():
-            return f"field_{sanitized}"
-        return sanitized
+        return sanitize_identifier(value)
 
     @staticmethod
     def _cast_value(value: str) -> Any:
-        lowered = value.lower()
-        if lowered in {"null", "none", ""}:
-            return None
-        if lowered == "true":
-            return True
-        if lowered == "false":
-            return False
-        try:
-            if "." in value:
-                return float(value)
-            return int(value)
-        except ValueError:
-            return value
+        return coerce_scalar(value)

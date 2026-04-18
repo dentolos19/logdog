@@ -24,6 +24,7 @@ from lib.models import Asset, LogEntry, LogFile, LogProcess, LogTable
 from lib.storage import download_file
 from parsers.unified.binary import BinaryHandler
 from parsers.contracts import ClassificationResult, ParserPipelineResult
+from parsers.normalization import sanitize_db_value
 from parsers.preprocessor import FileInput, LogPreprocessorService
 from parsers.profiles import get_profile
 from parsers.registry import ParserRegistry
@@ -483,9 +484,10 @@ def _insert_rows(megabase_db: Session, table_definition: Any, rows: list[dict[st
 
 
 def _normalize_value(value: Any) -> Any:
-    if isinstance(value, (dict, list)):
-        return json.dumps(value, ensure_ascii=True)
-    return value
+    sanitized = sanitize_db_value(value)
+    if isinstance(sanitized, (dict, list)):
+        return json.dumps(sanitized, ensure_ascii=True)
+    return sanitized
 
 
 def _sql_to_megabase_type(sql_type: str) -> str:

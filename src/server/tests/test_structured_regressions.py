@@ -1,13 +1,19 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 from parsers.orchestrator import _parse_and_merge
+from parsers.contracts import ClassificationResult, ColumnDefinition, StructuralClass
+from parsers.deterministic import JsonLinesPipeline
+from parsers.normalization import coerce_scalar, sanitize_db_value, sanitize_identifier, unique_identifier
 from parsers.preprocessor import FileInput, LogPreprocessorService
 from parsers.schema_cache import SchemaCache
+from parsers.unified.pipeline import UnifiedPipeline
 
 
 SAMPLES_DIR = Path(__file__).resolve().parents[3] / "samples" / "test"
+ROOT_SAMPLES_DIR = Path(__file__).resolve().parents[3] / "samples"
 
 
 def _parse_sample(filename: str):
@@ -139,3 +145,62 @@ def test_xml_sample_produces_normalized_recipe_tables() -> None:
 
     parser_diag = result.diagnostics["parsers"]["xml"]
     assert parser_diag["quality_gate_failed"] is False
+
+
+def test_json_lines_parser_falls_back_to_text_rows() -> None:
+    content = (ROOT_SAMPLES_DIR / "alarm_events.log").read_text(encoding="utf-8")
+
+    tables, warnings = JsonLinesPipeline()._parse_file(content, "alarm_events.log")
+
+    assert tables
+    assert len(tables[0].rows) == 8
+    assert tables[0].rows[0]["message"].startswith("[2026-04-17")
+    assert any("line-oriented text" in warning for warning in warnings)
+
+
+def test_unified_pipeline_extracts_hex_dump_payload() -> None:
+    content = (ROOT_SAMPLES_DIR / "controller_dump.hex").read_text(encoding="utf-8")
+    pipeline = UnifiedPipeline()
+    pipeline.schema_inferer = SimpleNamespace(
+        infer=lambda **kwargs: SimpleNamespace(
+            columns=[
+                ColumnDefinition(name="vac_fault", sql_type="INTEGER"),
+                ColumnDefinition(name="p", sql_type="INTEGER"),
+                ColumnDefinition(name="t", sql_type="REAL"),
+                ColumnDefinition(name="rf", sql_type="INTEGER"),
+            ],
+            null_rates={},
+            warnings=[],
+            confidence=1.0,
+        )
+    )
+    classification = ClassificationResult(
+        dominant_format="plain_text",
+        structural_class=StructuralClass.UNSTRUCTURED,
+        selected_parser_key="unified",
+        file_classifications=[],
+    )
+
+    parsed = pipeline._parse_single_file(
+        FileInput(file_id="controller_dump", filename="controller_dump.hex", content=content),
+        classification,
+    )
+
+    assert parsed is not None
+    assert any(row.get("p") == 14 for row in parsed.rows)
+
+
+def test_scalar_and_identifier_normalization_helpers() -> None:
+    long_name_1 = "http_schemas_openxmlformats_org_officedocument_2006_extended_properties_application"
+    long_name_2 = "http_schemas_openxmlformats_org_officedocument_2006_extended_properties_appversion"
+
+    sanitized_1 = sanitize_identifier(long_name_1)
+    sanitized_2 = sanitize_identifier(long_name_2)
+
+    assert len(sanitized_1) <= 63
+    assert len(sanitized_2) <= 63
+    assert sanitized_1 != sanitized_2
+    assert unique_identifier("name", {"name"}) == "name_2"
+    assert coerce_scalar("14|") == 14
+    assert coerce_scalar("146.0|") == 146.0
+    assert sanitize_db_value({"raw": "a\x00b", "items": ["c\x00d"]}) == {"raw": "ab", "items": ["cd"]}

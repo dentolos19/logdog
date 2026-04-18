@@ -21,6 +21,7 @@ from parsers.contracts import (
     build_ddl,
     make_table_name,
 )
+from parsers.normalization import coerce_scalar, sanitize_identifier, unique_identifier
 from parsers.quality import evaluate_structured_parse_quality
 from parsers.registry import ParserPipeline
 
@@ -212,6 +213,34 @@ class DeterministicParserPipeline(ParserPipeline):
     def _parse_file(self, content: str, filename: str) -> tuple[list[ParsedTable], list[str]]:
         rows, warnings = self._parse_rows(content, filename)
         if not rows:
+            fallback_rows: list[dict[str, Any]] = []
+            for line in content.splitlines():
+                stripped_line = line.strip()
+                if not stripped_line:
+                    continue
+                fallback_rows.append(
+                    {
+                        "source_file": filename,
+                        "raw": stripped_line,
+                        "message": stripped_line[:500],
+                        "log_level": _infer_log_level(stripped_line),
+                    }
+                )
+
+            if fallback_rows:
+                warnings.append("No JSON objects were found; treating content as line-oriented text.")
+                return (
+                    [
+                        ParsedTable(
+                            logical_name=_logical_name_from_filename(filename),
+                            rows=fallback_rows,
+                            required_columns=["message"],
+                            include_traceability_columns=False,
+                        )
+                    ],
+                    warnings,
+                )
+
             return [], warnings
         return [ParsedTable(logical_name=_logical_name_from_filename(filename), rows=rows)], warnings
 
@@ -324,6 +353,34 @@ class JsonLinesPipeline(DeterministicParserPipeline):
             rows.append(row)
 
         if not rows:
+            fallback_rows: list[dict[str, Any]] = []
+            for line in content.splitlines():
+                stripped_line = line.strip()
+                if not stripped_line:
+                    continue
+                fallback_rows.append(
+                    {
+                        "source_file": filename,
+                        "raw": stripped_line,
+                        "message": stripped_line[:500],
+                        "log_level": _infer_log_level(stripped_line),
+                    }
+                )
+
+            if fallback_rows:
+                warnings.append("No JSON objects were found; treating content as line-oriented text.")
+                return (
+                    [
+                        ParsedTable(
+                            logical_name=_logical_name_from_filename(filename),
+                            rows=fallback_rows,
+                            required_columns=["message"],
+                            include_traceability_columns=False,
+                        )
+                    ],
+                    warnings,
+                )
+
             return [], warnings
 
         required_columns = [
@@ -982,53 +1039,42 @@ def _flatten_json(value: dict[str, Any], prefix: str = "", depth: int = 0) -> di
 
 
 def _flatten_json_scalars(value: dict[str, Any], prefix: str = "", depth: int = 0) -> dict[str, Any]:
-    if depth > 4:
-        return {prefix.rstrip("_") or "value": json.dumps(value, ensure_ascii=True)}
+    used_names: set[str] = set()
 
-    result: dict[str, Any] = {}
-    for key, raw in value.items():
-        safe_key = _sanitize(key)
-        full_key = f"{prefix}{safe_key}" if prefix else safe_key
-        if isinstance(raw, dict):
-            result.update(_flatten_json_scalars(raw, prefix=f"{full_key}_", depth=depth + 1))
-        elif isinstance(raw, list):
-            if all(_is_scalar(item) for item in raw):
-                result[full_key] = ",".join(str(_coerce_scalar(item)) for item in raw)
+    def _flatten(current: dict[str, Any], current_prefix: str = "", current_depth: int = 0) -> dict[str, Any]:
+        if current_depth > 4:
+            key = unique_identifier(current_prefix.rstrip("_") or "value", used_names)
+            used_names.add(key)
+            return {key: json.dumps(current, ensure_ascii=True)}
+
+        result: dict[str, Any] = {}
+        for key, raw in current.items():
+            safe_key = _sanitize(key)
+            full_key = f"{current_prefix}{safe_key}" if current_prefix else safe_key
+            if isinstance(raw, dict):
+                result.update(_flatten(raw, current_prefix=f"{full_key}_", current_depth=current_depth + 1))
+            elif isinstance(raw, list):
+                unique_key = unique_identifier(full_key, used_names)
+                used_names.add(unique_key)
+                if all(_is_scalar(item) for item in raw):
+                    result[unique_key] = ",".join(str(_coerce_scalar(item)) for item in raw)
+                else:
+                    result[unique_key] = json.dumps(raw, ensure_ascii=True)
             else:
-                result[full_key] = json.dumps(raw, ensure_ascii=True)
-        else:
-            result[full_key] = _coerce_scalar(raw)
-    return result
+                unique_key = unique_identifier(full_key, used_names)
+                used_names.add(unique_key)
+                result[unique_key] = _coerce_scalar(raw)
+        return result
+
+    return _flatten(value, prefix, depth)
 
 
 def _sanitize(value: str) -> str:
-    sanitized = "".join(character if character.isalnum() or character == "_" else "_" for character in value)
-    sanitized = "_".join(part for part in sanitized.split("_") if part).lower()
-    if not sanitized:
-        return "field"
-    if sanitized[0].isdigit():
-        return f"field_{sanitized}"
-    return sanitized
+    return sanitize_identifier(value)
 
 
 def _cast_value(value: str | None) -> Any:
-    if value is None:
-        return None
-
-    lowered = value.lower()
-    if lowered in {"", "null", "none", "-"}:
-        return None
-    if lowered == "true":
-        return True
-    if lowered == "false":
-        return False
-
-    try:
-        if "." in value:
-            return float(value)
-        return int(value)
-    except ValueError:
-        return _coerce_scalar(value)
+    return coerce_scalar(value)
 
 
 def _status_to_level(status: Any) -> str:
@@ -1058,39 +1104,7 @@ def _infer_log_level(raw: str) -> str:
 
 
 def _coerce_scalar(value: Any, preserve_empty: bool = True) -> Any:
-    if value is None:
-        return None
-
-    if isinstance(value, (bool, int, float)):
-        return value
-
-    text = str(value).strip()
-    if text == "":
-        return "" if preserve_empty else None
-
-    lowered = text.lower()
-    if lowered in {"null", "none", "nan", "n/a"}:
-        return None
-    if lowered in {"true", "false"}:
-        return lowered == "true"
-
-    if lowered in {"pass", "warn", "warning", "fail", "error", "ok"}:
-        return lowered.upper().replace("WARNING", "WARN")
-
-    if NUMBER_RE.match(text):
-        try:
-            if "." in text:
-                return float(text)
-            return int(text)
-        except ValueError:
-            pass
-
-    if ISO_TIMESTAMP_RE.match(text):
-        normalized = _normalize_iso_timestamp(text)
-        if normalized is not None:
-            return normalized
-
-    return text
+    return coerce_scalar(value, preserve_empty=preserve_empty)
 
 
 def _normalize_iso_timestamp(value: str) -> str | None:

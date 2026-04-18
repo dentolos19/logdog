@@ -25,6 +25,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from environment import MEGABASE_URL
+from parsers.normalization import sanitize_db_value
 
 TYPE_MAP = {
     "uuid": UUID(as_uuid=True),
@@ -236,6 +237,7 @@ def insert_record(session: Session, table_name: str, data: dict) -> uuid.UUID:
         raise ValueError(f"Table '{table_name}' not found. Create it first with create_table().")
 
     table = metadata.tables[table_name]
+    data = sanitize_db_value(data)
 
     if "id" not in data and "id" in table.c:
         data["id"] = uuid.uuid4()

@@ -17,8 +17,8 @@ def _get_env_var(key: str, defaultValue: str | None = None) -> SecretStr:
 
 SECRET_KEY = _get_env_var("SECRET_KEY")
 
-DATABASE_URL = _get_env_var("MAIN_DATABASE_URL")
-MEGABASE_URL = _get_env_var("SWARM_DATABASE_URL")
+DATABASE_URL = _get_env_var("DATABASE_URL")
+MEGABASE_URL = _get_env_var("MEGABASE_URL")
 
 BUCKET_ENDPOINT_URL = _get_env_var("BUCKET_ENDPOINT_URL")
 BUCKET_ACCESS_KEY = _get_env_var("BUCKET_ACCESS_KEY")

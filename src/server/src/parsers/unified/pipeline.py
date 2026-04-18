@@ -17,6 +17,7 @@ from parsers.contracts import (
     build_ddl,
     make_table_name,
 )
+from parsers.normalization import coerce_scalar, sanitize_identifier, unique_identifier
 from parsers.registry import ParserPipeline
 from parsers.unified.anomaly import AnomalyDetector
 from parsers.unified.binary import BinaryHandler
@@ -126,6 +127,11 @@ class UnifiedPipeline(ParserPipeline):
             if decoded.decoded_lines:
                 lines = decoded.decoded_lines
             file_warnings.extend(decoded.warnings)
+
+        hexdump_lines = self.binary_handler.extract_ascii_from_hexdump(lines)
+        if hexdump_lines and any("=" in line for line in hexdump_lines):
+            lines = hexdump_lines
+            file_warnings.append("Detected hex dump ASCII gutters and parsed the extracted text payload.")
 
         lines = [line for line in lines if line.strip()]
         if not lines:
@@ -375,23 +381,34 @@ class UnifiedPipeline(ParserPipeline):
         return pruned
 
     def _flatten_json(self, value: dict[str, Any], prefix: str = "", depth: int = 0) -> dict[str, Any]:
-        if depth > 4:
-            return {prefix.rstrip("_") or "value": json.dumps(value, ensure_ascii=True)}
+        used_names: set[str] = set()
 
-        result: dict[str, Any] = {}
-        for key, raw in value.items():
-            safe_key = self._sanitize(key)
-            full_key = f"{prefix}{safe_key}" if prefix else safe_key
-            if isinstance(raw, dict):
-                result.update(self._flatten_json(raw, prefix=f"{full_key}_", depth=depth + 1))
-            elif isinstance(raw, list):
-                if len(raw) <= 10 and all(not isinstance(item, (dict, list)) for item in raw):
-                    result[full_key] = ",".join(str(item) for item in raw)
+        def _flatten(current: dict[str, Any], current_prefix: str = "", current_depth: int = 0) -> dict[str, Any]:
+            if current_depth > 4:
+                key = unique_identifier(current_prefix.rstrip("_") or "value", used_names)
+                used_names.add(key)
+                return {key: json.dumps(current, ensure_ascii=True)}
+
+            result: dict[str, Any] = {}
+            for key, raw in current.items():
+                safe_key = self._sanitize(key)
+                full_key = f"{current_prefix}{safe_key}" if current_prefix else safe_key
+                if isinstance(raw, dict):
+                    result.update(_flatten(raw, current_prefix=f"{full_key}_", current_depth=current_depth + 1))
+                elif isinstance(raw, list):
+                    unique_key = unique_identifier(full_key, used_names)
+                    used_names.add(unique_key)
+                    if len(raw) <= 10 and all(not isinstance(item, (dict, list)) for item in raw):
+                        result[unique_key] = ",".join(str(item) for item in raw)
+                    else:
+                        result[unique_key] = json.dumps(raw, ensure_ascii=True)
                 else:
-                    result[full_key] = json.dumps(raw, ensure_ascii=True)
-            else:
-                result[full_key] = raw
-        return result
+                    unique_key = unique_identifier(full_key, used_names)
+                    used_names.add(unique_key)
+                    result[unique_key] = raw
+            return result
+
+        return _flatten(value, prefix, depth)
 
     def _ensure_minimal_field_coverage(self, units: list[ParseUnit]) -> list[ParseUnit]:
         normalized: list[ParseUnit] = []
@@ -490,26 +507,8 @@ class UnifiedPipeline(ParserPipeline):
 
     @staticmethod
     def _sanitize(value: str) -> str:
-        sanitized = "".join(character if character.isalnum() or character == "_" else "_" for character in value)
-        sanitized = "_".join(part for part in sanitized.split("_") if part).lower()
-        if not sanitized:
-            return "field"
-        if sanitized[0].isdigit():
-            return f"field_{sanitized}"
-        return sanitized
+        return sanitize_identifier(value)
 
     @staticmethod
     def _cast_value(value: str) -> Any:
-        lowered = value.lower()
-        if lowered in {"", "null", "none"}:
-            return None
-        if lowered == "true":
-            return True
-        if lowered == "false":
-            return False
-        try:
-            if "." in value:
-                return float(value)
-            return int(value)
-        except ValueError:
-            return value
+        return coerce_scalar(value)
