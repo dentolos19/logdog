@@ -246,7 +246,7 @@ def _batched_status(total: int, queued: int) -> str:
 def _require_owned_entry(database: Session, entry_id: str, user_id: uuid.UUID):
     entry = database.query(LogEntry).filter(LogEntry.id == _uuid_or_raw(entry_id), LogEntry.user_id == user_id).first()
     if entry is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Log entry not found.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Log group not found.")
     return entry
 
 
@@ -344,7 +344,7 @@ def list_log_entries(
 
 
 @router.post("", response_model=LogEntryResponse, status_code=status.HTTP_201_CREATED)
-def create_log_entry(
+def create_log_group(
     payload: CreateLogEntryRequest,
     current_user: User = Depends(get_current_user),
     database: Session = Depends(get_database),
@@ -363,7 +363,7 @@ def create_log_entry(
 
 
 @router.get("/{entry_id}", response_model=LogEntryResponse)
-def get_log_entry(
+def get_log_group(
     entry_id: str,
     current_user: User = Depends(get_current_user),
     database: Session = Depends(get_database),
@@ -373,7 +373,7 @@ def get_log_entry(
 
 
 @router.patch("/{entry_id}", response_model=LogEntryResponse)
-def update_log_entry(
+def update_log_group(
     entry_id: str,
     payload: UpdateLogEntryRequest,
     current_user: User = Depends(get_current_user),
@@ -393,7 +393,7 @@ def update_log_entry(
 
 
 @router.delete("/{entry_id}", response_model=MessageResponse)
-def delete_log_entry(
+def delete_log_group(
     entry_id: str,
     background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
@@ -437,7 +437,7 @@ def delete_log_entry(
     if orphan_asset_ids:
         background_tasks.add_task(_delete_orphan_assets, list(orphan_asset_ids))
 
-    return MessageResponse(message="Log entry deleted.")
+    return MessageResponse(message="Log group deleted.")
 
 
 @router.get("/{entry_id}/files", response_model=list[LogFileResponse])
@@ -965,7 +965,7 @@ def replace_chat_messages(
 
 
 def _get_entry_table_names(database: Session, entry_id: str) -> set[str]:
-    """Return the set of megabase table names registered for a log entry."""
+    """Return the set of megabase table names registered for a log group."""
     tables = database.query(LogTable).filter(LogTable.entry_id == _uuid_or_raw(entry_id)).all()
     return {row.table for row in tables}
 
@@ -996,7 +996,7 @@ def execute_entry_query(
 
     allowed_tables = _get_entry_table_names(database, str(entry.id))
     if not allowed_tables:
-        return QueryResponse(status="error", message="No tables are available for this log entry.")
+        return QueryResponse(status="error", message="No tables are available for this log group.")
 
     start_time = time.monotonic()
     megabase_database = MegabaseSessionLocal()

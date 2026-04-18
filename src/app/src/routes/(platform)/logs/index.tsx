@@ -38,7 +38,7 @@ function LogsPage() {
       const data = await listLogEntries();
       setEntries(data);
     } catch (error) {
-      setFetchError(error instanceof Error ? error.message : "Failed to load log entries.");
+      setFetchError(error instanceof Error ? error.message : "Failed to load log groups.");
     }
   }, []);
 
@@ -73,7 +73,7 @@ function LogsPage() {
       toast.success("Log group created.");
       await navigate({ to: "/logs/$id", params: { id: created.id } });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to create log entry.";
+      const message = error instanceof Error ? error.message : "Failed to create log group.";
       setCreateError(message);
       toast.error(message);
     } finally {

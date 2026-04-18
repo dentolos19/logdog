@@ -95,7 +95,7 @@ function LogEntryPage() {
       const data = await getLogEntry(id);
       setEntry(data);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to load log entry.";
+      const message = error instanceof Error ? error.message : "Failed to load log group.";
       const notFound = message.includes("404") || message.toLowerCase().includes("not found");
       if (notFound) {
         await navigate({ to: "/logs" });
@@ -231,7 +231,7 @@ function LogEntryPage() {
       setIsRenameDialogOpen(false);
       toast.success("Log group renamed.");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to rename log entry.";
+      const message = error instanceof Error ? error.message : "Failed to rename log group.";
       setRenameError(message);
       toast.error(message);
     } finally {
@@ -248,7 +248,7 @@ function LogEntryPage() {
       toast.success("Log group deleted.", { id: deletingToastId });
       await navigate({ to: "/logs" });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to delete log entry.";
+      const message = error instanceof Error ? error.message : "Failed to delete log group.";
       toast.error(message, { id: deletingToastId });
       setFetchError(message);
     } finally {

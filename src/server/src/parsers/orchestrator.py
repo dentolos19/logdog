@@ -62,7 +62,7 @@ def create_process(
     try:
         entry = db.query(LogEntry).filter_by(id=_uuid_or_raw(entry_id)).first()
         if entry is None:
-            raise ValueError(f"Log entry '{entry_id}' not found.")
+            raise ValueError(f"Log group '{entry_id}' not found.")
 
         classification_json: str | None = None
         if file_inputs:
@@ -474,7 +474,7 @@ def _ensure_megabase_table(megabase_db: Session, table_definition: Any) -> None:
 
 
 def _insert_rows(megabase_db: Session, table_definition: Any, rows: list[dict[str, Any]]) -> int:
-    allowed_columns = {column.name for column in table_definition.columns if column.name != "id"}
+    allowed_columns = {column.name for column in table_definition.columns}
     inserted = 0
     for row in rows:
         payload = {key: _normalize_value(value) for key, value in row.items() if key in allowed_columns}

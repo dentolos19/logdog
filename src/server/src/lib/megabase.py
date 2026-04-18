@@ -1,5 +1,7 @@
 import json
+import secrets
 import uuid
+from datetime import UTC, datetime
 
 from sqlalchemy import (
     BigInteger,
@@ -23,6 +25,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from environment import MEGABASE_URL
 from parsers.normalization import sanitize_db_value
@@ -46,8 +49,17 @@ _registry_locked = False
 
 
 def _get_engine() -> Engine:
+    database_url = MEGABASE_URL.get_secret_value()
+    if database_url.startswith("sqlite"):
+        return __import__("sqlalchemy").create_engine(
+            database_url,
+            pool_pre_ping=True,
+            poolclass=StaticPool,
+            connect_args={"check_same_thread": False},
+        )
+
     return __import__("sqlalchemy").create_engine(
-        MEGABASE_URL.get_secret_value(),
+        database_url,
         pool_pre_ping=True,
         pool_recycle=1800,
         connect_args={
@@ -69,6 +81,34 @@ _registry_table = Table(
     Column("schema_json", Text, nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
+
+
+def _uuid7() -> uuid.UUID:
+    timestamp_ms = int(datetime.now(tz=UTC).timestamp() * 1000) & ((1 << 48) - 1)
+    rand_a = secrets.randbits(12)
+    rand_b = secrets.randbits(62)
+
+    value = bytearray(16)
+    value[0:6] = timestamp_ms.to_bytes(6, byteorder="big")
+    value[6] = 0x70 | ((rand_a >> 8) & 0x0F)
+    value[7] = rand_a & 0xFF
+
+    rand_b_bytes = rand_b.to_bytes(8, byteorder="big")
+    value[8] = 0x80 | (rand_b_bytes[0] & 0x3F)
+    value[9:16] = rand_b_bytes[1:8]
+
+    return uuid.UUID(bytes=bytes(value))
+
+
+def _normalize_record_id(value: object) -> uuid.UUID | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, uuid.UUID):
+        return value
+    try:
+        return uuid.UUID(str(value))
+    except (TypeError, ValueError):
+        raise ValueError("Megabase id values must be valid UUIDs when provided.")
 
 
 def _get_session():
@@ -93,27 +133,65 @@ def _parse_column(col_def: dict) -> Column:
     if "default" in col_def:
         kwargs["default"] = col_def["default"]
 
+    if col_name == "id":
+        return Column(
+            col_name,
+            UUID(as_uuid=True),
+            primary_key=True,
+            nullable=False,
+            index=True,
+            default=_uuid7,
+        )
+
     if col_def.get("primary_key"):
         return Column(
             col_name,
             UUID(as_uuid=True) if col_type == "uuid" else sqla_type,
             primary_key=True,
             nullable=False,
-            default=uuid.uuid4,
+            index=True,
+            default=_uuid7,
         )
 
     return Column(col_name, sqla_type, **kwargs)
 
 
+def _ensure_schema_id_column(schema: dict) -> dict:
+    columns = list(schema.get("columns", []))
+    id_column = next((column for column in columns if column.get("name") == "id"), None)
+    normalized_id = {
+        "name": "id",
+        "type": "uuid",
+        "primary_key": True,
+        "nullable": False,
+        "index": True,
+        "description": "Primary identifier.",
+    }
+
+    if id_column is None:
+        columns.insert(0, normalized_id)
+    else:
+        id_column.update(normalized_id)
+        columns = [id_column if column.get("name") == "id" else column for column in columns]
+
+    normalized_schema = dict(schema)
+    normalized_schema["columns"] = columns
+    return normalized_schema
+
+
 def _table_from_schema(table_name: str, schema: dict) -> Table:
-    columns = [_parse_column(col) for col in schema.get("columns", [])]
+    normalized_schema = _ensure_schema_id_column(schema)
+    columns = [_parse_column(col) for col in normalized_schema.get("columns", [])]
     return Table(table_name, metadata, *columns)
 
 
 def create_table(session: Session, table_name: str, schema: dict) -> Table:
+    _registry_table.create(bind=_engine, checkfirst=True)
+
     if table_name in metadata.tables:
         raise ValueError(f"Table '{table_name}' already exists in metadata")
 
+    schema = _ensure_schema_id_column(schema)
     table = _table_from_schema(table_name, schema)
     table.create(bind=_engine, checkfirst=False)
 
@@ -132,12 +210,15 @@ def create_table(session: Session, table_name: str, schema: dict) -> Table:
 
 
 def drop_table(session: Session, table_name: str) -> bool:
+    _registry_table.create(bind=_engine, checkfirst=True)
+
     if table_name not in metadata.tables:
         table = Table(table_name, metadata)
         table.drop(bind=_engine, checkfirst=True)
     else:
-        metadata.tables[table_name].drop(bind=_engine, checkfirst=True)
-        del metadata.tables[table_name]
+        table = metadata.tables[table_name]
+        table.drop(bind=_engine, checkfirst=True)
+        metadata.remove(table)
 
     session.execute(delete(_registry_table).where(_registry_table.c.table_name == table_name))
     session.commit()
@@ -239,8 +320,12 @@ def insert_record(session: Session, table_name: str, data: dict) -> uuid.UUID:
     table = metadata.tables[table_name]
     data = sanitize_db_value(data)
 
-    if "id" not in data and "id" in table.c:
-        data["id"] = uuid.uuid4()
+    if "id" in table.c:
+        normalized_id = _normalize_record_id(data.get("id"))
+        if normalized_id is None:
+            data["id"] = _uuid7()
+        else:
+            data["id"] = normalized_id
 
     session.execute(table.insert().values(**data))
     session.commit()

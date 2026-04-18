@@ -71,7 +71,7 @@ function LogTablePage() {
       const nextEntry = await getLogEntry(id);
       setEntry(nextEntry);
     } catch (error) {
-      setEntryError(error instanceof Error ? error.message : "Failed to load log entry.");
+      setEntryError(error instanceof Error ? error.message : "Failed to load log group.");
     } finally {
       setEntryLoading(false);
     }
@@ -187,7 +187,7 @@ function LogTablePage() {
           <div className={"flex flex-col gap-2"}>
             {entryError !== null && (
               <Alert variant={"destructive"}>
-                <AlertTitle>Failed to load log entry</AlertTitle>
+                <AlertTitle>Failed to load log group</AlertTitle>
                 <AlertDescription>{entryError}</AlertDescription>
               </Alert>
             )}

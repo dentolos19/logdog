@@ -67,8 +67,8 @@ function ErrorBadge({ label, message }: { label: string; message: string }) {
       <CollapsibleTrigger asChild>
         <button
           className={
-            "inline-flex cursor-pointer items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 " +
-            "text-destructive text-xs hover:bg-destructive/20 transition-colors"
+            "inline-flex cursor-pointer items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5" +
+            "text-destructive text-xs transition-colors hover:bg-destructive/20"
           }
           type={"button"}
         >
@@ -111,7 +111,7 @@ export function ChatbotTab({ entryId, tableNames }: ChatbotTabProps) {
   const origin = typeof window === "undefined" ? "http://localhost" : window.location.origin;
 
   const { messages, sendMessage, setMessages, stop, isLoading, status, error } = useChat({
-    id: `log-entry-${entryId}`,
+    id: `log-group-${entryId}`,
     connection: fetchServerSentEvents("/", {
       fetchClient: async (_url, init) => {
         const bodyText = typeof init?.body === "string" ? init.body : "";
@@ -271,7 +271,7 @@ export function ChatbotTab({ entryId, tableNames }: ChatbotTabProps) {
 
       <div
         className={
-          "flex min-h-0 flex-1 overflow-y-auto " + (hasMessages ? "" : "bg-gradient-to-b from-muted/30 to-background")
+          "flex min-h-0 flex-1 overflow-y-auto" + (hasMessages ? "" : "bg-gradient-to-b from-muted/30 to-background")
         }
         onScroll={handleScroll}
         ref={scrollContainerRef}
@@ -336,7 +336,7 @@ export function ChatbotTab({ entryId, tableNames }: ChatbotTabProps) {
 
       <div
         className={
-          "shrink-0 border-t bg-background/80 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60 " +
+          "shrink-0 border-t bg-background/80 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60" +
           (hasMessages ? "" : "border-t-transparent")
         }
       >

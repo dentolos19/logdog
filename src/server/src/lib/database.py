@@ -29,7 +29,7 @@ def get_database():
 def create_tables():
     Base.metadata.create_all(bind=engine)
     _ensure_log_process_file_column()
-    _ensure_log_entry_profile_column()
+    _ensure_log_group_profile_column()
 
 
 def _ensure_log_process_file_column() -> None:
@@ -50,7 +50,7 @@ def _ensure_log_process_file_column() -> None:
             connection.execute(text("ALTER TABLE log_processes ADD COLUMN file_id VARCHAR(36) NULL"))
 
 
-def _ensure_log_entry_profile_column() -> None:
+def _ensure_log_group_profile_column() -> None:
     inspector = inspect(engine)
     table_names = inspector.get_table_names()
     if "log_entries" not in table_names:
