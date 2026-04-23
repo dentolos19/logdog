@@ -29,7 +29,7 @@ from lib.megabase import drop_table as megabase_drop_table
 from lib.megabase import init_megabase
 from lib.megabase import query_records as megabase_query_records
 from lib.ai import get_generative_model
-from lib.models import Asset, LogEntry, LogFile, LogMessage, LogNlQuery, LogProcess, LogReport, LogTable, User
+from lib.models import Asset, LogGroup, LogFile, LogMessage, LogNlQuery, LogProcess, LogReport, LogTable, User
 from lib.storage import delete_file, download_file, upload_file
 from parsers.orchestrator import create_process, enqueue_process, mark_process_failed
 from routes.auth import get_current_user
@@ -42,12 +42,12 @@ class MessageResponse(BaseModel):
     message: str
 
 
-class CreateLogEntryRequest(BaseModel):
+class CreateLogGroupRequest(BaseModel):
     name: str
     profile_name: str | None = "default"
 
 
-class UpdateLogEntryRequest(BaseModel):
+class UpdateLogGroupRequest(BaseModel):
     name: str
     profile_name: str | None = None
 
@@ -56,7 +56,7 @@ class CreateProcessRequest(BaseModel):
     file_ids: list[str] | None = None
 
 
-class LogEntryResponse(BaseModel):
+class LogGroupResponse(BaseModel):
     id: str
     user_id: str
     name: str
@@ -66,7 +66,7 @@ class LogEntryResponse(BaseModel):
 
 class LogFileResponse(BaseModel):
     id: str
-    entry_id: str
+    group_id: str
     asset_id: str
     name: str
     size: int
@@ -76,7 +76,7 @@ class LogFileResponse(BaseModel):
 
 class LogProcessResponse(BaseModel):
     id: str
-    entry_id: str
+    group_id: str
     file_id: str | None
     status: str
     classification: dict[str, Any] | None
@@ -227,20 +227,20 @@ def _parse_message_payload(payload: str | None, role: str, content: str):
     return {"role": role, "content": content}
 
 
-def _entry_response(entry: LogEntry):
-    return LogEntryResponse(
-        id=str(entry.id),
-        user_id=str(entry.user_id),
-        name=entry.name,
-        profile_name=entry.profile_name,
-        created_at=entry.created_at,
+def _group_response(group: LogGroup):
+    return LogGroupResponse(
+        id=str(group.id),
+        user_id=str(group.user_id),
+        name=group.name,
+        profile_name=group.profile_name,
+        created_at=group.created_at,
     )
 
 
 def _log_file_response(log_file: LogFile, asset: Asset):
     return LogFileResponse(
         id=str(log_file.id),
-        entry_id=str(log_file.entry_id),
+        group_id=str(log_file.group_id),
         asset_id=str(log_file.asset_id),
         name=asset.name,
         size=asset.size,
@@ -252,7 +252,7 @@ def _log_file_response(log_file: LogFile, asset: Asset):
 def _log_process_response(process: LogProcess):
     return LogProcessResponse(
         id=str(process.id),
-        entry_id=str(process.entry_id),
+        group_id=str(process.group_id),
         file_id=str(process.file_id) if process.file_id is not None else None,
         status=process.status,
         classification=_parse_json(process.classification),
@@ -271,17 +271,17 @@ def _batched_status(total: int, queued: int) -> str:
     return "partial"
 
 
-def _require_owned_entry(database: Session, entry_id: str, user_id: uuid.UUID):
-    entry = database.query(LogEntry).filter(LogEntry.id == _uuid_or_raw(entry_id), LogEntry.user_id == user_id).first()
-    if entry is None:
+def _require_owned_group(database: Session, group_id: str, user_id: uuid.UUID):
+    group = database.query(LogGroup).filter(LogGroup.id == _uuid_or_raw(group_id), LogGroup.user_id == user_id).first()
+    if group is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Log group not found.")
-    return entry
+    return group
 
 
-def _require_owned_file(database: Session, entry_id: str, file_id: str):
+def _require_owned_file(database: Session, group_id: str, file_id: str):
     log_file = (
         database.query(LogFile)
-        .filter(LogFile.id == _uuid_or_raw(file_id), LogFile.entry_id == _uuid_or_raw(entry_id))
+        .filter(LogFile.id == _uuid_or_raw(file_id), LogFile.group_id == _uuid_or_raw(group_id))
         .first()
     )
     if log_file is None:
@@ -308,11 +308,11 @@ def _delete_orphan_assets(asset_ids: list[uuid.UUID]):
         database.close()
 
 
-def _cleanup_generated_tables_for_file(database: Session, entry_id: str, file_id: str) -> None:
+def _cleanup_generated_tables_for_file(database: Session, group_id: str, file_id: str) -> None:
     latest_completed_process = (
         database.query(LogProcess)
         .filter(
-            LogProcess.entry_id == _uuid_or_raw(entry_id),
+            LogProcess.group_id == _uuid_or_raw(group_id),
             LogProcess.file_id == _uuid_or_raw(file_id),
             LogProcess.status == "completed",
         )
@@ -354,82 +354,82 @@ def _cleanup_generated_tables_for_file(database: Session, entry_id: str, file_id
 
     (
         database.query(LogTable)
-        .filter(LogTable.entry_id == _uuid_or_raw(entry_id), LogTable.table.in_(table_names))
+        .filter(LogTable.group_id == _uuid_or_raw(group_id), LogTable.table.in_(table_names))
         .delete(synchronize_session=False)
     )
     database.commit()
 
 
-@router.get("", response_model=list[LogEntryResponse])
-def list_log_entries(
+@router.get("", response_model=list[LogGroupResponse])
+def list_log_groups(
     current_user: User = Depends(get_current_user),
     database: Session = Depends(get_database),
 ):
     entries = (
-        database.query(LogEntry).filter(LogEntry.user_id == current_user.id).order_by(LogEntry.created_at.desc()).all()
+        database.query(LogGroup).filter(LogGroup.user_id == current_user.id).order_by(LogGroup.created_at.desc()).all()
     )
-    return [_entry_response(entry) for entry in entries]
+    return [_group_response(group) for group in entries]
 
 
-@router.post("", response_model=LogEntryResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=LogGroupResponse, status_code=status.HTTP_201_CREATED)
 def create_log_group(
-    payload: CreateLogEntryRequest,
+    payload: CreateLogGroupRequest,
     current_user: User = Depends(get_current_user),
     database: Session = Depends(get_database),
 ):
     name = payload.name.strip()
     if not name:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Entry name must not be empty.")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Group name must not be empty.")
 
     profile_name = (payload.profile_name or "default").strip() or "default"
 
-    entry = LogEntry(user_id=current_user.id, name=name, profile_name=profile_name)
-    database.add(entry)
+    group = LogGroup(user_id=current_user.id, name=name, profile_name=profile_name)
+    database.add(group)
     database.commit()
-    database.refresh(entry)
-    return _entry_response(entry)
+    database.refresh(group)
+    return _group_response(group)
 
 
-@router.get("/{entry_id}", response_model=LogEntryResponse)
+@router.get("/{group_id}", response_model=LogGroupResponse)
 def get_log_group(
-    entry_id: str,
+    group_id: str,
     current_user: User = Depends(get_current_user),
     database: Session = Depends(get_database),
 ):
-    entry = _require_owned_entry(database=database, entry_id=entry_id, user_id=current_user.id)
-    return _entry_response(entry)
+    group = _require_owned_group(database=database, group_id=group_id, user_id=current_user.id)
+    return _group_response(group)
 
 
-@router.patch("/{entry_id}", response_model=LogEntryResponse)
+@router.patch("/{group_id}", response_model=LogGroupResponse)
 def update_log_group(
-    entry_id: str,
-    payload: UpdateLogEntryRequest,
+    group_id: str,
+    payload: UpdateLogGroupRequest,
     current_user: User = Depends(get_current_user),
     database: Session = Depends(get_database),
 ):
     name = payload.name.strip()
     if not name:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Entry name must not be empty.")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Group name must not be empty.")
 
-    entry = _require_owned_entry(database=database, entry_id=entry_id, user_id=current_user.id)
-    entry.name = name
+    group = _require_owned_group(database=database, group_id=group_id, user_id=current_user.id)
+    group.name = name
     if payload.profile_name is not None:
-        entry.profile_name = payload.profile_name.strip() or "default"
+        group.profile_name = payload.profile_name.strip() or "default"
     database.commit()
-    database.refresh(entry)
-    return _entry_response(entry)
+    database.refresh(group)
+    return _group_response(group)
 
 
-@router.delete("/{entry_id}", response_model=MessageResponse)
+@router.delete("/{group_id}", response_model=MessageResponse)
 def delete_log_group(
-    entry_id: str,
+    group_id: str,
     background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     database: Session = Depends(get_database),
 ):
-    entry = _require_owned_entry(database=database, entry_id=entry_id, user_id=current_user.id)
+    group = _require_owned_group(database=database, group_id=group_id, user_id=current_user.id)
 
-    log_tables = database.query(LogTable).filter(LogTable.entry_id == entry.id).all()
+    log_tables = database.query(LogTable).filter(LogTable.group_id == group.id).all()
     table_names = [table.table for table in log_tables]
 
     if table_names:
@@ -444,22 +444,22 @@ def delete_log_group(
         finally:
             megabase_database.close()
 
-    file_rows = database.query(LogFile).filter(LogFile.entry_id == entry.id).all()
+    file_rows = database.query(LogFile).filter(LogFile.group_id == group.id).all()
     orphan_asset_ids = {file_row.asset_id for file_row in file_rows}
 
     for file_row in file_rows:
         database.delete(file_row)
 
-    for message in database.query(LogMessage).filter(LogMessage.entry_id == entry.id).all():
+    for message in database.query(LogMessage).filter(LogMessage.group_id == group.id).all():
         database.delete(message)
 
-    for process in database.query(LogProcess).filter(LogProcess.entry_id == entry.id).all():
+    for process in database.query(LogProcess).filter(LogProcess.group_id == group.id).all():
         database.delete(process)
 
     for table in log_tables:
         database.delete(table)
 
-    database.delete(entry)
+    database.delete(group)
     database.commit()
 
     if orphan_asset_ids:
@@ -468,14 +468,14 @@ def delete_log_group(
     return MessageResponse(message="Log group deleted.")
 
 
-@router.get("/{entry_id}/files", response_model=list[LogFileResponse])
+@router.get("/{group_id}/files", response_model=list[LogFileResponse])
 def list_log_files(
-    entry_id: str,
+    group_id: str,
     current_user: User = Depends(get_current_user),
     database: Session = Depends(get_database),
 ):
-    entry = _require_owned_entry(database=database, entry_id=entry_id, user_id=current_user.id)
-    rows = database.query(LogFile).filter(LogFile.entry_id == entry.id).order_by(LogFile.created_at.desc()).all()
+    group = _require_owned_group(database=database, group_id=group_id, user_id=current_user.id)
+    rows = database.query(LogFile).filter(LogFile.group_id == group.id).order_by(LogFile.created_at.desc()).all()
 
     responses: list[LogFileResponse] = []
     for row in rows:
@@ -487,27 +487,27 @@ def list_log_files(
     return responses
 
 
-@router.get("/{entry_id}/files/{file_id}", response_model=LogFileResponse)
+@router.get("/{group_id}/files/{file_id}", response_model=LogFileResponse)
 def get_log_file_metadata(
-    entry_id: str,
+    group_id: str,
     file_id: str,
     current_user: User = Depends(get_current_user),
     database: Session = Depends(get_database),
 ):
-    entry = _require_owned_entry(database=database, entry_id=entry_id, user_id=current_user.id)
-    log_file, asset = _require_owned_file(database=database, entry_id=str(entry.id), file_id=file_id)
+    group = _require_owned_group(database=database, group_id=group_id, user_id=current_user.id)
+    log_file, asset = _require_owned_file(database=database, group_id=str(group.id), file_id=file_id)
     return _log_file_response(log_file, asset)
 
 
-@router.get("/{entry_id}/files/{file_id}/download")
+@router.get("/{group_id}/files/{file_id}/download")
 def download_log_file(
-    entry_id: str,
+    group_id: str,
     file_id: str,
     current_user: User = Depends(get_current_user),
     database: Session = Depends(get_database),
 ):
-    entry = _require_owned_entry(database=database, entry_id=entry_id, user_id=current_user.id)
-    log_file, asset = _require_owned_file(database=database, entry_id=str(entry.id), file_id=file_id)
+    group = _require_owned_group(database=database, group_id=group_id, user_id=current_user.id)
+    log_file, asset = _require_owned_file(database=database, group_id=str(group.id), file_id=file_id)
 
     payload = download_file(asset_id=log_file.asset_id, db=database)
     if payload is None:
@@ -517,9 +517,9 @@ def download_log_file(
     return Response(content=payload, media_type=asset.type or "application/octet-stream", headers=headers)
 
 
-def _get_table_records(entry_id: str, table_name: str, current_user: User, database: Session) -> list[dict]:
-    entry = _require_owned_entry(database=database, entry_id=entry_id, user_id=current_user.id)
-    table_record = database.query(LogTable).filter(LogTable.entry_id == entry.id, LogTable.table == table_name).first()
+def _get_table_records(group_id: str, table_name: str, current_user: User, database: Session) -> list[dict]:
+    group = _require_owned_group(database=database, group_id=group_id, user_id=current_user.id)
+    table_record = database.query(LogTable).filter(LogTable.group_id == group.id, LogTable.table == table_name).first()
     if table_record is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Table not found.")
 
@@ -646,15 +646,15 @@ def _apply_export_filters(records: list[dict[str, Any]], payload: FilteredExport
     return [record for record in records if _record_matches_filters(record, payload)]
 
 
-@router.get("/{entry_id}/tables/{table_name}/download/csv")
+@router.get("/{group_id}/tables/{table_name}/download/csv")
 def download_table_csv(
-    entry_id: str,
+    group_id: str,
     table_name: str,
     current_user: User = Depends(get_current_user),
     database: Session = Depends(get_database),
 ):
-    _require_owned_entry(database=database, entry_id=entry_id, user_id=current_user.id)
-    records = _get_table_records(entry_id, table_name, current_user, database)
+    _require_owned_group(database=database, group_id=group_id, user_id=current_user.id)
+    records = _get_table_records(group_id, table_name, current_user, database)
 
     if not records:
         columns: list[str] = []
@@ -673,15 +673,15 @@ def download_table_csv(
     return Response(content=content, media_type="text/csv", headers=headers)
 
 
-@router.get("/{entry_id}/tables/{table_name}/download/xlsx")
+@router.get("/{group_id}/tables/{table_name}/download/xlsx")
 def download_table_xlsx(
-    entry_id: str,
+    group_id: str,
     table_name: str,
     current_user: User = Depends(get_current_user),
     database: Session = Depends(get_database),
 ):
-    _require_owned_entry(database=database, entry_id=entry_id, user_id=current_user.id)
-    records = _get_table_records(entry_id, table_name, current_user, database)
+    _require_owned_group(database=database, group_id=group_id, user_id=current_user.id)
+    records = _get_table_records(group_id, table_name, current_user, database)
 
     workbook = Workbook()
     worksheet = workbook.active
@@ -710,16 +710,16 @@ def download_table_xlsx(
     )
 
 
-@router.post("/{entry_id}/tables/{table_name}/download/filtered")
+@router.post("/{group_id}/tables/{table_name}/download/filtered")
 def download_table_filtered(
-    entry_id: str,
+    group_id: str,
     table_name: str,
     payload: FilteredExportRequest,
     current_user: User = Depends(get_current_user),
     database: Session = Depends(get_database),
 ):
-    _require_owned_entry(database=database, entry_id=entry_id, user_id=current_user.id)
-    records = _get_table_records(entry_id, table_name, current_user, database)
+    _require_owned_group(database=database, group_id=group_id, user_id=current_user.id)
+    records = _get_table_records(group_id, table_name, current_user, database)
     filtered_records = _apply_export_filters(records, payload)
 
     export_format = payload.format.strip().lower()
@@ -750,15 +750,15 @@ def download_table_filtered(
     return Response(content=output.getvalue(), media_type="text/csv", headers=headers)
 
 
-@router.delete("/{entry_id}/files/{file_id}", response_model=MessageResponse)
+@router.delete("/{group_id}/files/{file_id}", response_model=MessageResponse)
 def delete_log_file_route(
-    entry_id: str,
+    group_id: str,
     file_id: str,
     current_user: User = Depends(get_current_user),
     database: Session = Depends(get_database),
 ):
-    entry = _require_owned_entry(database=database, entry_id=entry_id, user_id=current_user.id)
-    log_file, _ = _require_owned_file(database=database, entry_id=str(entry.id), file_id=file_id)
+    group = _require_owned_group(database=database, group_id=group_id, user_id=current_user.id)
+    log_file, _ = _require_owned_file(database=database, group_id=str(group.id), file_id=file_id)
 
     asset_id = log_file.asset_id
     database.delete(log_file)
@@ -771,14 +771,14 @@ def delete_log_file_route(
     return MessageResponse(message="Log file deleted.")
 
 
-@router.post("/{entry_id}/files/upload", response_model=UploadFilesResponse, status_code=status.HTTP_202_ACCEPTED)
+@router.post("/{group_id}/files/upload", response_model=UploadFilesResponse, status_code=status.HTTP_202_ACCEPTED)
 async def upload_log_files(
-    entry_id: str,
+    group_id: str,
     files: list[UploadFile] = File(...),
     current_user: User = Depends(get_current_user),
     database: Session = Depends(get_database),
 ):
-    entry = _require_owned_entry(database=database, entry_id=entry_id, user_id=current_user.id)
+    group = _require_owned_group(database=database, group_id=group_id, user_id=current_user.id)
     if not files:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="At least one file is required.")
 
@@ -796,7 +796,7 @@ async def upload_log_files(
         log_file = LogFile(
             user_id=current_user.id,
             asset_id=asset.id,
-            entry_id=entry.id,
+            group_id=group.id,
         )
         database.add(log_file)
         database.commit()
@@ -808,13 +808,13 @@ async def upload_log_files(
         process_id: str | None = None
         try:
             process_id = create_process(
-                entry_id=str(entry.id),
+                group_id=str(group.id),
                 file_ids=[file_id],
                 file_id=file_id,
             )
             enqueue_process(
                 process_id=process_id,
-                entry_id=str(entry.id),
+                group_id=str(group.id),
                 file_ids_json=json.dumps([file_id], ensure_ascii=True),
             )
             process_ids.append(process_id)
@@ -831,7 +831,7 @@ async def upload_log_files(
             if process_id is not None:
                 mark_process_failed(
                     process_id=process_id,
-                    entry_id=str(entry.id),
+                    group_id=str(group.id),
                     message=f"Queueing failed: {error}",
                 )
             outcomes.append(
@@ -852,30 +852,30 @@ async def upload_log_files(
     )
 
 
-@router.get("/{entry_id}/processes", response_model=list[LogProcessResponse])
+@router.get("/{group_id}/processes", response_model=list[LogProcessResponse])
 def list_entry_processes(
-    entry_id: str,
+    group_id: str,
     current_user: User = Depends(get_current_user),
     database: Session = Depends(get_database),
 ):
-    entry = _require_owned_entry(database=database, entry_id=entry_id, user_id=current_user.id)
+    group = _require_owned_group(database=database, group_id=group_id, user_id=current_user.id)
     processes = (
-        database.query(LogProcess).filter(LogProcess.entry_id == entry.id).order_by(LogProcess.created_at.desc()).all()
+        database.query(LogProcess).filter(LogProcess.group_id == group.id).order_by(LogProcess.created_at.desc()).all()
     )
     return [_log_process_response(process) for process in processes]
 
 
-@router.get("/{entry_id}/processes/{process_id}", response_model=LogProcessResponse)
+@router.get("/{group_id}/processes/{process_id}", response_model=LogProcessResponse)
 def get_entry_process(
-    entry_id: str,
+    group_id: str,
     process_id: str,
     current_user: User = Depends(get_current_user),
     database: Session = Depends(get_database),
 ):
-    entry = _require_owned_entry(database=database, entry_id=entry_id, user_id=current_user.id)
+    group = _require_owned_group(database=database, group_id=group_id, user_id=current_user.id)
     process = (
         database.query(LogProcess)
-        .filter(LogProcess.id == _uuid_or_raw(process_id), LogProcess.entry_id == entry.id)
+        .filter(LogProcess.id == _uuid_or_raw(process_id), LogProcess.group_id == group.id)
         .first()
     )
     if process is None:
@@ -883,14 +883,14 @@ def get_entry_process(
     return _log_process_response(process)
 
 
-@router.post("/{entry_id}/processes", response_model=ProcessEnqueuedResponse, status_code=status.HTTP_202_ACCEPTED)
+@router.post("/{group_id}/processes", response_model=ProcessEnqueuedResponse, status_code=status.HTTP_202_ACCEPTED)
 def create_entry_process(
-    entry_id: str,
+    group_id: str,
     payload: CreateProcessRequest | None = None,
     current_user: User = Depends(get_current_user),
     database: Session = Depends(get_database),
 ):
-    entry = _require_owned_entry(database=database, entry_id=entry_id, user_id=current_user.id)
+    group = _require_owned_group(database=database, group_id=group_id, user_id=current_user.id)
 
     selected_file_ids: list[str] = []
     if payload and payload.file_ids:
@@ -898,7 +898,7 @@ def create_entry_process(
             normalized_id = str(_uuid_or_raw(file_id))
             exists = (
                 database.query(LogFile)
-                .filter(LogFile.id == _uuid_or_raw(file_id), LogFile.entry_id == entry.id)
+                .filter(LogFile.id == _uuid_or_raw(file_id), LogFile.group_id == group.id)
                 .first()
             )
             if exists is None:
@@ -906,7 +906,7 @@ def create_entry_process(
             selected_file_ids.append(normalized_id)
     else:
         selected_file_ids = [
-            str(file_row.id) for file_row in database.query(LogFile).filter(LogFile.entry_id == entry.id)
+            str(file_row.id) for file_row in database.query(LogFile).filter(LogFile.group_id == group.id)
         ]
 
     if not selected_file_ids:
@@ -917,11 +917,11 @@ def create_entry_process(
     for file_id in selected_file_ids:
         process_id: str | None = None
         try:
-            _cleanup_generated_tables_for_file(database=database, entry_id=str(entry.id), file_id=file_id)
-            process_id = create_process(entry_id=str(entry.id), file_ids=[file_id], file_id=file_id)
+            _cleanup_generated_tables_for_file(database=database, group_id=str(group.id), file_id=file_id)
+            process_id = create_process(group_id=str(group.id), file_ids=[file_id], file_id=file_id)
             enqueue_process(
                 process_id=process_id,
-                entry_id=str(entry.id),
+                group_id=str(group.id),
                 file_ids_json=json.dumps([file_id], ensure_ascii=True),
             )
             process_ids.append(process_id)
@@ -930,7 +930,7 @@ def create_entry_process(
             if process_id is not None:
                 mark_process_failed(
                     process_id=process_id,
-                    entry_id=str(entry.id),
+                    group_id=str(group.id),
                     message=f"Queueing failed: {error}",
                 )
             errors.append(f"{file_id}: {error}")
@@ -942,15 +942,15 @@ def create_entry_process(
     )
 
 
-@router.get("/{entry_id}/chat/messages", response_model=PersistedMessagesResponse)
+@router.get("/{group_id}/chat/messages", response_model=PersistedMessagesResponse)
 def get_chat_messages(
-    entry_id: str,
+    group_id: str,
     current_user: User = Depends(get_current_user),
     database: Session = Depends(get_database),
 ):
-    entry = _require_owned_entry(database=database, entry_id=entry_id, user_id=current_user.id)
+    group = _require_owned_group(database=database, group_id=group_id, user_id=current_user.id)
     messages = (
-        database.query(LogMessage).filter(LogMessage.entry_id == entry.id).order_by(LogMessage.created_at.asc()).all()
+        database.query(LogMessage).filter(LogMessage.group_id == group.id).order_by(LogMessage.created_at.asc()).all()
     )
 
     return PersistedMessagesResponse(
@@ -958,16 +958,16 @@ def get_chat_messages(
     )
 
 
-@router.put("/{entry_id}/chat/messages", response_model=ReplaceMessagesResponse)
+@router.put("/{group_id}/chat/messages", response_model=ReplaceMessagesResponse)
 def replace_chat_messages(
-    entry_id: str,
+    group_id: str,
     payload: ReplaceMessagesRequest,
     current_user: User = Depends(get_current_user),
     database: Session = Depends(get_database),
 ):
-    entry = _require_owned_entry(database=database, entry_id=entry_id, user_id=current_user.id)
+    group = _require_owned_group(database=database, group_id=group_id, user_id=current_user.id)
 
-    for message in database.query(LogMessage).filter(LogMessage.entry_id == entry.id).all():
+    for message in database.query(LogMessage).filter(LogMessage.group_id == group.id).all():
         database.delete(message)
 
     saved_messages = 0
@@ -984,7 +984,7 @@ def replace_chat_messages(
 
         database.add(
             LogMessage(
-                entry_id=entry.id,
+                group_id=group.id,
                 role=role,
                 content=normalized_content,
                 payload=json.dumps(message, ensure_ascii=True),
@@ -1000,8 +1000,8 @@ def replace_chat_messages(
 MAX_CONTEXT_ROWS = 200
 
 
-def _fetch_entry_table_context(entry_id: str, database: Session) -> str:
-    tables = database.query(LogTable).filter(LogTable.entry_id == _uuid_or_raw(entry_id)).all()
+def _fetch_group_table_context(group_id: str, database: Session) -> str:
+    tables = database.query(LogTable).filter(LogTable.group_id == _uuid_or_raw(group_id)).all()
     if not tables:
         return "No parsed tables are available for this log group."
 
@@ -1031,26 +1031,26 @@ def _fetch_entry_table_context(entry_id: str, database: Session) -> str:
     return "\n".join(lines)
 
 
-def _build_chat_system_prompt(entry_id: str, table_context: str) -> str:
+def _build_chat_system_prompt(group_id: str, table_context: str) -> str:
     return (
         "You are Logdog's AI log analysis assistant. "
-        f"You are helping the user analyze log group {entry_id}.\n\n"
+        f"You are helping the user analyze log group {group_id}.\n\n"
         f"{table_context}\n\n"
         "Answer the user's questions based on the log data context provided above. "
         "Be concise, accurate, and actionable. If the data is insufficient, say so."
     )
 
 
-@router.post("/{entry_id}/chat")
+@router.post("/{group_id}/chat")
 def stream_chat(
-    entry_id: str,
+    group_id: str,
     payload: ChatRequest,
     current_user: User = Depends(get_current_user),
     database: Session = Depends(get_database),
 ):
-    entry = _require_owned_entry(database=database, entry_id=entry_id, user_id=current_user.id)
-    table_context = _fetch_entry_table_context(str(entry.id), database)
-    system_prompt = _build_chat_system_prompt(str(entry.id), table_context)
+    group = _require_owned_group(database=database, group_id=group_id, user_id=current_user.id)
+    table_context = _fetch_group_table_context(str(group.id), database)
+    system_prompt = _build_chat_system_prompt(str(group.id), table_context)
 
     model = get_generative_model()
     messages: list[tuple[str, str]] = [("system", system_prompt)]
@@ -1074,8 +1074,8 @@ def stream_chat(
 MAX_REPORT_ROWS = 200
 
 
-def _fetch_entry_rows_for_report(entry_id: str, database: Session) -> str:
-    tables = database.query(LogTable).filter(LogTable.entry_id == _uuid_or_raw(entry_id)).all()
+def _fetch_group_rows_for_report(group_id: str, database: Session) -> str:
+    tables = database.query(LogTable).filter(LogTable.group_id == _uuid_or_raw(group_id)).all()
     if not tables:
         return "No parsed tables are available for this log group."
 
@@ -1086,9 +1086,7 @@ def _fetch_entry_rows_for_report(entry_id: str, database: Session) -> str:
         for table in tables:
             lines.append(f"Table: {table.table}")
             try:
-                result = megabase_database.execute(
-                    sa_text(f'SELECT * FROM "{table.table}" LIMIT {MAX_REPORT_ROWS}')
-                )
+                result = megabase_database.execute(sa_text(f'SELECT * FROM "{table.table}" LIMIT {MAX_REPORT_ROWS}'))
                 columns = [str(col) for col in result.keys()]
                 rows = result.fetchall()
                 lines.append(f"Columns: {', '.join(columns)}")
@@ -1106,14 +1104,14 @@ def _fetch_entry_rows_for_report(entry_id: str, database: Session) -> str:
     return "\n".join(lines)
 
 
-@router.post("/{entry_id}/insights", response_model=LogInsightReport)
+@router.post("/{group_id}/insights", response_model=LogInsightReport)
 def generate_insights(
-    entry_id: str,
+    group_id: str,
     current_user: User = Depends(get_current_user),
     database: Session = Depends(get_database),
 ):
-    entry = _require_owned_entry(database=database, entry_id=entry_id, user_id=current_user.id)
-    context = _fetch_entry_rows_for_report(str(entry.id), database)
+    group = _require_owned_group(database=database, group_id=group_id, user_id=current_user.id)
+    context = _fetch_group_rows_for_report(str(group.id), database)
 
     system_prompt = (
         "You are an expert log analyst. Analyze the provided log data and generate a structured insight report. "
@@ -1136,7 +1134,7 @@ def generate_insights(
     report = model.generate_structured(prompt, LogInsightReport, system_prompt=system_prompt)
 
     log_report = LogReport(
-        entry_id=entry.id,
+        group_id=group.id,
         content=report.model_dump(),
     )
     database.add(log_report)
@@ -1145,18 +1143,15 @@ def generate_insights(
     return report
 
 
-@router.get("/{entry_id}/insights", response_model=LogInsightReport | None)
+@router.get("/{group_id}/insights", response_model=LogInsightReport | None)
 def get_insights(
-    entry_id: str,
+    group_id: str,
     current_user: User = Depends(get_current_user),
     database: Session = Depends(get_database),
 ):
-    entry = _require_owned_entry(database=database, entry_id=entry_id, user_id=current_user.id)
+    group = _require_owned_group(database=database, group_id=group_id, user_id=current_user.id)
     log_report = (
-        database.query(LogReport)
-        .filter(LogReport.entry_id == entry.id)
-        .order_by(LogReport.created_at.desc())
-        .first()
+        database.query(LogReport).filter(LogReport.group_id == group.id).order_by(LogReport.created_at.desc()).first()
     )
 
     if log_report is None:
@@ -1165,22 +1160,24 @@ def get_insights(
     return LogInsightReport(**log_report.content)
 
 
-@router.post("/{entry_id}/nl-query", response_model=NlQueryResponse)
+@router.post("/{group_id}/nl-query", response_model=NlQueryResponse)
 def execute_nl_query(
-    entry_id: str,
+    group_id: str,
     payload: NlQueryRequest,
     current_user: User = Depends(get_current_user),
     database: Session = Depends(get_database),
 ):
-    entry = _require_owned_entry(database=database, entry_id=entry_id, user_id=current_user.id)
-    allowed_tables = _get_entry_table_names(database, str(entry.id))
+    group = _require_owned_group(database=database, group_id=group_id, user_id=current_user.id)
+    allowed_tables = _get_group_table_names(database, str(group.id))
 
     if not allowed_tables:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No tables available for this log group.")
 
     schema_lines = []
     for table_name in sorted(allowed_tables):
-        table_info = database.query(LogTable).filter(LogTable.entry_id == entry.id, LogTable.table == table_name).first()
+        table_info = (
+            database.query(LogTable).filter(LogTable.group_id == group.id, LogTable.table == table_name).first()
+        )
         if table_info:
             schema_lines.append(f'Table "{table_name}": {table_info.schema}')
         else:
@@ -1233,7 +1230,7 @@ def execute_nl_query(
         results = [dict(zip(columns, row)) for row in rows[:QUERY_RESULT_LIMIT]]
 
         nl_query = LogNlQuery(
-            entry_id=entry.id,
+            group_id=group.id,
             question=payload.question,
             generated_sql=sql_text,
             results_json=results,
@@ -1248,20 +1245,20 @@ def execute_nl_query(
         megabase_database.close()
 
 
-def _get_entry_table_names(database: Session, entry_id: str) -> set[str]:
+def _get_group_table_names(database: Session, group_id: str) -> set[str]:
     """Return the set of megabase table names registered for a log group."""
-    tables = database.query(LogTable).filter(LogTable.entry_id == _uuid_or_raw(entry_id)).all()
+    tables = database.query(LogTable).filter(LogTable.group_id == _uuid_or_raw(group_id)).all()
     return {row.table for row in tables}
 
 
-@router.post("/{entry_id}/query", response_model=QueryResponse)
-def execute_entry_query(
-    entry_id: str,
+@router.post("/{group_id}/query", response_model=QueryResponse)
+def execute_group_query(
+    group_id: str,
     payload: QueryRequest,
     current_user: User = Depends(get_current_user),
     database: Session = Depends(get_database),
 ):
-    entry = _require_owned_entry(database=database, entry_id=entry_id, user_id=current_user.id)
+    group = _require_owned_group(database=database, group_id=group_id, user_id=current_user.id)
     sql_text = payload.sql.strip()
 
     if not sql_text:
@@ -1278,7 +1275,7 @@ def execute_entry_query(
                 message=f"Statement type '{statement.get_type()}' is not allowed. Only SELECT is permitted.",
             )
 
-    allowed_tables = _get_entry_table_names(database, str(entry.id))
+    allowed_tables = _get_group_table_names(database, str(group.id))
     if not allowed_tables:
         return QueryResponse(status="error", message="No tables are available for this log group.")
 
@@ -1316,7 +1313,7 @@ def execute_entry_query(
         )
     except Exception as error:
         elapsed_ms = (time.monotonic() - start_time) * 1000
-        logger.exception("SQL query failed for entry %s", entry_id)
+        logger.exception("SQL query failed for entry %s", group_id)
         return QueryResponse(
             status="error",
             execution_time_ms=round(elapsed_ms, 2),
@@ -1326,14 +1323,14 @@ def execute_entry_query(
         megabase_database.close()
 
 
-@router.post("/{entry_id}/report")
-def generate_entry_report(
-    entry_id: str,
+@router.post("/{group_id}/report")
+def generate_group_report(
+    group_id: str,
     payload: ReportRequest,
     current_user: User = Depends(get_current_user),
     database: Session = Depends(get_database),
 ):
-    entry = _require_owned_entry(database=database, entry_id=entry_id, user_id=current_user.id)
+    group = _require_owned_group(database=database, group_id=group_id, user_id=current_user.id)
 
     document = Document()
 
@@ -1341,7 +1338,7 @@ def generate_entry_report(
     title_style.font.size = Pt(24)
     document.add_paragraph(payload.title, style="Title")
 
-    document.add_paragraph(f"Log group: {entry.name}")
+    document.add_paragraph(f"Log group: {group.name}")
     document.add_paragraph(f"Generated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}")
     document.add_page_break()
 
@@ -1389,19 +1386,16 @@ def generate_entry_report(
     )
 
 
-@router.post("/{entry_id}/workbook-report")
+@router.post("/{group_id}/workbook-report")
 def generate_workbook_report(
-    entry_id: str,
+    group_id: str,
     current_user: User = Depends(get_current_user),
     database: Session = Depends(get_database),
 ):
-    entry = _require_owned_entry(database=database, entry_id=entry_id, user_id=current_user.id)
-    tables = database.query(LogTable).filter(LogTable.entry_id == entry.id).all()
+    group = _require_owned_group(database=database, group_id=group_id, user_id=current_user.id)
+    tables = database.query(LogTable).filter(LogTable.group_id == group.id).all()
     processes = (
-        database.query(LogProcess)
-        .filter(LogProcess.entry_id == entry.id)
-        .order_by(LogProcess.created_at.desc())
-        .all()
+        database.query(LogProcess).filter(LogProcess.group_id == group.id).order_by(LogProcess.created_at.desc()).all()
     )
 
     workbook = Workbook()
@@ -1412,7 +1406,7 @@ def generate_workbook_report(
     summary_sheet["A1"] = "Logdog Workbook Report"
     summary_sheet["A1"].font = Font(size=16, bold=True)
     summary_sheet["A3"] = "Log Group"
-    summary_sheet["B3"] = entry.name
+    summary_sheet["B3"] = group.name
     summary_sheet["A4"] = "Generated At"
     summary_sheet["B4"] = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
     summary_sheet["A5"] = "Tables"
@@ -1480,7 +1474,7 @@ def generate_workbook_report(
     workbook.save(output)
     output.seek(0)
 
-    safe_name = re.sub(r"[^\w\-]", "_", entry.name)[:50] or "report"
+    safe_name = re.sub(r"[^\w\-]", "_", group.name)[:50] or "report"
     filename = f"{safe_name}_workbook.xlsx"
     headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
     return Response(

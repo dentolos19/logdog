@@ -71,7 +71,7 @@ def load_gold_records(gold_path: Path) -> list[dict[str, Any]]:
 def run_case(case: EvalCase, use_llm: bool = True) -> tuple[EvalMetrics, dict[str, Any]]:
     raw_text = case.raw_path.read_text(encoding="utf-8", errors="ignore")
     result = orchestrate_files(
-        entry_id="eval",
+        group_id="eval",
         file_inputs=[FileInput(filename=case.raw_path.name, content=raw_text)],
         persist=False,
         use_llm=use_llm,

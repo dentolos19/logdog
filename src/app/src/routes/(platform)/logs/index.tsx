@@ -16,7 +16,7 @@ import { Field, FieldContent, FieldError, FieldGroup, FieldLabel } from "#/compo
 import { Input } from "#/components/ui/input";
 import { Skeleton } from "#/components/ui/skeleton";
 import { Spinner } from "#/components/ui/spinner";
-import { createLogEntry, type LogEntry, listLogEntries } from "#/lib/server";
+import { createLogGroup, type LogGroup, listLogGroups } from "#/lib/server";
 import { PageHeader } from "#/routes/(platform)/-components/page-header";
 
 export const Route = createFileRoute("/(platform)/logs/")({
@@ -25,26 +25,26 @@ export const Route = createFileRoute("/(platform)/logs/")({
 
 function LogsPage() {
   const navigate = useNavigate();
-  const [entries, setEntries] = useState<LogEntry[] | null>(null);
+  const [groups, setGroups] = useState<LogGroup[] | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [name, setName] = useState("");
   const [createError, setCreateError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const fetchEntries = useCallback(async () => {
+  const fetchGroups = useCallback(async () => {
     setFetchError(null);
     try {
-      const data = await listLogEntries();
-      setEntries(data);
+      const data = await listLogGroups();
+      setGroups(data);
     } catch (error) {
       setFetchError(error instanceof Error ? error.message : "Failed to load log groups.");
     }
   }, []);
 
   useEffect(() => {
-    void fetchEntries();
-  }, [fetchEntries]);
+    void fetchGroups();
+  }, [fetchGroups]);
 
   const localValidationError = useMemo(() => {
     if (!name.trim()) {
@@ -67,7 +67,7 @@ function LogsPage() {
 
     setIsSubmitting(true);
     try {
-      const created = await createLogEntry({ name: name.trim() });
+      const created = await createLogGroup({ name: name.trim() });
       setName("");
       setIsDialogOpen(false);
       toast.success("Log group created.");
@@ -136,7 +136,7 @@ function LogsPage() {
       </Dialog>
 
       <main className={"flex flex-1 flex-col overflow-auto p-6"}>
-        {entries === null && fetchError === null && (
+        {groups === null && fetchError === null && (
           <div className={"flex flex-col gap-2"}>
             {[1, 2, 3].map((index) => (
               <div className={"flex items-center gap-4 rounded-md border p-4"} key={index}>
@@ -159,7 +159,7 @@ function LogsPage() {
           </div>
         )}
 
-        {entries !== null && entries.length === 0 && (
+        {groups !== null && groups.length === 0 && (
           <Empty className={"border"}>
             <EmptyHeader>
               <EmptyMedia variant={"icon"}>
@@ -175,19 +175,19 @@ function LogsPage() {
           </Empty>
         )}
 
-        {entries !== null && entries.length > 0 && (
+        {groups !== null && groups.length > 0 && (
           <div className={"flex flex-col gap-2"}>
-            {entries.map((entry) => (
+            {groups.map((group) => (
               <Link
                 className={"group flex items-center gap-4 rounded-md border p-4 transition-colors hover:bg-accent/50"}
-                key={entry.id}
-                params={{ id: entry.id }}
+                key={group.id}
+                params={{ id: group.id }}
                 to={"/logs/$id"}
               >
                 <div className={"flex flex-col gap-0.5"}>
-                  <span className={"font-medium text-sm"}>{entry.name}</span>
+                  <span className={"font-medium text-sm"}>{group.name}</span>
                   <span className={"text-muted-foreground text-xs"}>
-                    {new Date(entry.created_at).toLocaleDateString("en-US", {
+                    {new Date(group.created_at).toLocaleDateString("en-US", {
                       month: "short",
                       day: "numeric",
                       year: "numeric",

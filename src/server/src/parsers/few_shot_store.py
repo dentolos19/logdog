@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from lib.database import SessionLocal
-from lib.models import LogFewShotExample
+from lib.models import FewShotEntry
 
 logger = logging.getLogger(__name__)
 
@@ -199,7 +199,7 @@ class FewShotStore:
         if self._use_persistence:
             db = SessionLocal()
             try:
-                persisted_total = db.query(LogFewShotExample).count()
+                persisted_total = db.query(FewShotEntry).count()
             finally:
                 db.close()
         return {
@@ -214,7 +214,7 @@ class FewShotStore:
         if self._use_persistence:
             db = SessionLocal()
             try:
-                db.query(LogFewShotExample).delete()
+                db.query(FewShotEntry).delete()
                 db.commit()
             finally:
                 db.close()
@@ -234,21 +234,19 @@ class FewShotStore:
     ) -> list[FewShotExample]:
         db = SessionLocal()
         try:
-            query = db.query(LogFewShotExample).filter(LogFewShotExample.format_name == format_name)
+            query = db.query(FewShotEntry).filter(FewShotEntry.format_name == format_name)
             if domain:
-                query = query.filter(LogFewShotExample.domain == domain)
+                query = query.filter(FewShotEntry.domain == domain)
             if profile_name is not None:
-                query = query.filter(LogFewShotExample.profile_name == profile_name)
+                query = query.filter(FewShotEntry.profile_name == profile_name)
 
             if fingerprint is not None:
-                exact = query.filter(LogFewShotExample.fingerprint == fingerprint)
-                rows = exact.order_by(LogFewShotExample.usage_count.desc(), LogFewShotExample.confidence.desc()).all()
+                exact = query.filter(FewShotEntry.fingerprint == fingerprint)
+                rows = exact.order_by(FewShotEntry.usage_count.desc(), FewShotEntry.confidence.desc()).all()
                 if not rows:
-                    rows = query.order_by(
-                        LogFewShotExample.usage_count.desc(), LogFewShotExample.confidence.desc()
-                    ).all()
+                    rows = query.order_by(FewShotEntry.usage_count.desc(), FewShotEntry.confidence.desc()).all()
             else:
-                rows = query.order_by(LogFewShotExample.usage_count.desc(), LogFewShotExample.confidence.desc()).all()
+                rows = query.order_by(FewShotEntry.usage_count.desc(), FewShotEntry.confidence.desc()).all()
 
             return [self._to_example(row) for row in rows[: max_count * 2]]
         finally:
@@ -257,9 +255,9 @@ class FewShotStore:
     def _upsert_db(self, example: FewShotExample) -> None:
         db = SessionLocal()
         try:
-            existing = db.query(LogFewShotExample).filter(LogFewShotExample.signature == example.signature).first()
+            existing = db.query(FewShotEntry).filter(FewShotEntry.signature == example.signature).first()
             if existing is None:
-                existing = LogFewShotExample(signature=example.signature)
+                existing = FewShotEntry(signature=example.signature)
                 db.add(existing)
 
             existing.format_name = example.format_name
@@ -277,7 +275,7 @@ class FewShotStore:
             db.close()
 
     @staticmethod
-    def _to_example(row: LogFewShotExample) -> FewShotExample:
+    def _to_example(row: FewShotEntry) -> FewShotExample:
         try:
             sample_lines = json.loads(row.sample_lines)
         except json.JSONDecodeError:

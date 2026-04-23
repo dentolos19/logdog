@@ -24,9 +24,9 @@ import {
   downloadLogFile,
   downloadTableCsv,
   downloadTableXlsx,
-  getLogEntry,
-  type LogEntry,
+  getLogGroup,
   type LogFile,
+  type LogGroup,
   type LogProcess,
   listLogFiles,
   listLogProcesses,
@@ -47,7 +47,7 @@ export const Route = createFileRoute("/(platform)/logs/$id/$tableId")({
 function LogTablePage() {
   const { id, tableId } = Route.useParams();
 
-  const [entry, setEntry] = useState<LogEntry | null>(null);
+  const [group, setGroup] = useState<LogGroup | null>(null);
   const [files, setFiles] = useState<LogFile[]>([]);
   const [processes, setProcesses] = useState<LogProcess[]>([]);
 
@@ -62,12 +62,12 @@ function LogTablePage() {
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [downloadingFormat, setDownloadingFormat] = useState<string | null>(null);
 
-  const fetchEntry = useCallback(async () => {
+  const fetchGroup = useCallback(async () => {
     setEntryLoading(true);
     setEntryError(null);
     try {
-      const nextEntry = await getLogEntry(id);
-      setEntry(nextEntry);
+      const nextGroup = await getLogGroup(id);
+      setGroup(nextGroup);
     } catch (error) {
       setEntryError(error instanceof Error ? error.message : "Failed to load log group.");
     } finally {
@@ -102,8 +102,8 @@ function LogTablePage() {
   }, [id]);
 
   useEffect(() => {
-    void Promise.all([fetchEntry(), fetchFiles(), fetchProcesses()]);
-  }, [fetchEntry, fetchFiles, fetchProcesses]);
+    void Promise.all([fetchGroup(), fetchFiles(), fetchProcesses()]);
+  }, [fetchGroup, fetchFiles, fetchProcesses]);
 
   const tables = useMemo(() => inferTablesFromProcesses(files, processes), [files, processes]);
 
@@ -160,10 +160,10 @@ function LogTablePage() {
     <div className={"flex h-full flex-col"}>
       <PageHeader
         breadcrumbs={
-          entry !== null
+          group !== null
             ? [
                 { label: "Logs", href: "/logs" },
-                { label: entry.name, href: `/logs/${id}` },
+                { label: group.name, href: `/logs/${id}` },
                 ...(table !== null ? [{ label: getTableDisplayName(table) }] : []),
               ]
             : [{ label: "Logs", href: "/logs" }]

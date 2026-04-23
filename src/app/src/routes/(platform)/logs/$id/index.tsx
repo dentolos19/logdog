@@ -30,15 +30,15 @@ import { Spinner } from "#/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "#/components/ui/tabs";
 import {
   createLogProcess,
-  deleteLogEntry,
+  deleteLogGroup,
   downloadWorkbookReport,
-  getLogEntry,
-  type LogEntry,
+  getLogGroup,
   type LogFile,
+  type LogGroup,
   type LogProcess,
   listLogFiles,
   listLogProcesses,
-  updateLogEntry,
+  updateLogGroup,
 } from "#/lib/server";
 import { PageHeader } from "#/routes/(platform)/-components/page-header";
 import { ChatbotTab } from "#/routes/(platform)/logs/-components/chatbot-tab";
@@ -47,8 +47,8 @@ import { TablesTab } from "#/routes/(platform)/logs/-components/tables-tab";
 import { UploadSection } from "#/routes/(platform)/logs/-components/upload-section";
 import { QueryTab } from "#/routes/(platform)/logs/$id/-components/query-tab";
 
-const logEntryTabs = ["data", "processes", "query", "chat"] as const;
-type LogEntryTab = (typeof logEntryTabs)[number];
+const logGroupTabs = ["data", "processes", "query", "chat"] as const;
+type LogGroupTab = (typeof logGroupTabs)[number];
 
 type TableHighlightRequest = {
   key: number;
@@ -59,18 +59,18 @@ type TableHighlightRequest = {
 export const Route = createFileRoute("/(platform)/logs/$id/")({
   validateSearch: z
     .object({
-      tab: z.enum(logEntryTabs).optional(),
+      tab: z.enum(logGroupTabs).optional(),
     })
     .catch({}),
-  component: LogEntryPage,
+  component: LogGroupPage,
 });
 
-function LogEntryPage() {
+function LogGroupPage() {
   const { id } = Route.useParams();
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
 
-  const [entry, setEntry] = useState<LogEntry | null>(null);
+  const [group, setGroup] = useState<LogGroup | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
   const [processes, setProcesses] = useState<LogProcess[]>([]);
@@ -80,7 +80,7 @@ function LogEntryPage() {
   const [files, setFiles] = useState<LogFile[]>([]);
   const [filesError, setFilesError] = useState<string | null>(null);
 
-  const [activeTab, setActiveTab] = useState<LogEntryTab>(search.tab ?? "data");
+  const [activeTab, setActiveTab] = useState<LogGroupTab>(search.tab ?? "data");
   const [tableHighlightRequest, setTableHighlightRequest] = useState<TableHighlightRequest | null>(null);
 
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
@@ -91,11 +91,11 @@ function LogEntryPage() {
   const [isRenaming, setIsRenaming] = useState(false);
   const [retryingProcessIds, setRetryingProcessIds] = useState<Set<string>>(new Set());
 
-  const fetchEntry = useCallback(async () => {
+  const fetchGroup = useCallback(async () => {
     setFetchError(null);
     try {
-      const data = await getLogEntry(id);
-      setEntry(data);
+      const data = await getLogGroup(id);
+      setGroup(data);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to load log group.";
       const notFound = message.includes("404") || message.toLowerCase().includes("not found");
@@ -131,8 +131,8 @@ function LogEntryPage() {
   }, [id]);
 
   const onUploadSuccess = useCallback(async () => {
-    await Promise.all([fetchEntry(), fetchProcesses(), fetchFiles()]);
-  }, [fetchEntry, fetchFiles, fetchProcesses]);
+    await Promise.all([fetchGroup(), fetchProcesses(), fetchFiles()]);
+  }, [fetchGroup, fetchFiles, fetchProcesses]);
 
   const onRetryProcess = useCallback(
     async (process: LogProcess) => {
@@ -172,10 +172,10 @@ function LogEntryPage() {
   );
 
   useEffect(() => {
-    void fetchEntry();
+    void fetchGroup();
     void fetchProcesses();
     void fetchFiles();
-  }, [fetchEntry, fetchFiles, fetchProcesses]);
+  }, [fetchGroup, fetchFiles, fetchProcesses]);
 
   useEffect(() => {
     const nextTab = search.tab ?? "data";
@@ -202,7 +202,7 @@ function LogEntryPage() {
   }, [activeTab, processes, fetchProcesses]);
 
   const openRenameDialog = () => {
-    setRenameName(entry?.name ?? "");
+    setRenameName(group?.name ?? "");
     setRenameError(null);
     setIsRenameDialogOpen(true);
   };
@@ -228,8 +228,8 @@ function LogEntryPage() {
 
     setIsRenaming(true);
     try {
-      const updated = await updateLogEntry(id, { name: renameName.trim() });
-      setEntry(updated);
+      const updated = await updateLogGroup(id, { name: renameName.trim() });
+      setGroup(updated);
       setIsRenameDialogOpen(false);
       toast.success("Log group renamed.");
     } catch (error) {
@@ -246,7 +246,7 @@ function LogEntryPage() {
     setIsDeleteAlertOpen(false);
     const deletingToastId = toast.loading("Deleting log group...");
     try {
-      await deleteLogEntry(id);
+      await deleteLogGroup(id);
       toast.success("Log group deleted.", { id: deletingToastId });
       await navigate({ to: "/logs" });
     } catch (error) {
@@ -280,11 +280,11 @@ function LogEntryPage() {
 
   const onTabChange = useCallback(
     (nextTab: string) => {
-      if (!logEntryTabs.includes(nextTab as LogEntryTab)) {
+      if (!logGroupTabs.includes(nextTab as LogGroupTab)) {
         return;
       }
 
-      const normalizedTab = nextTab as LogEntryTab;
+      const normalizedTab = nextTab as LogGroupTab;
       setActiveTab(normalizedTab);
       void navigate({
         replace: true,
@@ -320,15 +320,15 @@ function LogEntryPage() {
     <div className={"flex h-full flex-col"}>
       <PageHeader
         breadcrumbs={
-          entry
-            ? [{ label: "Logs", href: "/logs" }, { label: entry.name }]
+          group
+            ? [{ label: "Logs", href: "/logs" }, { label: group.name }]
             : fetchError
               ? [{ label: "Logs", href: "/logs" }]
               : undefined
         }
-        loading={entry === null && fetchError === null}
+        loading={group === null && fetchError === null}
       >
-        {entry !== null && (
+        {group !== null && (
           <>
             <Button asChild size={"sm"} variant={"ghost"}>
               <Link params={{ id }} to={"/logs/$id/report"}>
@@ -381,7 +381,7 @@ function LogEntryPage() {
       </PageHeader>
 
       <main className={"flex flex-1 flex-col gap-6 overflow-auto"}>
-        {entry === null && fetchError === null && (
+        {group === null && fetchError === null && (
           <div className={"flex flex-col gap-6"}>
             <Skeleton className={"h-28 w-full rounded-lg"} />
             <Skeleton className={"h-48 w-full rounded-lg"} />
@@ -397,7 +397,7 @@ function LogEntryPage() {
           </div>
         )}
 
-        {entry !== null && (
+        {group !== null && (
           <Tabs className={"gap-0"} onValueChange={onTabChange} value={activeTab}>
             <TabsList className={"w-full rounded-none border-b bg-sidebar"}>
               <TabsTrigger value={"data"}>Data</TabsTrigger>
@@ -408,7 +408,7 @@ function LogEntryPage() {
 
             <TabsContent className={"flex flex-col gap-6 p-4"} value={"data"}>
               <UploadSection
-                logEntryId={id}
+                logGroupId={id}
                 onNavigateToProcesses={() => onTabChange("processes")}
                 onUploadSuccess={onUploadSuccess}
               />
@@ -500,7 +500,7 @@ function LogEntryPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete log group?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete <strong className={"text-foreground"}>{entry?.name}</strong> and all
+              This will permanently delete <strong className={"text-foreground"}>{group?.name}</strong> and all
               associated data. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>

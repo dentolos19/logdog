@@ -53,13 +53,13 @@ def _ensure_log_process_file_column() -> None:
 def _ensure_log_group_profile_column() -> None:
     inspector = inspect(engine)
     table_names = inspector.get_table_names()
-    if "log_entries" not in table_names:
+    if "groups" not in table_names:
         return
 
-    column_names = {column["name"] for column in inspector.get_columns("log_entries")}
+    column_names = {column["name"] for column in inspector.get_columns("groups")}
     if "profile_name" in column_names:
         return
 
     with engine.begin() as connection:
-        connection.execute(text("ALTER TABLE log_entries ADD COLUMN profile_name VARCHAR(255) NULL"))
-        connection.execute(text("UPDATE log_entries SET profile_name = 'default' WHERE profile_name IS NULL"))
+        connection.execute(text("ALTER TABLE groups ADD COLUMN profile_name VARCHAR(255) NULL"))
+        connection.execute(text("UPDATE groups SET profile_name = 'default' WHERE profile_name IS NULL"))

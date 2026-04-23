@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from lib.database import SessionLocal
-from lib.models import LogSchemaCacheEntry
+from lib.models import SchemaCacheEntry
 
 logger = logging.getLogger(__name__)
 
@@ -157,18 +157,18 @@ class SchemaCache:
 
         db = SessionLocal()
         try:
-            query = db.query(LogSchemaCacheEntry).filter(
-                LogSchemaCacheEntry.fingerprint == fingerprint,
-                LogSchemaCacheEntry.domain == domain,
-                LogSchemaCacheEntry.format_confidence >= min_confidence,
+            query = db.query(SchemaCacheEntry).filter(
+                SchemaCacheEntry.fingerprint == fingerprint,
+                SchemaCacheEntry.domain == domain,
+                SchemaCacheEntry.format_confidence >= min_confidence,
             )
             if profile_name is not None:
-                query = query.filter(LogSchemaCacheEntry.profile_name == profile_name)
+                query = query.filter(SchemaCacheEntry.profile_name == profile_name)
 
             entry = query.order_by(
-                LogSchemaCacheEntry.format_confidence.desc(),
-                LogSchemaCacheEntry.success_count.desc(),
-                LogSchemaCacheEntry.access_count.desc(),
+                SchemaCacheEntry.format_confidence.desc(),
+                SchemaCacheEntry.success_count.desc(),
+                SchemaCacheEntry.access_count.desc(),
             ).first()
             if entry is None:
                 return None
@@ -224,7 +224,7 @@ class SchemaCache:
         if self._use_persistence:
             db = SessionLocal()
             try:
-                persisted_total = db.query(LogSchemaCacheEntry).count()
+                persisted_total = db.query(SchemaCacheEntry).count()
             finally:
                 db.close()
         return {
@@ -240,7 +240,7 @@ class SchemaCache:
         if self._use_persistence:
             db = SessionLocal()
             try:
-                db.query(LogSchemaCacheEntry).delete()
+                db.query(SchemaCacheEntry).delete()
                 db.commit()
             finally:
                 db.close()
@@ -275,7 +275,7 @@ class SchemaCache:
     def _load_from_db(self, schema_key: str) -> CachedSchema | None:
         db = SessionLocal()
         try:
-            entry = db.query(LogSchemaCacheEntry).filter(LogSchemaCacheEntry.cache_key == schema_key).first()
+            entry = db.query(SchemaCacheEntry).filter(SchemaCacheEntry.cache_key == schema_key).first()
             if entry is None:
                 return None
             return self._to_cached(entry)
@@ -285,9 +285,9 @@ class SchemaCache:
     def _upsert_db(self, cached: CachedSchema) -> None:
         db = SessionLocal()
         try:
-            existing = db.query(LogSchemaCacheEntry).filter(LogSchemaCacheEntry.cache_key == cached.schema_key).first()
+            existing = db.query(SchemaCacheEntry).filter(SchemaCacheEntry.cache_key == cached.schema_key).first()
             if existing is None:
-                existing = LogSchemaCacheEntry(cache_key=cached.schema_key)
+                existing = SchemaCacheEntry(cache_key=cached.schema_key)
                 db.add(existing)
 
             existing.format_name = cached.format_name
@@ -312,7 +312,7 @@ class SchemaCache:
     def _touch_db(self, schema_key: str) -> None:
         db = SessionLocal()
         try:
-            entry = db.query(LogSchemaCacheEntry).filter(LogSchemaCacheEntry.cache_key == schema_key).first()
+            entry = db.query(SchemaCacheEntry).filter(SchemaCacheEntry.cache_key == schema_key).first()
             if entry is None:
                 return
             entry.access_count = (entry.access_count or 0) + 1
@@ -324,7 +324,7 @@ class SchemaCache:
     def _record_db_result(self, schema_key: str, success: bool) -> None:
         db = SessionLocal()
         try:
-            entry = db.query(LogSchemaCacheEntry).filter(LogSchemaCacheEntry.cache_key == schema_key).first()
+            entry = db.query(SchemaCacheEntry).filter(SchemaCacheEntry.cache_key == schema_key).first()
             if entry is None:
                 return
             if success:
@@ -337,7 +337,7 @@ class SchemaCache:
             db.close()
 
     @staticmethod
-    def _to_cached(entry: LogSchemaCacheEntry) -> CachedSchema:
+    def _to_cached(entry: SchemaCacheEntry) -> CachedSchema:
         now = time.time()
         created_at = entry.created_at.timestamp() if entry.created_at else now
         last_accessed = entry.last_accessed.timestamp() if entry.last_accessed else created_at

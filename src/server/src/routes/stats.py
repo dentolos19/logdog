@@ -8,7 +8,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from lib.database import get_database
-from lib.models import LogEntry, LogFile, LogProcess, User
+from lib.models import LogGroup, LogFile, LogProcess, User
 from routes.auth import get_current_user
 
 router = APIRouter(prefix="/stats", tags=["stats"])
@@ -88,7 +88,7 @@ def get_dashboard_stats(
     current_user: User = Depends(get_current_user),
     database: Session = Depends(get_database),
 ):
-    log_group_count = database.query(func.count(LogEntry.id)).filter(LogEntry.user_id == current_user.id).scalar() or 0
+    log_group_count = database.query(func.count(LogGroup.id)).filter(LogGroup.user_id == current_user.id).scalar() or 0
     total_files = database.query(func.count(LogFile.id)).filter(LogFile.user_id == current_user.id).scalar() or 0
 
     queued = 0
@@ -99,8 +99,8 @@ def get_dashboard_stats(
 
     process_rows = (
         database.query(LogProcess.status, LogProcess.result)
-        .join(LogEntry, LogProcess.entry_id == LogEntry.id)
-        .filter(LogEntry.user_id == current_user.id)
+        .join(LogGroup, LogProcess.group_id == LogGroup.id)
+        .filter(LogGroup.user_id == current_user.id)
         .all()
     )
 
@@ -120,7 +120,8 @@ def get_dashboard_stats(
             failed += 1
 
     format_distribution = [
-        FormatCount(format=fmt, count=cnt) for fmt, cnt in sorted(format_counts.items(), key=lambda x: x[1], reverse=True)
+        FormatCount(format=fmt, count=cnt)
+        for fmt, cnt in sorted(format_counts.items(), key=lambda x: x[1], reverse=True)
     ]
 
     return DashboardStatsResponse(

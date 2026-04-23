@@ -21,7 +21,7 @@ class User(Base):
     password = Column(String, nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
-    entries = relationship("LogEntry", back_populates="user")
+    log_groups = relationship("LogGroup", back_populates="user")
     files = relationship("LogFile", back_populates="user")
 
 
@@ -44,8 +44,8 @@ class Asset(Base):
     files = relationship("LogFile", back_populates="asset")
 
 
-class LogEntry(Base):
-    __tablename__ = "log_entries"
+class LogGroup(Base):
+    __tablename__ = "groups"
 
     id = Column(
         UUID(as_uuid=True),
@@ -59,13 +59,13 @@ class LogEntry(Base):
     profile_name = Column(String, nullable=True, default="default")
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
-    user = relationship("User", back_populates="entries")
-    files = relationship("LogFile", back_populates="entry")
-    tables = relationship("LogTable", back_populates="entry")
-    messages = relationship("LogMessage", back_populates="entry")
-    processes = relationship("LogProcess", back_populates="entry")
-    reports = relationship("LogReport", back_populates="entry", cascade="all, delete-orphan")
-    nl_queries = relationship("LogNlQuery", back_populates="entry", cascade="all, delete-orphan")
+    user = relationship("User", back_populates="log_groups")
+    files = relationship("LogFile", back_populates="group")
+    tables = relationship("LogTable", back_populates="group")
+    messages = relationship("LogMessage", back_populates="group")
+    processes = relationship("LogProcess", back_populates="group")
+    reports = relationship("LogReport", back_populates="group", cascade="all, delete-orphan")
+    nl_queries = relationship("LogNlQuery", back_populates="group", cascade="all, delete-orphan")
 
 
 class LogFile(Base):
@@ -80,12 +80,12 @@ class LogFile(Base):
     )
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     asset_id = Column(UUID(as_uuid=True), ForeignKey("assets.id"), nullable=False)
-    entry_id = Column(UUID(as_uuid=True), ForeignKey("log_entries.id"), nullable=False)
+    group_id = Column(UUID(as_uuid=True), ForeignKey("groups.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     user = relationship("User", back_populates="files")
     asset = relationship("Asset", back_populates="files")
-    entry = relationship("LogEntry", back_populates="files")
+    group = relationship("LogGroup", back_populates="files")
     processes = relationship("LogProcess", back_populates="file")
 
 
@@ -99,13 +99,13 @@ class LogTable(Base):
         nullable=False,
         default=uuid.uuid4,
     )
-    entry_id = Column(UUID(as_uuid=True), ForeignKey("log_entries.id"), nullable=False)
+    group_id = Column(UUID(as_uuid=True), ForeignKey("groups.id"), nullable=False)
     name = Column(String, nullable=False)
     table = Column(String, nullable=False)  # From the megabase
     schema = Column(String, nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
-    entry = relationship("LogEntry", back_populates="tables")
+    group = relationship("LogGroup", back_populates="tables")
 
 
 class LogMessage(Base):
@@ -118,13 +118,13 @@ class LogMessage(Base):
         nullable=False,
         default=uuid.uuid4,
     )
-    entry_id = Column(UUID(as_uuid=True), ForeignKey("log_entries.id"), nullable=False)
+    group_id = Column(UUID(as_uuid=True), ForeignKey("groups.id"), nullable=False)
     role = Column(String, nullable=False)
     content = Column(String, nullable=False)
     payload = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
-    entry = relationship("LogEntry", back_populates="messages")
+    group = relationship("LogGroup", back_populates="messages")
 
 
 class LogProcess(Base):
@@ -137,7 +137,7 @@ class LogProcess(Base):
         nullable=False,
         default=uuid.uuid4,
     )
-    entry_id = Column(UUID(as_uuid=True), ForeignKey("log_entries.id"), nullable=False, index=True)
+    group_id = Column(UUID(as_uuid=True), ForeignKey("groups.id"), nullable=False, index=True)
     file_id = Column(UUID(as_uuid=True), ForeignKey("log_files.id"), nullable=True, index=True)
     status = Column(String, nullable=False, default="queued")
     classification = Column(Text, nullable=True)
@@ -146,12 +146,48 @@ class LogProcess(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 
-    entry = relationship("LogEntry", back_populates="processes")
+    group = relationship("LogGroup", back_populates="processes")
     file = relationship("LogFile", back_populates="processes")
 
 
-class LogSchemaCacheEntry(Base):
-    __tablename__ = "log_schema_cache_entries"
+class LogReport(Base):
+    __tablename__ = "log_reports"
+
+    id = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        index=True,
+        nullable=False,
+        default=uuid.uuid4,
+    )
+    group_id = Column(UUID(as_uuid=True), ForeignKey("groups.id"), nullable=False, index=True)
+    content = Column(JSONB, nullable=False, default=dict)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    group = relationship("LogGroup", back_populates="reports")
+
+
+class LogNlQuery(Base):
+    __tablename__ = "log_nl_queries"
+
+    id = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        index=True,
+        nullable=False,
+        default=uuid.uuid4,
+    )
+    group_id = Column(UUID(as_uuid=True), ForeignKey("groups.id"), nullable=False, index=True)
+    question = Column(Text, nullable=False)
+    generated_sql = Column(Text, nullable=False)
+    results_json = Column(JSONB, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    group = relationship("LogGroup", back_populates="nl_queries")
+
+
+class SchemaCacheEntry(Base):
+    __tablename__ = "schema_cache"
 
     id = Column(
         UUID(as_uuid=True),
@@ -180,8 +216,8 @@ class LogSchemaCacheEntry(Base):
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 
 
-class LogFewShotExample(Base):
-    __tablename__ = "log_few_shot_examples"
+class FewShotEntry(Base):
+    __tablename__ = "few_shots"
 
     id = Column(
         UUID(as_uuid=True),
@@ -202,39 +238,3 @@ class LogFewShotExample(Base):
     last_used = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
-
-
-class LogReport(Base):
-    __tablename__ = "log_reports"
-
-    id = Column(
-        UUID(as_uuid=True),
-        primary_key=True,
-        index=True,
-        nullable=False,
-        default=uuid.uuid4,
-    )
-    entry_id = Column(UUID(as_uuid=True), ForeignKey("log_entries.id"), nullable=False, index=True)
-    content = Column(JSONB, nullable=False, default=dict)
-    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
-
-    entry = relationship("LogEntry", back_populates="reports")
-
-
-class LogNlQuery(Base):
-    __tablename__ = "log_nl_queries"
-
-    id = Column(
-        UUID(as_uuid=True),
-        primary_key=True,
-        index=True,
-        nullable=False,
-        default=uuid.uuid4,
-    )
-    entry_id = Column(UUID(as_uuid=True), ForeignKey("log_entries.id"), nullable=False, index=True)
-    question = Column(Text, nullable=False)
-    generated_sql = Column(Text, nullable=False)
-    results_json = Column(JSONB, nullable=True)
-    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
-
-    entry = relationship("LogEntry", back_populates="nl_queries")

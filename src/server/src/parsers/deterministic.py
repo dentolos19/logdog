@@ -125,7 +125,9 @@ class DeterministicParserPipeline(ParserPipeline):
                     required_columns=parsed_table.required_columns,
                 )
                 ddl = build_ddl(table_name, columns)
-                table_definitions.append(TableDefinition(table_name=table_name, display_name=display_name, columns=columns, ddl=ddl))
+                table_definitions.append(
+                    TableDefinition(table_name=table_name, display_name=display_name, columns=columns, ddl=ddl)
+                )
                 records[table_name] = normalized_rows
                 table_metadata[table_name] = {
                     "logical_name": parsed_table.logical_name,
@@ -1047,7 +1049,9 @@ class BinaryHexPipeline(DeterministicParserPipeline):
 
     def supports(self, request: ParserSupportRequest) -> ParserSupportResult:
         lower_name = request.filename.lower()
-        extension_match = self.supported_extensions and any(lower_name.endswith(ext) for ext in self.supported_extensions)
+        extension_match = self.supported_extensions and any(
+            lower_name.endswith(ext) for ext in self.supported_extensions
+        )
         content_score = self._score_content(request.content)
 
         if extension_match and content_score > 0.0:

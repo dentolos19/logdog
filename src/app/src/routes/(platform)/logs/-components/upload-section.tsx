@@ -8,12 +8,12 @@ import { Spinner } from "#/components/ui/spinner";
 import { type UploadFileOutcome, uploadLogFiles } from "#/lib/server";
 
 type UploadSectionProps = {
-  logEntryId: string;
+  logGroupId: string;
   onUploadSuccess: () => void;
   onNavigateToProcesses: () => void;
 };
 
-export function UploadSection({ logEntryId, onUploadSuccess, onNavigateToProcesses }: UploadSectionProps) {
+export function UploadSection({ logGroupId, onUploadSuccess, onNavigateToProcesses }: UploadSectionProps) {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -44,7 +44,7 @@ export function UploadSection({ logEntryId, onUploadSuccess, onNavigateToProcess
     setQueueOutcomes([]);
 
     try {
-      const response = await uploadLogFiles(logEntryId, selectedFiles);
+      const response = await uploadLogFiles(logGroupId, selectedFiles);
       const queuedOutcomes = response.outcomes.filter((outcome) => outcome.status === "queued");
       const failedOutcomes = response.outcomes.filter((outcome) => outcome.status !== "queued");
 

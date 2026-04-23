@@ -148,7 +148,7 @@ def make_display_name(parser_key: str, file_id: str | None, filename: str) -> st
     base_name = Path(filename).stem
     if ":" in base_name:
         base_name = base_name.split(":")[-1]
-    
+
     name_parts = [part for part in [base_name, parser_key] if part]
     combined = " ".join(name_parts)
     return combined.replace("_", " ").title()

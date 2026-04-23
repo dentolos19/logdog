@@ -1,6 +1,6 @@
 import { $fetch } from "#/lib/server/utils";
 
-export type LogEntry = {
+export type LogGroup = {
   id: string;
   user_id: string;
   name: string;
@@ -10,7 +10,7 @@ export type LogEntry = {
 
 export type LogFile = {
   id: string;
-  entry_id: string;
+  group_id: string;
   asset_id: string;
   name: string;
   size: number;
@@ -20,7 +20,7 @@ export type LogFile = {
 
 export type LogProcess = {
   id: string;
-  entry_id: string;
+  group_id: string;
   file_id: string | null;
   status: LogProcessStatus;
   classification: LogProcessClassification | Record<string, unknown> | null;
@@ -131,12 +131,12 @@ type MessageResponse = {
   message: string;
 };
 
-type CreateLogEntryPayload = {
+type CreateLogGroupPayload = {
   name: string;
   profile_name?: string;
 };
 
-type UpdateLogEntryPayload = {
+type UpdateLogGroupPayload = {
   name: string;
   profile_name?: string;
 };
@@ -154,12 +154,12 @@ async function parseJsonResponse<T>(response: Response) {
   return (await response.json()) as T;
 }
 
-export async function listLogEntries() {
+export async function listLogGroups() {
   const response = await $fetch("/logs");
-  return parseJsonResponse<LogEntry[]>(response);
+  return parseJsonResponse<LogGroup[]>(response);
 }
 
-export async function createLogEntry(payload: CreateLogEntryPayload) {
+export async function createLogGroup(payload: CreateLogGroupPayload) {
   const response = await $fetch("/logs", {
     method: "POST",
     headers: {
@@ -168,16 +168,16 @@ export async function createLogEntry(payload: CreateLogEntryPayload) {
     body: JSON.stringify(payload),
   });
 
-  return parseJsonResponse<LogEntry>(response);
+  return parseJsonResponse<LogGroup>(response);
 }
 
-export async function getLogEntry(entryId: string) {
-  const response = await $fetch(`/logs/${entryId}`);
-  return parseJsonResponse<LogEntry>(response);
+export async function getLogGroup(groupId: string) {
+  const response = await $fetch(`/logs/${groupId}`);
+  return parseJsonResponse<LogGroup>(response);
 }
 
-export async function updateLogEntry(entryId: string, payload: UpdateLogEntryPayload) {
-  const response = await $fetch(`/logs/${entryId}`, {
+export async function updateLogGroup(groupId: string, payload: UpdateLogGroupPayload) {
+  const response = await $fetch(`/logs/${groupId}`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
@@ -185,18 +185,18 @@ export async function updateLogEntry(entryId: string, payload: UpdateLogEntryPay
     body: JSON.stringify(payload),
   });
 
-  return parseJsonResponse<LogEntry>(response);
+  return parseJsonResponse<LogGroup>(response);
 }
 
-export async function deleteLogEntry(entryId: string) {
-  const response = await $fetch(`/logs/${entryId}`, {
+export async function deleteLogGroup(groupId: string) {
+  const response = await $fetch(`/logs/${groupId}`, {
     method: "DELETE",
   });
 
   return parseJsonResponse<MessageResponse>(response);
 }
 
-export async function uploadLogFiles(entryId: string, files: File[]) {
+export async function uploadLogFiles(groupId: string, files: File[]) {
   if (!files.length) {
     throw new Error("At least one file is required.");
   }
@@ -206,7 +206,7 @@ export async function uploadLogFiles(entryId: string, files: File[]) {
     formData.append("files", file);
   }
 
-  const response = await $fetch(`/logs/${entryId}/files/upload`, {
+  const response = await $fetch(`/logs/${groupId}/files/upload`, {
     method: "POST",
     body: formData,
   });
@@ -214,18 +214,18 @@ export async function uploadLogFiles(entryId: string, files: File[]) {
   return parseJsonResponse<UploadFilesResponse>(response);
 }
 
-export async function listLogFiles(entryId: string) {
-  const response = await $fetch(`/logs/${entryId}/files`);
+export async function listLogFiles(groupId: string) {
+  const response = await $fetch(`/logs/${groupId}/files`);
   return parseJsonResponse<LogFile[]>(response);
 }
 
-export async function getLogFile(entryId: string, fileId: string) {
-  const response = await $fetch(`/logs/${entryId}/files/${fileId}`);
+export async function getLogFile(groupId: string, fileId: string) {
+  const response = await $fetch(`/logs/${groupId}/files/${fileId}`);
   return parseJsonResponse<LogFile>(response);
 }
 
-export async function downloadLogFile(entryId: string, fileId: string) {
-  const response = await $fetch(`/logs/${entryId}/files/${fileId}/download`);
+export async function downloadLogFile(groupId: string, fileId: string) {
+  const response = await $fetch(`/logs/${groupId}/files/${fileId}/download`);
   if (!response.ok) {
     const payload = await response.text();
     throw new Error(`Request failed (${response.status}): ${payload}`);
@@ -234,8 +234,8 @@ export async function downloadLogFile(entryId: string, fileId: string) {
   return response.blob();
 }
 
-export async function downloadTableCsv(entryId: string, tableName: string) {
-  const response = await $fetch(`/logs/${entryId}/tables/${tableName}/download/csv`);
+export async function downloadTableCsv(groupId: string, tableName: string) {
+  const response = await $fetch(`/logs/${groupId}/tables/${tableName}/download/csv`);
   if (!response.ok) {
     const payload = await response.text();
     throw new Error(`Request failed (${response.status}): ${payload}`);
@@ -244,8 +244,8 @@ export async function downloadTableCsv(entryId: string, tableName: string) {
   return response.blob();
 }
 
-export async function downloadTableXlsx(entryId: string, tableName: string) {
-  const response = await $fetch(`/logs/${entryId}/tables/${tableName}/download/xlsx`);
+export async function downloadTableXlsx(groupId: string, tableName: string) {
+  const response = await $fetch(`/logs/${groupId}/tables/${tableName}/download/xlsx`);
   if (!response.ok) {
     const payload = await response.text();
     throw new Error(`Request failed (${response.status}): ${payload}`);
@@ -254,8 +254,8 @@ export async function downloadTableXlsx(entryId: string, tableName: string) {
   return response.blob();
 }
 
-export async function downloadFilteredTable(entryId: string, tableName: string, payload: FilteredExportPayload) {
-  const response = await $fetch(`/logs/${entryId}/tables/${tableName}/download/filtered`, {
+export async function downloadFilteredTable(groupId: string, tableName: string, payload: FilteredExportPayload) {
+  const response = await $fetch(`/logs/${groupId}/tables/${tableName}/download/filtered`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -270,26 +270,26 @@ export async function downloadFilteredTable(entryId: string, tableName: string, 
   return response.blob();
 }
 
-export async function deleteLogFile(entryId: string, fileId: string) {
-  const response = await $fetch(`/logs/${entryId}/files/${fileId}`, {
+export async function deleteLogFile(groupId: string, fileId: string) {
+  const response = await $fetch(`/logs/${groupId}/files/${fileId}`, {
     method: "DELETE",
   });
 
   return parseJsonResponse<MessageResponse>(response);
 }
 
-export async function listLogProcesses(entryId: string) {
-  const response = await $fetch(`/logs/${entryId}/processes`);
+export async function listLogProcesses(groupId: string) {
+  const response = await $fetch(`/logs/${groupId}/processes`);
   return parseJsonResponse<LogProcess[]>(response);
 }
 
-export async function getLogProcess(entryId: string, processId: string) {
-  const response = await $fetch(`/logs/${entryId}/processes/${processId}`);
+export async function getLogProcess(groupId: string, processId: string) {
+  const response = await $fetch(`/logs/${groupId}/processes/${processId}`);
   return parseJsonResponse<LogProcess>(response);
 }
 
-export async function createLogProcess(entryId: string, payload?: CreateProcessPayload) {
-  const response = await $fetch(`/logs/${entryId}/processes`, {
+export async function createLogProcess(groupId: string, payload?: CreateProcessPayload) {
+  const response = await $fetch(`/logs/${groupId}/processes`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

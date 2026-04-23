@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "#/com
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "#/components/ui/empty";
 import { Skeleton } from "#/components/ui/skeleton";
 import { Spinner } from "#/components/ui/spinner";
-import { generateLogReport, getLogEntry, getLogReport, type LogEntry, type LogInsightReport } from "#/lib/server";
+import { generateLogReport, getLogGroup, getLogReport, type LogGroup, type LogInsightReport } from "#/lib/server";
 import { PageHeader } from "#/routes/(platform)/-components/page-header";
 
 export const Route = createFileRoute("/(platform)/logs/$id/report/")({
@@ -19,18 +19,18 @@ export const Route = createFileRoute("/(platform)/logs/$id/report/")({
 function LogReportPage() {
   const { id } = Route.useParams();
 
-  const [entry, setEntry] = useState<LogEntry | null>(null);
+  const [group, setGroup] = useState<LogGroup | null>(null);
   const [report, setReport] = useState<LogInsightReport | null>(null);
   const [loadingEntry, setLoadingEntry] = useState(true);
   const [loadingReport, setLoadingReport] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchEntry = useCallback(async () => {
+  const fetchGroup = useCallback(async () => {
     setLoadingEntry(true);
     try {
-      const data = await getLogEntry(id);
-      setEntry(data);
+      const data = await getLogGroup(id);
+      setGroup(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load log group.");
     } finally {
@@ -51,9 +51,9 @@ function LogReportPage() {
   }, [id]);
 
   useEffect(() => {
-    void fetchEntry();
+    void fetchGroup();
     void fetchReport();
-  }, [fetchEntry, fetchReport]);
+  }, [fetchGroup, fetchReport]);
 
   const handleGenerate = useCallback(async () => {
     setGenerating(true);
@@ -78,13 +78,13 @@ function LogReportPage() {
     <div className={"flex h-full flex-col"}>
       <PageHeader
         breadcrumbs={
-          entry
-            ? [{ label: "Logs", href: "/logs" }, { label: entry.name, href: `/logs/${id}` }, { label: "Report" }]
+          group
+            ? [{ label: "Logs", href: "/logs" }, { label: group.name, href: `/logs/${id}` }, { label: "Report" }]
             : [{ label: "Logs", href: "/logs" }]
         }
         loading={loadingEntry}
       >
-        {entry !== null && (
+        {group !== null && (
           <Button disabled={generating} onClick={() => void handleGenerate()} size={"sm"} variant={"outline"}>
             {generating ? <Spinner className={"size-3"} /> : <RefreshCwIcon />}
             {generating ? "Generating..." : hasReport ? "Regenerate Report" : "Generate Report"}

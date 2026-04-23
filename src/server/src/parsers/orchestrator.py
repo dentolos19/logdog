@@ -20,7 +20,7 @@ from lib.megabase import (
     init_megabase,
     insert_record as megabase_insert_record,
 )
-from lib.models import Asset, LogEntry, LogFile, LogProcess, LogTable
+from lib.models import Asset, LogGroup, LogFile, LogProcess, LogTable
 from lib.storage import download_file
 from parsers.unified.binary import BinaryHandler
 from parsers.contracts import ClassificationResult, ParserPipelineResult
@@ -53,26 +53,26 @@ def register_pipelines() -> None:
 
 
 def create_process(
-    entry_id: str,
+    group_id: str,
     file_inputs: list[FileInput] | None = None,
     file_ids: list[str] | None = None,
     file_id: str | None = None,
 ) -> str:
     db = SessionLocal()
     try:
-        entry = db.query(LogEntry).filter_by(id=_uuid_or_raw(entry_id)).first()
-        if entry is None:
-            raise ValueError(f"Log group '{entry_id}' not found.")
+        group = db.query(LogGroup).filter_by(id=_uuid_or_raw(group_id)).first()
+        if group is None:
+            raise ValueError(f"Log group '{group_id}' not found.")
 
         classification_json: str | None = None
         if file_inputs:
-            classification = LogPreprocessorService(table_name="logs", profile_name=entry.profile_name).classify(
+            classification = LogPreprocessorService(table_name="logs", profile_name=group.profile_name).classify(
                 file_inputs
             )
             classification_json = classification.model_dump_json()
 
         process = LogProcess(
-            entry_id=_uuid_or_raw(entry_id),
+            group_id=_uuid_or_raw(group_id),
             file_id=_uuid_or_raw(file_id) if file_id else None,
             status="queued",
             classification=classification_json,
@@ -83,9 +83,9 @@ def create_process(
 
         if file_ids:
             logger.info(
-                "Created process %s for entry %s with %d file id(s).",
+                "Created process %s for group %s with %d file id(s).",
                 process.id,
-                entry_id,
+                group_id,
                 len(file_ids),
             )
 
@@ -96,30 +96,30 @@ def create_process(
 
 def enqueue_process(
     process_id: str,
-    entry_id: str,
+    group_id: str,
     file_inputs_json: str | None = None,
     file_ids_json: str | None = None,
 ) -> None:
     PARSE_JOB_EXECUTOR.submit(
         run_parse_job,
         process_id,
-        entry_id,
+        group_id,
         file_inputs_json,
         file_ids_json,
     )
 
 
-def mark_process_failed(process_id: str, entry_id: str, message: str) -> None:
+def mark_process_failed(process_id: str, group_id: str, message: str) -> None:
     db = SessionLocal()
     try:
-        process = db.query(LogProcess).filter_by(id=_uuid_or_raw(process_id), entry_id=_uuid_or_raw(entry_id)).first()
+        process = db.query(LogProcess).filter_by(id=_uuid_or_raw(process_id), group_id=_uuid_or_raw(group_id)).first()
         _fail(db=db, process=process, message=message)
     finally:
         db.close()
 
 
 def orchestrate_files(
-    entry_id: str,
+    group_id: str,
     file_inputs: list[FileInput],
     persist: bool = True,
     use_llm: bool = True,
@@ -130,8 +130,8 @@ def orchestrate_files(
         register_pipelines()
         init_megabase(megabase_db)
 
-        entry = db.query(LogEntry).filter_by(id=_uuid_or_raw(entry_id)).first()
-        profile_name = entry.profile_name if entry is not None else "default"
+        group = db.query(LogGroup).filter_by(id=_uuid_or_raw(group_id)).first()
+        profile_name = group.profile_name if group is not None else "default"
         preprocessor = LogPreprocessorService(table_name="logs", use_llm=use_llm, profile_name=profile_name)
         if use_llm:
             classification = preprocessor.classify_with_llm(file_inputs)
@@ -141,7 +141,7 @@ def orchestrate_files(
         pipeline_result = _parse_and_merge(file_inputs=file_inputs, classification=classification)
 
         if persist:
-            _persist_artifacts(db=db, megabase_db=megabase_db, entry_id=entry_id, result=pipeline_result)
+            _persist_artifacts(db=db, megabase_db=megabase_db, group_id=group_id, result=pipeline_result)
 
         return pipeline_result
     finally:
@@ -151,7 +151,7 @@ def orchestrate_files(
 
 def run_parse_job(
     process_id: str,
-    entry_id: str,
+    group_id: str,
     file_inputs_json: str | None = None,
     file_ids_json: str | None = None,
 ) -> None:
@@ -162,21 +162,21 @@ def run_parse_job(
     try:
         register_pipelines()
 
-        process = db.query(LogProcess).filter_by(id=_uuid_or_raw(process_id), entry_id=_uuid_or_raw(entry_id)).first()
+        process = db.query(LogProcess).filter_by(id=_uuid_or_raw(process_id), group_id=_uuid_or_raw(group_id)).first()
         if process is None:
-            logger.error("run_parse_job: process %s not found for entry %s", process_id, entry_id)
+            logger.error("run_parse_job: process %s not found for group %s", process_id, group_id)
             return
 
         process.status = "processing"
         process.error = None
         db.commit()
 
-        entry = db.query(LogEntry).filter_by(id=_uuid_or_raw(entry_id)).first()
-        profile_name = entry.profile_name if entry is not None else "default"
+        group = db.query(LogGroup).filter_by(id=_uuid_or_raw(group_id)).first()
+        profile_name = group.profile_name if group is not None else "default"
 
         file_inputs = _resolve_file_inputs(
             db=db,
-            entry_id=entry_id,
+            group_id=group_id,
             file_inputs_json=file_inputs_json,
             file_ids_json=file_ids_json,
         )
@@ -194,7 +194,7 @@ def run_parse_job(
             _fail(db, process, "; ".join(pipeline_result.warnings) or "No tables were produced.")
             return
 
-        _persist_artifacts(db=db, megabase_db=megabase_db, entry_id=entry_id, result=pipeline_result)
+        _persist_artifacts(db=db, megabase_db=megabase_db, group_id=group_id, result=pipeline_result)
 
         _record_feedback(
             file_inputs=file_inputs,
@@ -219,7 +219,7 @@ def run_parse_job(
 
 def _resolve_file_inputs(
     db: Session,
-    entry_id: str,
+    group_id: str,
     file_inputs_json: str | None,
     file_ids_json: str | None,
 ) -> list[FileInput]:
@@ -232,7 +232,7 @@ def _resolve_file_inputs(
         parsed_ids = json.loads(file_ids_json)
         file_id_filter = {str(value) for value in parsed_ids}
 
-    file_rows = db.query(LogFile).filter_by(entry_id=_uuid_or_raw(entry_id)).all()
+    file_rows = db.query(LogFile).filter_by(group_id=_uuid_or_raw(group_id)).all()
     if file_id_filter:
         file_rows = [row for row in file_rows if str(row.id) in file_id_filter]
 
@@ -439,7 +439,7 @@ def _parser_key_for_file(detected_format: str) -> str:
 def _persist_artifacts(
     db: Session,
     megabase_db: Session,
-    entry_id: str,
+    group_id: str,
     result: ParserPipelineResult,
 ) -> None:
     for table_definition in result.table_definitions:
@@ -448,7 +448,7 @@ def _persist_artifacts(
         inserted = _insert_rows(megabase_db, table_definition, rows)
         logger.debug("Persisted table=%s rows=%d", table_definition.table_name, inserted)
 
-        _sync_log_table(db=db, entry_id=entry_id, table_definition=table_definition)
+        _sync_log_table(db=db, group_id=group_id, table_definition=table_definition)
 
 
 def _ensure_megabase_table(megabase_db: Session, table_definition: Any) -> None:
@@ -511,7 +511,7 @@ def _sql_to_megabase_type(sql_type: str) -> str:
     return "text"
 
 
-def _sync_log_table(db: Session, entry_id: str, table_definition: Any) -> None:
+def _sync_log_table(db: Session, group_id: str, table_definition: Any) -> None:
     schema_json = json.dumps(
         [
             {
@@ -536,7 +536,7 @@ def _sync_log_table(db: Session, entry_id: str, table_definition: Any) -> None:
         db.add(
             LogTable(
                 id=table_uuid,
-                entry_id=_uuid_or_raw(entry_id),
+                group_id=_uuid_or_raw(group_id),
                 name=table_definition.display_name,
                 table=table_definition.table_name,
                 schema=schema_json,
