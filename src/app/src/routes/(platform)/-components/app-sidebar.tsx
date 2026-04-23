@@ -1,12 +1,5 @@
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
-import {
-  ChevronUpIcon,
-  FlaskConicalIcon,
-  LayoutDashboardIcon,
-  LogOutIcon,
-  ScrollTextIcon,
-  UserCircle2Icon,
-} from "lucide-react";
+import { ChevronUpIcon, LayoutDashboardIcon, LogOutIcon, ScrollTextIcon, UserCircle2Icon } from "lucide-react";
 import { useAuth } from "#/components/auth-provider";
 import { Avatar, AvatarFallback } from "#/components/ui/avatar";
 import {
@@ -23,19 +16,16 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
 } from "#/components/ui/sidebar";
-import { isDevelopment } from "#/environment";
 
-const baseNavigation = [
+const navigation = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboardIcon },
   { label: "Logs", href: "/logs", icon: ScrollTextIcon },
 ];
-
-const devNavigation = [{ label: "Development", href: "/development", icon: FlaskConicalIcon }];
-const navigation = isDevelopment ? [...baseNavigation, ...devNavigation] : baseNavigation;
 
 export function AppSidebar() {
   const location = useLocation();
@@ -50,14 +40,18 @@ export function AppSidebar() {
   };
 
   return (
-    <Sidebar>
+    <Sidebar collapsible={"icon"}>
+      <SidebarHeader className={"h-12 shrink-0 items-center justify-center border-b px-4"}>
+        <span className={"font-semibold text-sm"}>Logdog</span>
+      </SidebarHeader>
+
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
               {navigation.map((item) => (
                 <SidebarMenuItem key={item.href}>
-                  <SidebarMenuButton asChild isActive={location.pathname === item.href}>
+                  <SidebarMenuButton asChild isActive={location.pathname === item.href} tooltip={item.label}>
                     <Link to={item.href}>
                       <item.icon />
                       <span>{item.label}</span>
@@ -75,7 +69,7 @@ export function AppSidebar() {
           <SidebarMenuItem>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <SidebarMenuButton size={"lg"}>
+                <SidebarMenuButton size={"lg"} tooltip={user?.email}>
                   <Avatar size={"sm"}>
                     <AvatarFallback>{avatarInitials}</AvatarFallback>
                   </Avatar>

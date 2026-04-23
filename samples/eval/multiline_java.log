@@ -1,0 +1,9 @@
+2024-01-15 10:30:00 ERROR com.example.Main - Exception in thread "main" java.lang.NullPointerException
+    at com.example.Foo.bar(Foo.java:42)
+    at com.example.Main.main(Main.java:15)
+
+2024-01-15 10:31:00 WARN com.example.Service - Connection timeout after 5000ms
+    at com.example.Client.connect(Client.java:88)
+    at com.example.Service.run(Service.java:12)
+
+2024-01-15 10:32:00 INFO com.example.App - Application started successfully

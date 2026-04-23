@@ -1,0 +1,17 @@
+[
+  {"source_file": "windows_event.log", "raw": "Event ID: 1001", "message": "Event ID: 1001", "log_level": "INFO"},
+  {"source_file": "windows_event.log", "raw": "Level: Error", "message": "Level: Error", "log_level": "ERROR"},
+  {"source_file": "windows_event.log", "raw": "Source: Application", "message": "Source: Application", "log_level": "INFO"},
+  {"source_file": "windows_event.log", "raw": "Message: Service terminated unexpectedly", "message": "Message: Service terminated unexpectedly", "log_level": "INFO"},
+  {"source_file": "windows_event.log", "raw": "Timestamp: 2024-01-15T10:30:00Z", "message": "Timestamp: 2024-01-15T10:30:00Z", "log_level": "INFO"},
+  {"source_file": "windows_event.log", "raw": "Event ID: 1002", "message": "Event ID: 1002", "log_level": "INFO"},
+  {"source_file": "windows_event.log", "raw": "Level: Warning", "message": "Level: Warning", "log_level": "WARNING"},
+  {"source_file": "windows_event.log", "raw": "Source: System", "message": "Source: System", "log_level": "INFO"},
+  {"source_file": "windows_event.log", "raw": "Message: Disk space low", "message": "Message: Disk space low", "log_level": "INFO"},
+  {"source_file": "windows_event.log", "raw": "Timestamp: 2024-01-15T10:31:00Z", "message": "Timestamp: 2024-01-15T10:31:00Z", "log_level": "INFO"},
+  {"source_file": "windows_event.log", "raw": "Event ID: 1003", "message": "Event ID: 1003", "log_level": "INFO"},
+  {"source_file": "windows_event.log", "raw": "Level: Information", "message": "Level: Information", "log_level": "INFO"},
+  {"source_file": "windows_event.log", "raw": "Source: Security", "message": "Source: Security", "log_level": "INFO"},
+  {"source_file": "windows_event.log", "raw": "Message: Login success", "message": "Message: Login success", "log_level": "INFO"},
+  {"source_file": "windows_event.log", "raw": "Timestamp: 2024-01-15T10:32:00Z", "message": "Timestamp: 2024-01-15T10:32:00Z", "log_level": "INFO"}
+]

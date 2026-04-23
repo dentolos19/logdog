@@ -7,7 +7,7 @@ from environment import OPENROUTER_API_KEY, OPENROUTER_TITLE, OPENROUTER_REFERER
 
 T = TypeVar("T", bound=BaseModel)
 
-DEFAULT_MODEL = "inception/mercury-2"
+DEFAULT_MODEL = "google/gemini-3.1-flash-lite-preview"
 DEFAULT_TEMPERATURE = 0.5
 DEFAULT_MAX_TOKENS = 2048
 

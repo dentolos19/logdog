@@ -1,0 +1,17 @@
+Event ID: 1001
+Level: Error
+Source: Application
+Message: Service terminated unexpectedly
+Timestamp: 2024-01-15T10:30:00Z
+
+Event ID: 1002
+Level: Warning
+Source: System
+Message: Disk space low
+Timestamp: 2024-01-15T10:31:00Z
+
+Event ID: 1003
+Level: Information
+Source: Security
+Message: Login success
+Timestamp: 2024-01-15T10:32:00Z

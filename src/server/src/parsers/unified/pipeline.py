@@ -15,7 +15,8 @@ from parsers.contracts import (
     ParserSupportResult,
     TableDefinition,
     build_ddl,
-    make_table_name,
+    make_display_name,
+    make_megabase_table_name,
 )
 from parsers.normalization import coerce_scalar, sanitize_identifier, unique_identifier
 from parsers.registry import ParserPipeline
@@ -212,9 +213,10 @@ class UnifiedPipeline(ParserPipeline):
             )
 
         columns = self._merge_columns(schema_result.columns)
-        table_name = make_table_name(self.parser_key, file_input.file_id, file_input.filename)
+        table_name = make_megabase_table_name()
+        display_name = make_display_name(self.parser_key, file_input.file_id, file_input.filename)
         ddl = build_ddl(table_name, columns)
-        table_definition = TableDefinition(table_name=table_name, columns=columns, ddl=ddl)
+        table_definition = TableDefinition(table_name=table_name, display_name=display_name, columns=columns, ddl=ddl)
 
         row_confidence = sum(unit.confidence for unit in all_units) / len(all_units)
         confidence = min(1.0, (row_confidence + fingerprint.confidence + schema_result.confidence) / 3)

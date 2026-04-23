@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<events>
+  <event id="1" level="ERROR">
+    <timestamp>2024-01-15T10:30:00Z</timestamp>
+    <source>app-server-01</source>
+    <message>Connection failed to database</message>
+  </event>
+  <event id="2" level="WARNING">
+    <timestamp>2024-01-15T10:31:00Z</timestamp>
+    <source>app-server-01</source>
+    <message>High memory usage detected</message>
+  </event>
+  <event id="3" level="INFO">
+    <timestamp>2024-01-15T10:32:00Z</timestamp>
+    <source>app-server-02</source>
+    <message>Service restarted successfully</message>
+  </event>
+</events>

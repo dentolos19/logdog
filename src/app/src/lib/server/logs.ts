@@ -79,6 +79,11 @@ export type FilteredExportPayload = {
   timestamp_to?: string;
 };
 
+export type FormatDistributionItem = {
+  format: string;
+  count: number;
+};
+
 export type DashboardStats = {
   log_group_count: number;
   total_files: number;
@@ -89,6 +94,17 @@ export type DashboardStats = {
     completed: number;
     failed: number;
   };
+  format_distribution: FormatDistributionItem[];
+};
+
+export type LogInsightReport = {
+  summary: string;
+  severity: string;
+  top_errors: string[];
+  root_cause_hypothesis: string;
+  log_sequence_narrative: string;
+  recommendations: string[];
+  anomalies: string[];
 };
 
 export type ChatMessage = {
@@ -289,6 +305,53 @@ export async function getDashboardStats() {
   return parseJsonResponse<DashboardStats>(response);
 }
 
+export async function getLogReport(entryId: string) {
+  const response = await $fetch(`/logs/${entryId}/insights`);
+  if (response.status === 404) {
+    return null;
+  }
+  return parseJsonResponse<LogInsightReport | null>(response);
+}
+
+export async function downloadWorkbookReport(entryId: string) {
+  const response = await $fetch(`/logs/${entryId}/workbook-report`, {
+    method: "POST",
+  });
+  if (!response.ok) {
+    const payload = await response.text();
+    throw new Error(`Request failed (${response.status}): ${payload}`);
+  }
+  return response.blob();
+}
+
+export async function generateLogReport(entryId: string) {
+  const response = await $fetch(`/logs/${entryId}/insights`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({}),
+  });
+  return parseJsonResponse<LogInsightReport>(response);
+}
+
+export type NlQueryResult = {
+  sql: string;
+  results: Array<Record<string, unknown>>;
+  columns: string[];
+};
+
+export async function executeNlQuery(entryId: string, question: string) {
+  const response = await $fetch(`/logs/${entryId}/nl-query`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ question }),
+  });
+  return parseJsonResponse<NlQueryResult>(response);
+}
+
 export async function getLogChatMessages(entryId: string) {
   const response = await $fetch(`/logs/${entryId}/chat/messages`);
   const payload = await parseJsonResponse<ChatMessagesResponse>(response);
@@ -305,4 +368,74 @@ export async function replaceLogChatMessages(entryId: string, payload: ReplaceCh
   });
 
   return parseJsonResponse<ReplaceChatMessagesResponse>(response);
+}
+
+export type ChatHistoryMessage = {
+  role: string;
+  content: string;
+};
+
+export async function* streamChatWithLogs(
+  entryId: string,
+  message: string,
+  history: ChatHistoryMessage[],
+  signal?: AbortSignal,
+): AsyncGenerator<string, void, unknown> {
+  const response = await $fetch(`/logs/${entryId}/chat`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ message, history }),
+    signal,
+  });
+
+  if (!response.ok) {
+    const payload = await response.text();
+    throw new Error(`Chat request failed (${response.status}): ${payload}`);
+  }
+
+  if (response.body === null) {
+    throw new Error("Chat response body is empty.");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith("data: ")) {
+          continue;
+        }
+
+        const data = trimmed.slice(6);
+        if (data === "[DONE]") {
+          return;
+        }
+
+        try {
+          const parsed = JSON.parse(data) as { token?: string };
+          if (typeof parsed.token === "string") {
+            yield parsed.token;
+          }
+        } catch {
+          // Ignore malformed SSE lines.
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
 }

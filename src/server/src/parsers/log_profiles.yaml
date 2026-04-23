@@ -82,3 +82,27 @@ profiles:
       time_column: "timestamp"
       primary_key: "step_id"
       units_column: "unit"
+  xml:
+    domain: "unknown"
+    cache_confidence_threshold: 0.8
+    llm_heuristic_fallback_threshold: 0.7
+    expected_fields: []
+    expected_types: {}
+    hints: {}
+  binary_hex:
+    domain: "unknown"
+    cache_confidence_threshold: 0.8
+    llm_heuristic_fallback_threshold: 0.7
+    expected_fields:
+      - "offset"
+      - "hex_bytes"
+      - "ascii_repr"
+      - "decoded_text"
+      - "timestamp"
+    expected_types:
+      offset: "INTEGER"
+      hex_bytes: "TEXT"
+      ascii_repr: "TEXT"
+      decoded_text: "TEXT"
+      timestamp: "TEXT"
+    hints: {}

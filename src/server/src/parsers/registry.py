@@ -170,6 +170,7 @@ class _ParserRegistry:
         try:
             from parsers.deterministic import (
                 ApacheAccessPipeline,
+                BinaryHexPipeline,
                 CsvPipeline,
                 JsonLinesPipeline,
                 KeyValuePipeline,
@@ -187,6 +188,7 @@ class _ParserRegistry:
             self.register(NginxAccessPipeline())
             self.register(LogfmtPipeline())
             self.register(KeyValuePipeline())
+            self.register(BinaryHexPipeline())
         except Exception as error:  # noqa: BLE001
             logger.warning("Could not register deterministic pipelines: %s", error)
 

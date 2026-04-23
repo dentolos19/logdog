@@ -1,0 +1,9 @@
+[
+  {"source_file": "multiline_java.log", "raw": "2024-01-15 10:30:00 ERROR com.example.Main - Exception in thread \"main\" java.lang.NullPointerException", "message": "2024-01-15 10:30:00 ERROR com.example.Main - Exception in thread \"main\" java.lang.NullPointerException", "log_level": "ERROR"},
+  {"source_file": "multiline_java.log", "raw": "at com.example.Foo.bar(Foo.java:42)", "message": "at com.example.Foo.bar(Foo.java:42)", "log_level": "INFO"},
+  {"source_file": "multiline_java.log", "raw": "at com.example.Main.main(Main.java:15)", "message": "at com.example.Main.main(Main.java:15)", "log_level": "INFO"},
+  {"source_file": "multiline_java.log", "raw": "2024-01-15 10:31:00 WARN com.example.Service - Connection timeout after 5000ms", "message": "2024-01-15 10:31:00 WARN com.example.Service - Connection timeout after 5000ms", "log_level": "WARNING"},
+  {"source_file": "multiline_java.log", "raw": "at com.example.Client.connect(Client.java:88)", "message": "at com.example.Client.connect(Client.java:88)", "log_level": "INFO"},
+  {"source_file": "multiline_java.log", "raw": "at com.example.Service.run(Service.java:12)", "message": "at com.example.Service.run(Service.java:12)", "log_level": "INFO"},
+  {"source_file": "multiline_java.log", "raw": "2024-01-15 10:32:00 INFO com.example.App - Application started successfully", "message": "2024-01-15 10:32:00 INFO com.example.App - Application started successfully", "log_level": "INFO"}
+]

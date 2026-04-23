@@ -1,0 +1,6 @@
+[
+  {"source_file": "xml.log", "document_id": "44c459821f95"},
+  {"source_file": "xml.log", "document_id": "44c459821f95", "id": 1, "level": "ERROR", "timestamp": "2024-01-15T10:30:00+00:00", "source": "app-server-01", "message": "Connection failed to database"},
+  {"source_file": "xml.log", "document_id": "44c459821f95", "id": 2, "level": "WARN", "timestamp": "2024-01-15T10:31:00+00:00", "source": "app-server-01", "message": "High memory usage detected"},
+  {"source_file": "xml.log", "document_id": "44c459821f95", "id": 3, "level": "INFO", "timestamp": "2024-01-15T10:32:00+00:00", "source": "app-server-02", "message": "Service restarted successfully"}
+]

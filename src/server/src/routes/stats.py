@@ -21,11 +21,17 @@ class ProcessStatusCount(BaseModel):
     failed: int
 
 
+class FormatCount(BaseModel):
+    format: str
+    count: int
+
+
 class DashboardStatsResponse(BaseModel):
     log_group_count: int
     total_files: int
     total_rows: int
     processes: ProcessStatusCount
+    format_distribution: list[FormatCount]
 
 
 def _count_rows_from_process_result(result: str | None):
@@ -52,6 +58,31 @@ def _count_rows_from_process_result(result: str | None):
     return total_rows
 
 
+def _extract_parser_key(result: str | None) -> str | None:
+    if not result:
+        return None
+
+    try:
+        parsed = json.loads(result)
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+    if not isinstance(parsed, dict):
+        return None
+
+    parser_key = parsed.get("parser_key")
+    if isinstance(parser_key, str) and parser_key:
+        return parser_key
+
+    classification = parsed.get("classification")
+    if isinstance(classification, dict):
+        selected = classification.get("selected_parser_key")
+        if isinstance(selected, str) and selected:
+            return selected
+
+    return None
+
+
 @router.get("", response_model=DashboardStatsResponse)
 def get_dashboard_stats(
     current_user: User = Depends(get_current_user),
@@ -73,6 +104,7 @@ def get_dashboard_stats(
         .all()
     )
 
+    format_counts: dict[str, int] = {}
     for status, result in process_rows:
         if status == "queued":
             queued += 1
@@ -81,8 +113,15 @@ def get_dashboard_stats(
         elif status == "completed":
             completed += 1
             total_rows += _count_rows_from_process_result(result)
+            parser_key = _extract_parser_key(result)
+            if parser_key:
+                format_counts[parser_key] = format_counts.get(parser_key, 0) + 1
         elif status == "failed":
             failed += 1
+
+    format_distribution = [
+        FormatCount(format=fmt, count=cnt) for fmt, cnt in sorted(format_counts.items(), key=lambda x: x[1], reverse=True)
+    ]
 
     return DashboardStatsResponse(
         log_group_count=log_group_count,
@@ -94,4 +133,5 @@ def get_dashboard_stats(
             completed=completed,
             failed=failed,
         ),
+        format_distribution=format_distribution,
     )

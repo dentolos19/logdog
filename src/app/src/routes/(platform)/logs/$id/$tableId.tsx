@@ -11,7 +11,6 @@ import { DataTable, DataTableColumnHeader, DataTableViewOptions } from "#/compon
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "#/components/ui/dialog";
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
@@ -62,7 +61,6 @@ function LogTablePage() {
 
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [downloadingFormat, setDownloadingFormat] = useState<string | null>(null);
-  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   const fetchEntry = useCallback(async () => {
     setEntryLoading(true);
@@ -122,7 +120,6 @@ function LogTablePage() {
       }
 
       setDownloadingFormat(format);
-      setDownloadError(null);
       try {
         let blob: Blob;
         let filename: string;
@@ -131,10 +128,10 @@ function LogTablePage() {
           blob = await downloadLogFile(id, table.sourceFile.id);
           filename = table.sourceFile.name;
         } else if (format === "csv") {
-          blob = await downloadTableCsv(id, table.name);
+          blob = await downloadTableCsv(id, table.id);
           filename = `${table.name}.csv`;
         } else {
-          blob = await downloadTableXlsx(id, table.name);
+          blob = await downloadTableXlsx(id, table.id);
           filename = `${table.name}.xlsx`;
         }
 
@@ -148,7 +145,6 @@ function LogTablePage() {
         URL.revokeObjectURL(blobUrl);
       } catch (error) {
         const message = error instanceof Error ? error.message : "Download failed. Please try again.";
-        setDownloadError(message);
         toast.error(message);
       } finally {
         setDownloadingFormat(null);
@@ -173,7 +169,41 @@ function LogTablePage() {
             : [{ label: "Logs", href: "/logs" }]
         }
         loading={entryLoading}
-      />
+      >
+        {!hasLoadingState && !hasRequestError && table !== null && (
+          <div className={"flex items-center gap-2"}>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button disabled={downloadingFormat !== null} size={"sm"} variant={"ghost"}>
+                  {downloadingFormat !== null ? <Spinner /> : <DownloadIcon />}
+                  Download
+                  <ChevronDownIcon />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align={"end"} className={"w-56"}>
+                {table.sourceFile !== null && (
+                  <DropdownMenuItem onClick={() => void onDownload("original")}>
+                    <FileTextIcon />
+                    Original File
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem onClick={() => void onDownload("csv")}>
+                  <TableIcon />
+                  CSV Spreadsheet
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => void onDownload("xlsx")}>
+                  <FileSpreadsheetIcon />
+                  Excel Spreadsheet
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Button onClick={() => setIsDetailsOpen(true)} size={"sm"} variant={"ghost"}>
+              <InfoIcon />
+              Details
+            </Button>
+          </div>
+        )}
+      </PageHeader>
 
       <main className={"flex flex-1 flex-col gap-4 p-4"}>
         {hasLoadingState && (
@@ -265,40 +295,6 @@ function LogTablePage() {
                   </span>
                 </span>
               </div>
-
-              <div className={"flex flex-wrap items-center gap-2"}>
-                <Button onClick={() => setIsDetailsOpen(true)} size={"sm"} variant={"ghost"}>
-                  <InfoIcon />
-                  Details
-                </Button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button disabled={downloadingFormat !== null} size={"sm"} variant={"ghost"}>
-                      {downloadingFormat !== null ? <Spinner /> : <DownloadIcon />}
-                      Download
-                      <ChevronDownIcon />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align={"end"}>
-                    {table.sourceFile !== null && (
-                      <DropdownMenuItem onClick={() => void onDownload("original")}>
-                        <FileTextIcon />
-                        Original File
-                      </DropdownMenuItem>
-                    )}
-                    <DropdownMenuItem onClick={() => void onDownload("csv")}>
-                      <TableIcon />
-                      CSV Spreadsheet
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => void onDownload("xlsx")}>
-                      <FileSpreadsheetIcon />
-                      Excel Spreadsheet
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-
-              {downloadError !== null && <p className={"text-destructive text-xs"}>{downloadError}</p>}
             </section>
 
             <TableRowsDataTable entryId={id} table={table} />
@@ -331,7 +327,6 @@ function TableRowsDataTable({ table, entryId }: { table: TableSummary; entryId: 
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(defaultColumnVisibility);
   const [cellPreview, setCellPreview] = useState<{ title: string; value: unknown } | null>(null);
   const [searchText, setSearchText] = useState("");
-  const [selectedLevels, setSelectedLevels] = useState<string[]>([]);
   const [timestampFrom, setTimestampFrom] = useState("");
   const [timestampTo, setTimestampTo] = useState("");
   const [fieldFilters, setFieldFilters] = useState<Record<string, string>>({});
@@ -347,23 +342,11 @@ function TableRowsDataTable({ table, entryId }: { table: TableSummary; entryId: 
       return;
     }
     setSearchText("");
-    setSelectedLevels([]);
     setTimestampFrom("");
     setTimestampTo("");
     setFieldFilters({});
     setPagination({ pageIndex: 0, pageSize: 20 });
   }, [table.id]);
-
-  const availableLevelOptions = useMemo(() => {
-    const levels = new Set<string>();
-    for (const row of table.rows) {
-      const level = getRowLevel(row);
-      if (level !== "") {
-        levels.add(level);
-      }
-    }
-    return [...levels].sort();
-  }, [table.rows]);
 
   const filterableFieldKeys = useMemo(() => {
     const preferred = ["tool_id", "tool", "chamber_id", "wafer_id", "lot_id"];
@@ -374,19 +357,11 @@ function TableRowsDataTable({ table, entryId }: { table: TableSummary; entryId: 
     const normalizedSearch = searchText.trim().toLowerCase();
     const fromTime = parseTimestampInput(timestampFrom);
     const toTime = parseTimestampInput(timestampTo);
-    const levelSet = new Set(selectedLevels.map((level) => normalizeLevel(level)));
 
     return table.rows.filter((row) => {
       if (normalizedSearch !== "") {
         const serialized = safeSerialize(row).toLowerCase();
         if (!serialized.includes(normalizedSearch)) {
-          return false;
-        }
-      }
-
-      if (levelSet.size > 0) {
-        const level = getRowLevel(row);
-        if (!levelSet.has(level)) {
           return false;
         }
       }
@@ -419,19 +394,7 @@ function TableRowsDataTable({ table, entryId }: { table: TableSummary; entryId: 
 
       return true;
     });
-  }, [fieldFilters, searchText, selectedLevels, table.rows, timestampFrom, timestampTo]);
-
-  const onToggleLevel = useCallback((level: string, checked: boolean) => {
-    setSelectedLevels((previous) => {
-      if (checked) {
-        if (previous.includes(level)) {
-          return previous;
-        }
-        return [...previous, level];
-      }
-      return previous.filter((item) => item !== level);
-    });
-  }, []);
+  }, [fieldFilters, searchText, table.rows, timestampFrom, timestampTo]);
 
   const onChangeFieldFilter = useCallback((field: string, value: string) => {
     setFieldFilters((previous) => ({
@@ -444,10 +407,9 @@ function TableRowsDataTable({ table, entryId }: { table: TableSummary; entryId: 
     async (format: "csv" | "json") => {
       setIsExportingFiltered(true);
       try {
-        const blob = await downloadFilteredTable(entryId, table.name, {
+        const blob = await downloadFilteredTable(entryId, table.id, {
           format,
           search: searchText,
-          levels: selectedLevels,
           field_filters: fieldFilters,
           timestamp_from: timestampFrom === "" ? undefined : timestampFrom,
           timestamp_to: timestampTo === "" ? undefined : timestampTo,
@@ -468,7 +430,7 @@ function TableRowsDataTable({ table, entryId }: { table: TableSummary; entryId: 
         setIsExportingFiltered(false);
       }
     },
-    [entryId, fieldFilters, searchText, selectedLevels, table.name, timestampFrom, timestampTo],
+    [entryId, fieldFilters, searchText, table.name, timestampFrom, timestampTo],
   );
 
   const columns = useMemo<ColumnDef<Record<string, unknown>>[]>(() => {
@@ -554,30 +516,6 @@ function TableRowsDataTable({ table, entryId }: { table: TableSummary; entryId: 
           type={"datetime-local"}
           value={timestampTo}
         />
-
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button size={"sm"} variant={"outline"}>
-              Levels {selectedLevels.length > 0 ? `(${selectedLevels.length})` : ""}
-              <ChevronDownIcon />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align={"start"}>
-            {availableLevelOptions.length === 0 ? (
-              <DropdownMenuItem disabled>No level values</DropdownMenuItem>
-            ) : (
-              availableLevelOptions.map((level) => (
-                <DropdownMenuCheckboxItem
-                  checked={selectedLevels.includes(level)}
-                  key={level}
-                  onCheckedChange={(checked) => onToggleLevel(level, checked === true)}
-                >
-                  {level}
-                </DropdownMenuCheckboxItem>
-              ))
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
 
         <Badge className={"ml-auto"} variant={"secondary"}>
           {filteredRows.length.toLocaleString()} of {table.rows.length.toLocaleString()} rows
@@ -767,24 +705,6 @@ function safeSerialize(value: unknown) {
   } catch {
     return "[unserializable value]";
   }
-}
-
-function normalizeLevel(value: string) {
-  const normalized = value.trim().toUpperCase();
-  if (normalized === "WARNING") {
-    return "WARN";
-  }
-  return normalized;
-}
-
-function getRowLevel(row: Record<string, unknown>) {
-  for (const key of ["log_level", "level", "severity"]) {
-    const value = row[key];
-    if (typeof value === "string" && value.trim() !== "") {
-      return normalizeLevel(value);
-    }
-  }
-  return "";
 }
 
 function parseTimestampInput(value: string) {

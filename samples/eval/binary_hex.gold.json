@@ -1,0 +1,9 @@
+[
+  {"offset": 0, "hex_bytes": "4552524f5220323032342d30312d3135", "ascii_repr": "ERROR 2024-01-15", "decoded_text": "ERROR 2024-01-15", "timestamp": null, "source_file": "binary_hex.hex"},
+  {"offset": 16, "hex_bytes": "5431303a33303a30305a204442206661", "ascii_repr": "T10:30:00Z DB fa", "decoded_text": "T10:30:00Z DB fa", "timestamp": null, "source_file": "binary_hex.hex"},
+  {"offset": 32, "hex_bytes": "696c65640a5741524e20323032342d30", "ascii_repr": "failed.WARN 2024-0", "decoded_text": "failed.WARN 2024-0", "timestamp": null, "source_file": "binary_hex.hex"},
+  {"offset": 48, "hex_bytes": "312d31355431303a33313a30305a204d", "ascii_repr": "1-15T10:31:00Z M", "decoded_text": "1-15T10:31:00Z M", "timestamp": null, "source_file": "binary_hex.hex"},
+  {"offset": 64, "hex_bytes": "656d20686967680a494e464f20323032", "ascii_repr": "em high.INFO 202", "decoded_text": "em high.INFO 202", "timestamp": null, "source_file": "binary_hex.hex"},
+  {"offset": 80, "hex_bytes": "342d30312d31355431303a33323a3030", "ascii_repr": "4-01-15T10:32:00", "decoded_text": "4-01-15T10:32:00", "timestamp": null, "source_file": "binary_hex.hex"},
+  {"offset": 96, "hex_bytes": "5a204f4b0a", "ascii_repr": "Z OK.", "decoded_text": "Z OK.", "timestamp": null, "source_file": "binary_hex.hex"}
+]

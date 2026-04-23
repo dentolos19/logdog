@@ -37,6 +37,7 @@ export function inferTablesFromProcesses(files: LogFile[], processes: LogProcess
       }
 
       const tableName = asString(tableRecord.table_name, "unknown_table");
+      const displayName = asString(tableRecord.display_name, tableName);
       const rawColumns = asArray(tableRecord.columns);
       const columns: TableColumn[] = rawColumns.map((column) => {
         const columnRecord = asRecord(column) ?? {};
@@ -57,7 +58,7 @@ export function inferTablesFromProcesses(files: LogFile[], processes: LogProcess
 
       tableMap.set(tableName, {
         id: tableName,
-        name: tableName,
+        name: displayName,
         rowCount: recordRows.length,
         columns,
         rows,

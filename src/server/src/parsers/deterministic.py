@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import binascii
 import csv
 import hashlib
 import json
@@ -10,6 +11,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+try:
+    import chardet
+except ImportError:
+    chardet = None
+
 from parsers.contracts import (
     BASELINE_COLUMN_NAMES,
     BASELINE_COLUMNS,
@@ -19,7 +25,8 @@ from parsers.contracts import (
     ParserSupportResult,
     TableDefinition,
     build_ddl,
-    make_table_name,
+    make_display_name,
+    make_megabase_table_name,
 )
 from parsers.normalization import coerce_scalar, sanitize_identifier, unique_identifier
 from parsers.quality import evaluate_structured_parse_quality
@@ -108,7 +115,8 @@ class DeterministicParserPipeline(ParserPipeline):
                     continue
 
                 normalized_rows = [self._normalize_row(row) for row in parsed_table.rows]
-                table_name = make_table_name(self.parser_key, file_input.file_id, file_input.filename)
+                table_name = make_megabase_table_name()
+                display_name = make_display_name(self.parser_key, file_input.file_id, file_input.filename)
                 logical_to_table_name[parsed_table.logical_name] = table_name
 
                 columns = self._infer_columns(
@@ -117,7 +125,7 @@ class DeterministicParserPipeline(ParserPipeline):
                     required_columns=parsed_table.required_columns,
                 )
                 ddl = build_ddl(table_name, columns)
-                table_definitions.append(TableDefinition(table_name=table_name, columns=columns, ddl=ddl))
+                table_definitions.append(TableDefinition(table_name=table_name, display_name=display_name, columns=columns, ddl=ddl))
                 records[table_name] = normalized_rows
                 table_metadata[table_name] = {
                     "logical_name": parsed_table.logical_name,
@@ -549,6 +557,10 @@ class CsvPipeline(DeterministicParserPipeline):
         if len(lines) < 2:
             return 0.0
 
+        hex_dump_lines = sum(1 for line in lines[:10] if HEX_DUMP_LINE_RE.match(line))
+        if hex_dump_lines >= 3:
+            return 0.0
+
         delimiter = _sniff_delimiter(lines)
         if delimiter is None:
             return 0.0
@@ -790,24 +802,89 @@ class XmlPipeline(DeterministicParserPipeline):
         return tables
 
     def _parse_generic_xml(self, root: ET.Element, filename: str) -> list[ParsedTable]:
-        row: dict[str, Any] = {"source_file": filename, "document_id": _stable_hash(filename)}
-        for key, value in root.attrib.items():
-            row[_sanitize(key)] = _coerce_scalar(value)
+        document_id = _stable_hash(filename)
+        context: dict[str, Any] = {"source_file": filename, "document_id": document_id}
+        return self._build_tables_from_element(root, context, parent_logical_name=None)
 
-        for child in list(root):
+    def _build_tables_from_element(
+        self, element: ET.Element, context: dict[str, Any], parent_logical_name: str | None
+    ) -> list[ParsedTable]:
+        logical_name = _sanitize(element.tag)
+        row: dict[str, Any] = dict(context)
+
+        for key, value in element.attrib.items():
+            safe_key = _sanitize(key)
+            if safe_key not in row:
+                row[safe_key] = _coerce_scalar(value)
+
+        child_tables: list[ParsedTable] = []
+        children_by_tag: dict[str, list[ET.Element]] = {}
+
+        for child in list(element):
             tag = _sanitize(child.tag)
-            text = (child.text or "").strip()
-            if text:
-                row[tag] = _coerce_scalar(text)
+            children_by_tag.setdefault(tag, []).append(child)
 
-        return [
-            ParsedTable(
-                logical_name=_sanitize(root.tag),
-                rows=[row],
-                required_columns=["document_id"],
-                include_traceability_columns=False,
-            )
-        ]
+        for tag, children in children_by_tag.items():
+            if len(children) == 1 and not list(children[0]):
+                text = (children[0].text or "").strip()
+                if text:
+                    flat_key = tag
+                    counter = 1
+                    while flat_key in row:
+                        flat_key = f"{tag}_{counter}"
+                        counter += 1
+                    row[flat_key] = _coerce_scalar(text)
+                continue
+
+            if len(children) >= 1 and any(list(child) for child in children):
+                child_rows: list[dict[str, Any]] = []
+                for child in children:
+                    child_row = dict(context)
+                    for key, value in child.attrib.items():
+                        safe_key = _sanitize(key)
+                        if safe_key not in child_row:
+                            child_row[safe_key] = _coerce_scalar(value)
+                    for grandchild in list(child):
+                        gtag = _sanitize(grandchild.tag)
+                        gtext = (grandchild.text or "").strip()
+                        if gtext and not list(grandchild):
+                            flat_key = gtag
+                            counter = 1
+                            while flat_key in child_row:
+                                flat_key = f"{gtag}_{counter}"
+                                counter += 1
+                            child_row[flat_key] = _coerce_scalar(gtext)
+                    child_rows.append(child_row)
+
+                if child_rows:
+                    child_tables.append(
+                        ParsedTable(
+                            logical_name=tag,
+                            rows=child_rows,
+                            required_columns=["document_id"],
+                            include_traceability_columns=False,
+                            relationships=[
+                                TableRelationship(
+                                    parent_logical_name=parent_logical_name or logical_name,
+                                    parent_key="document_id",
+                                    child_key="document_id",
+                                )
+                            ],
+                        )
+                    )
+
+            for child in children:
+                if len(children) == 1:
+                    child_tables.extend(self._build_tables_from_element(child, context, parent_logical_name=tag))
+
+        root_table = ParsedTable(
+            logical_name=logical_name,
+            rows=[row],
+            required_columns=["document_id"],
+            include_traceability_columns=False,
+        )
+
+        return [root_table] + child_tables
 
     def _parse_rows(self, content: str, filename: str) -> tuple[list[dict[str, Any]], list[str]]:
         # XML output is generated via structured table projection in _parse_file.
@@ -954,6 +1031,140 @@ class KeyValuePipeline(DeterministicParserPipeline):
             for key, value in pairs:
                 row[_sanitize(key)] = _cast_value(value.strip().strip('"'))
             rows.append(row)
+        return rows, warnings
+
+
+HEX_PAIR_RE = re.compile(r"\b[0-9a-fA-F]{2}\b")
+HEX_DUMP_LINE_RE = re.compile(r"^\s*[0-9a-fA-F]{4,8}[\s:]*((?:\s+[0-9a-fA-F]{2})+)(?:\s+\|[^|]*\|)?$")
+PRINTABLE_STRING_RE = re.compile(r"[\x20-\x7e]{4,}")
+TIMESTAMP_IN_HEX_RE = re.compile(r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}")
+
+
+class BinaryHexPipeline(DeterministicParserPipeline):
+    parser_key = "binary_hex"
+    supported_extensions = (".bin", ".hex", ".dump")
+    structured_output = True
+
+    def supports(self, request: ParserSupportRequest) -> ParserSupportResult:
+        lower_name = request.filename.lower()
+        extension_match = self.supported_extensions and any(lower_name.endswith(ext) for ext in self.supported_extensions)
+        content_score = self._score_content(request.content)
+
+        if extension_match and content_score > 0.0:
+            return ParserSupportResult(
+                parser_key=self.parser_key,
+                supported=True,
+                score=min(1.0, content_score),
+                reasons=["File extension and content strongly match binary/hex parser."],
+            )
+
+        if extension_match:
+            return ParserSupportResult(
+                parser_key=self.parser_key,
+                supported=True,
+                score=0.95,
+                reasons=["File extension strongly matches parser."],
+            )
+
+        return ParserSupportResult(
+            parser_key=self.parser_key,
+            supported=content_score >= 0.6,
+            score=round(content_score, 2),
+            reasons=["Binary/hex content scoring."],
+        )
+
+    def _score_content(self, content: str) -> float:
+        lines = [line for line in content.splitlines()[:25] if line.strip()]
+        if not lines:
+            return 0.0
+
+        hex_dump_lines = sum(1 for line in lines if HEX_DUMP_LINE_RE.match(line))
+        if hex_dump_lines >= 3:
+            return 1.0
+
+        if chardet is not None:
+            result = chardet.detect(content.encode("utf-8", errors="replace"))
+            if result and result.get("encoding") in ("binary", None) and result.get("confidence", 0) > 0.7:
+                return 0.95
+
+        total_pairs = sum(len(HEX_PAIR_RE.findall(line)) for line in lines)
+        avg_pairs = total_pairs / max(len(lines), 1)
+        if avg_pairs >= 8:
+            return 0.85
+
+        printable = PRINTABLE_STRING_RE.findall(content)
+        if len(printable) >= 5:
+            return 0.6
+
+        return 0.0
+
+    def _parse_rows(self, content: str, filename: str) -> tuple[list[dict[str, Any]], list[str]]:
+        rows: list[dict[str, Any]] = []
+        warnings: list[str] = []
+
+        lines = content.splitlines()
+        hex_dump_lines = [line for line in lines if HEX_DUMP_LINE_RE.match(line)]
+
+        if hex_dump_lines:
+            offset = 0
+            for line in lines:
+                match = HEX_DUMP_LINE_RE.match(line)
+                if not match:
+                    continue
+                hex_part = match.group(1)
+                hex_bytes = hex_part.replace(" ", "")
+                if len(hex_bytes) % 2 != 0:
+                    continue
+                try:
+                    raw = binascii.unhexlify(hex_bytes)
+                except (binascii.Error, ValueError):
+                    continue
+
+                ascii_repr = "".join(chr(b) if 32 <= b < 127 else "." for b in raw)
+                decoded_text = ""
+                try:
+                    decoded_text = raw.decode("utf-8", errors="ignore")
+                except UnicodeDecodeError:
+                    pass
+
+                timestamp = None
+                for ts_match in TIMESTAMP_IN_HEX_RE.finditer(ascii_repr):
+                    timestamp = ts_match.group(0)
+                    break
+
+                rows.append(
+                    {
+                        "offset": offset,
+                        "hex_bytes": hex_bytes,
+                        "ascii_repr": ascii_repr,
+                        "decoded_text": decoded_text or None,
+                        "timestamp": timestamp,
+                        "source_file": filename,
+                    }
+                )
+                offset += len(raw)
+
+            return rows, warnings
+
+        printable_strings = PRINTABLE_STRING_RE.findall(content)
+        if printable_strings:
+            for string_index, text in enumerate(printable_strings[:500], start=1):
+                timestamp = None
+                for ts_match in TIMESTAMP_IN_HEX_RE.finditer(text):
+                    timestamp = ts_match.group(0)
+                    break
+
+                rows.append(
+                    {
+                        "string_index": string_index,
+                        "text": text,
+                        "timestamp": timestamp,
+                        "source_file": filename,
+                    }
+                )
+            return rows, warnings
+
+        warnings.append("No recognizable hex dump or printable strings found.")
         return rows, warnings
 
 

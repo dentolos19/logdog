@@ -1,0 +1,23 @@
+{
+  "company": {
+    "name": "Acme Corp",
+    "departments": [
+      {
+        "name": "Engineering",
+        "budget": 500000,
+        "employees": [
+          {"name": "Alice", "role": "Senior Dev", "salary": 120000},
+          {"name": "Bob", "role": "Junior Dev", "salary": 80000}
+        ]
+      },
+      {
+        "name": "Sales",
+        "budget": 300000,
+        "employees": [
+          {"name": "Charlie", "role": "Lead", "salary": 110000},
+          {"name": "Diana", "role": "Rep", "salary": 70000}
+        ]
+      }
+    ]
+  }
+}

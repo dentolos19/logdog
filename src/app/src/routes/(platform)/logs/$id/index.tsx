@@ -1,5 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { MoreHorizontalIcon, PencilIcon, Trash2Icon } from "lucide-react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { DownloadIcon, FileTextIcon, MoreHorizontalIcon, PencilIcon, Trash2Icon } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -31,6 +31,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "#/components/ui/tabs";
 import {
   createLogProcess,
   deleteLogEntry,
+  downloadWorkbookReport,
   getLogEntry,
   type LogEntry,
   type LogFile,
@@ -44,8 +45,9 @@ import { ChatbotTab } from "#/routes/(platform)/logs/-components/chatbot-tab";
 import { ProcessesTab } from "#/routes/(platform)/logs/-components/processes-tab";
 import { TablesTab } from "#/routes/(platform)/logs/-components/tables-tab";
 import { UploadSection } from "#/routes/(platform)/logs/-components/upload-section";
+import { QueryTab } from "#/routes/(platform)/logs/$id/-components/query-tab";
 
-const logEntryTabs = ["data", "processes", "chatbot"] as const;
+const logEntryTabs = ["data", "processes", "query", "chat"] as const;
 type LogEntryTab = (typeof logEntryTabs)[number];
 
 type TableHighlightRequest = {
@@ -327,24 +329,54 @@ function LogEntryPage() {
         loading={entry === null && fetchError === null}
       >
         {entry !== null && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button aria-label={"Options"} size={"icon-sm"} variant={"ghost"}>
-                <MoreHorizontalIcon />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align={"end"}>
-              <DropdownMenuItem onClick={openRenameDialog}>
-                <PencilIcon />
-                Rename
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => setIsDeleteAlertOpen(true)} variant={"destructive"}>
-                <Trash2Icon />
-                Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <>
+            <Button asChild size={"sm"} variant={"ghost"}>
+              <Link params={{ id }} to={"/logs/$id/report"}>
+                <FileTextIcon />
+                Generate Report
+              </Link>
+            </Button>
+            <Button
+              onClick={async () => {
+                try {
+                  const blob = await downloadWorkbookReport(id);
+                  const url = window.URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = `logdog_workbook.xlsx`;
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                  window.URL.revokeObjectURL(url);
+                } catch (err) {
+                  toast.error(err instanceof Error ? err.message : "Download failed.");
+                }
+              }}
+              size={"sm"}
+              variant={"ghost"}
+            >
+              <DownloadIcon />
+              Download Workbook
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button aria-label={"Options"} size={"icon-sm"} variant={"ghost"}>
+                  <MoreHorizontalIcon />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align={"end"}>
+                <DropdownMenuItem onClick={openRenameDialog}>
+                  <PencilIcon />
+                  Rename
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setIsDeleteAlertOpen(true)} variant={"destructive"}>
+                  <Trash2Icon />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
         )}
       </PageHeader>
 
@@ -370,7 +402,8 @@ function LogEntryPage() {
             <TabsList className={"w-full rounded-none border-b bg-sidebar"}>
               <TabsTrigger value={"data"}>Data</TabsTrigger>
               <TabsTrigger value={"processes"}>Processes</TabsTrigger>
-              <TabsTrigger value={"chatbot"}>Chatbot</TabsTrigger>
+              <TabsTrigger value={"query"}>Query</TabsTrigger>
+              <TabsTrigger value={"chat"}>Chat</TabsTrigger>
             </TabsList>
 
             <TabsContent className={"flex flex-col gap-6 p-4"} value={"data"}>
@@ -414,7 +447,11 @@ function LogEntryPage() {
               />
             </TabsContent>
 
-            <TabsContent className={"flex min-h-[calc(100svh-10rem)] flex-col gap-3 p-4"} value={"chatbot"}>
+            <TabsContent className={"flex flex-col gap-3 p-4"} value={"query"}>
+              <QueryTab entryId={id} />
+            </TabsContent>
+
+            <TabsContent className={"flex min-h-[calc(100svh-10rem)] flex-col gap-3 p-4"} value={"chat"}>
               <ChatbotTab entryId={id} tableNames={tableNames} />
             </TabsContent>
           </Tabs>

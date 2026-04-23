@@ -527,9 +527,9 @@ def _sync_log_table(db: Session, entry_id: str, table_definition: Any) -> None:
     )
 
     table_uuid = uuid.UUID(table_definition.table_name)
-    existing = db.query(LogTable).filter_by(id=table_uuid).first()
+    existing = db.query(LogTable).filter_by(table=table_definition.table_name).first()
     if existing:
-        existing.name = table_definition.table_name
+        existing.name = table_definition.display_name
         existing.table = table_definition.table_name
         existing.schema = schema_json
     else:
@@ -537,7 +537,7 @@ def _sync_log_table(db: Session, entry_id: str, table_definition: Any) -> None:
             LogTable(
                 id=table_uuid,
                 entry_id=_uuid_or_raw(entry_id),
-                name=table_definition.table_name,
+                name=table_definition.display_name,
                 table=table_definition.table_name,
                 schema=schema_json,
             )

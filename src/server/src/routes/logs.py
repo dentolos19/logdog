@@ -14,8 +14,10 @@ import sqlparse
 from docx import Document
 from docx.shared import Pt
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile, status
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from openpyxl import Workbook
+from openpyxl.chart import BarChart, Reference
+from openpyxl.styles import Font
 from pydantic import BaseModel, Field
 from sqlalchemy import text as sa_text
 from sqlalchemy.orm import Session
@@ -26,7 +28,8 @@ from lib.megabase import SessionLocal as MegabaseSessionLocal
 from lib.megabase import drop_table as megabase_drop_table
 from lib.megabase import init_megabase
 from lib.megabase import query_records as megabase_query_records
-from lib.models import Asset, LogEntry, LogFile, LogMessage, LogProcess, LogTable, User
+from lib.ai import get_generative_model
+from lib.models import Asset, LogEntry, LogFile, LogMessage, LogNlQuery, LogProcess, LogReport, LogTable, User
 from lib.storage import delete_file, download_file, upload_file
 from parsers.orchestrator import create_process, enqueue_process, mark_process_failed
 from routes.auth import get_current_user
@@ -116,6 +119,21 @@ class ReplaceMessagesResponse(BaseModel):
     saved_messages: int
 
 
+class ChatRequest(BaseModel):
+    message: str
+    history: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class LogInsightReport(BaseModel):
+    summary: str
+    severity: str
+    top_errors: list[str] = Field(default_factory=list)
+    root_cause_hypothesis: str
+    log_sequence_narrative: str
+    recommendations: list[str] = Field(default_factory=list)
+    anomalies: list[str] = Field(default_factory=list)
+
+
 class QueryRequest(BaseModel):
     sql: str
 
@@ -153,6 +171,16 @@ class ReportSectionRequest(BaseModel):
 class ReportRequest(BaseModel):
     title: str
     sections: list[ReportSectionRequest]
+
+
+class NlQueryRequest(BaseModel):
+    question: str
+
+
+class NlQueryResponse(BaseModel):
+    sql: str
+    results: list[dict[str, Any]]
+    columns: list[str]
 
 
 FORBIDDEN_SQL_KEYWORDS = re.compile(
@@ -508,9 +536,21 @@ def _get_table_records(entry_id: str, table_name: str, current_user: User, datab
 def _serialize_value(value: Any) -> str:
     if value is None:
         return ""
+    if isinstance(value, uuid.UUID):
+        return str(value)
     if isinstance(value, (dict, list)):
         return json.dumps(value, ensure_ascii=True)
     return str(value)
+
+
+def _serialize_record_value(value: Any) -> Any:
+    if value is None:
+        return ""
+    if isinstance(value, uuid.UUID):
+        return str(value)
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=True)
+    return value
 
 
 def _normalize_level(value: Any) -> str:
@@ -654,15 +694,7 @@ def download_table_xlsx(
 
     worksheet.append(columns)
     for record in records:
-        row_values = []
-        for col in columns:
-            value = record.get(col)
-            if value is None:
-                row_values.append("")
-            elif isinstance(value, (dict, list)):
-                row_values.append(json.dumps(value, ensure_ascii=True))
-            else:
-                row_values.append(value)
+        row_values = [_serialize_record_value(record.get(col)) for col in columns]
         worksheet.append(row_values)
 
     output = io.BytesIO()
@@ -695,7 +727,8 @@ def download_table_filtered(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="format must be csv or json")
 
     if export_format == "json":
-        content = json.dumps(filtered_records, ensure_ascii=True)
+        serialized = [{k: _serialize_record_value(v) for k, v in record.items()} for record in filtered_records]
+        content = json.dumps(serialized, ensure_ascii=True)
         headers = {"Content-Disposition": f'attachment; filename="{table_name}.filtered.json"'}
         return Response(content=content, media_type="application/json", headers=headers)
 
@@ -964,6 +997,257 @@ def replace_chat_messages(
     return ReplaceMessagesResponse(saved_messages=saved_messages)
 
 
+MAX_CONTEXT_ROWS = 200
+
+
+def _fetch_entry_table_context(entry_id: str, database: Session) -> str:
+    tables = database.query(LogTable).filter(LogTable.entry_id == _uuid_or_raw(entry_id)).all()
+    if not tables:
+        return "No parsed tables are available for this log group."
+
+    lines: list[str] = ["Available tables and sample rows:", ""]
+    megabase_database = MegabaseSessionLocal()
+    try:
+        init_megabase(megabase_database)
+        for table in tables:
+            lines.append(f"Table: {table.table}")
+            lines.append(f"Schema: {table.schema}")
+            try:
+                result = megabase_database.execute(sa_text(f'SELECT * FROM "{table.table}" LIMIT 20'))
+                columns = [str(col) for col in result.keys()]
+                rows = result.fetchall()
+                lines.append(f"Columns: {', '.join(columns)}")
+                lines.append(f"Sample rows ({len(rows)}):")
+                for row in rows[:5]:
+                    row_dict = dict(zip(columns, row))
+                    lines.append(json.dumps(row_dict, ensure_ascii=True, default=str))
+                lines.append("")
+            except Exception as error:
+                lines.append(f"Could not sample rows: {error}")
+                lines.append("")
+    finally:
+        megabase_database.close()
+
+    return "\n".join(lines)
+
+
+def _build_chat_system_prompt(entry_id: str, table_context: str) -> str:
+    return (
+        "You are Logdog's AI log analysis assistant. "
+        f"You are helping the user analyze log group {entry_id}.\n\n"
+        f"{table_context}\n\n"
+        "Answer the user's questions based on the log data context provided above. "
+        "Be concise, accurate, and actionable. If the data is insufficient, say so."
+    )
+
+
+@router.post("/{entry_id}/chat")
+def stream_chat(
+    entry_id: str,
+    payload: ChatRequest,
+    current_user: User = Depends(get_current_user),
+    database: Session = Depends(get_database),
+):
+    entry = _require_owned_entry(database=database, entry_id=entry_id, user_id=current_user.id)
+    table_context = _fetch_entry_table_context(str(entry.id), database)
+    system_prompt = _build_chat_system_prompt(str(entry.id), table_context)
+
+    model = get_generative_model()
+    messages: list[tuple[str, str]] = [("system", system_prompt)]
+    for turn in payload.history:
+        role = str(turn.get("role", "user"))
+        content = str(turn.get("content", ""))
+        if role in ("user", "assistant"):
+            messages.append((role, content))
+    messages.append(("user", payload.message))
+
+    def event_generator():
+        for chunk in model.client.stream(messages):
+            if chunk.content:
+                data = json.dumps({"token": chunk.content})
+                yield f"data: {data}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+MAX_REPORT_ROWS = 200
+
+
+def _fetch_entry_rows_for_report(entry_id: str, database: Session) -> str:
+    tables = database.query(LogTable).filter(LogTable.entry_id == _uuid_or_raw(entry_id)).all()
+    if not tables:
+        return "No parsed tables are available for this log group."
+
+    lines: list[str] = ["Log data context:", ""]
+    megabase_database = MegabaseSessionLocal()
+    try:
+        init_megabase(megabase_database)
+        for table in tables:
+            lines.append(f"Table: {table.table}")
+            try:
+                result = megabase_database.execute(
+                    sa_text(f'SELECT * FROM "{table.table}" LIMIT {MAX_REPORT_ROWS}')
+                )
+                columns = [str(col) for col in result.keys()]
+                rows = result.fetchall()
+                lines.append(f"Columns: {', '.join(columns)}")
+                lines.append(f"Row count in sample: {len(rows)}")
+                for row in rows[:10]:
+                    row_dict = dict(zip(columns, row))
+                    lines.append(json.dumps(row_dict, ensure_ascii=True, default=str))
+                lines.append("")
+            except Exception as error:
+                lines.append(f"Could not read table: {error}")
+                lines.append("")
+    finally:
+        megabase_database.close()
+
+    return "\n".join(lines)
+
+
+@router.post("/{entry_id}/insights", response_model=LogInsightReport)
+def generate_insights(
+    entry_id: str,
+    current_user: User = Depends(get_current_user),
+    database: Session = Depends(get_database),
+):
+    entry = _require_owned_entry(database=database, entry_id=entry_id, user_id=current_user.id)
+    context = _fetch_entry_rows_for_report(str(entry.id), database)
+
+    system_prompt = (
+        "You are an expert log analyst. Analyze the provided log data and generate a structured insight report. "
+        "Return valid JSON matching the required schema. Be concise and factual."
+    )
+
+    prompt = (
+        f"{context}\n\n"
+        "Generate a JSON report with these fields:\n"
+        '- "summary": a 1-2 sentence overview\n'
+        '- "severity": one of low, medium, high, critical\n'
+        '- "top_errors": list of top error strings found\n'
+        '- "root_cause_hypothesis": a brief hypothesis\n'
+        '- "log_sequence_narrative": a short narrative of what happened\n'
+        '- "recommendations": list of actionable recommendations\n'
+        '- "anomalies": list of anomalies detected\n'
+    )
+
+    model = get_generative_model()
+    report = model.generate_structured(prompt, LogInsightReport, system_prompt=system_prompt)
+
+    log_report = LogReport(
+        entry_id=entry.id,
+        content=report.model_dump(),
+    )
+    database.add(log_report)
+    database.commit()
+
+    return report
+
+
+@router.get("/{entry_id}/insights", response_model=LogInsightReport | None)
+def get_insights(
+    entry_id: str,
+    current_user: User = Depends(get_current_user),
+    database: Session = Depends(get_database),
+):
+    entry = _require_owned_entry(database=database, entry_id=entry_id, user_id=current_user.id)
+    log_report = (
+        database.query(LogReport)
+        .filter(LogReport.entry_id == entry.id)
+        .order_by(LogReport.created_at.desc())
+        .first()
+    )
+
+    if log_report is None:
+        return None
+
+    return LogInsightReport(**log_report.content)
+
+
+@router.post("/{entry_id}/nl-query", response_model=NlQueryResponse)
+def execute_nl_query(
+    entry_id: str,
+    payload: NlQueryRequest,
+    current_user: User = Depends(get_current_user),
+    database: Session = Depends(get_database),
+):
+    entry = _require_owned_entry(database=database, entry_id=entry_id, user_id=current_user.id)
+    allowed_tables = _get_entry_table_names(database, str(entry.id))
+
+    if not allowed_tables:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No tables available for this log group.")
+
+    schema_lines = []
+    for table_name in sorted(allowed_tables):
+        table_info = database.query(LogTable).filter(LogTable.entry_id == entry.id, LogTable.table == table_name).first()
+        if table_info:
+            schema_lines.append(f'Table "{table_name}": {table_info.schema}')
+        else:
+            schema_lines.append(f'Table "{table_name}"')
+
+    schema_context = "\n".join(schema_lines)
+    system_prompt = (
+        "You are a SQL expert. Generate a valid SELECT query for SQLite/SQLAlchemy based on the user's question. "
+        "Use double quotes around table and column identifiers. Only return the SQL query, no explanation."
+    )
+    prompt = (
+        f"Available tables:\n{schema_context}\n\n"
+        f"Question: {payload.question}\n\n"
+        "Generate a SELECT SQL query to answer this question."
+    )
+
+    model = get_generative_model()
+    raw_sql = model.generate(prompt, system_prompt=system_prompt).strip()
+
+    sql_lines = [line for line in raw_sql.splitlines() if not line.strip().startswith("```")]
+    sql_text = " ".join(sql_lines).strip()
+    if sql_text.startswith("```"):
+        sql_text = sql_text[3:].strip()
+    if sql_text.endswith("```"):
+        sql_text = sql_text[:-3].strip()
+
+    if not sql_text:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Generated SQL is empty.")
+
+    if FORBIDDEN_SQL_KEYWORDS.search(sql_text):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only SELECT queries are allowed.")
+
+    parsed = sqlparse.parse(sql_text)
+    for statement in parsed:
+        if statement.get_type() != "SELECT" and statement.get_type() is not None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Statement type '{statement.get_type()}' is not allowed. Only SELECT is permitted.",
+            )
+
+    for table_name in allowed_tables:
+        sql_text = sql_text.replace(f'"{table_name}"', f'"{table_name}"')
+
+    megabase_database = MegabaseSessionLocal()
+    try:
+        init_megabase(megabase_database)
+        result = megabase_database.execute(sa_text(sql_text))
+        columns = [str(col) for col in result.keys()]
+        rows = result.fetchall()
+        results = [dict(zip(columns, row)) for row in rows[:QUERY_RESULT_LIMIT]]
+
+        nl_query = LogNlQuery(
+            entry_id=entry.id,
+            question=payload.question,
+            generated_sql=sql_text,
+            results_json=results,
+        )
+        database.add(nl_query)
+        database.commit()
+
+        return NlQueryResponse(sql=sql_text, results=results, columns=columns)
+    except Exception as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Query execution failed: {error}")
+    finally:
+        megabase_database.close()
+
+
 def _get_entry_table_names(database: Session, entry_id: str) -> set[str]:
     """Return the set of megabase table names registered for a log group."""
     tables = database.query(LogTable).filter(LogTable.entry_id == _uuid_or_raw(entry_id)).all()
@@ -1101,5 +1385,106 @@ def generate_entry_report(
     return Response(
         content=output.getvalue(),
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers=headers,
+    )
+
+
+@router.post("/{entry_id}/workbook-report")
+def generate_workbook_report(
+    entry_id: str,
+    current_user: User = Depends(get_current_user),
+    database: Session = Depends(get_database),
+):
+    entry = _require_owned_entry(database=database, entry_id=entry_id, user_id=current_user.id)
+    tables = database.query(LogTable).filter(LogTable.entry_id == entry.id).all()
+    processes = (
+        database.query(LogProcess)
+        .filter(LogProcess.entry_id == entry.id)
+        .order_by(LogProcess.created_at.desc())
+        .all()
+    )
+
+    workbook = Workbook()
+
+    # Summary sheet
+    summary_sheet = workbook.active
+    summary_sheet.title = "Summary"
+    summary_sheet["A1"] = "Logdog Workbook Report"
+    summary_sheet["A1"].font = Font(size=16, bold=True)
+    summary_sheet["A3"] = "Log Group"
+    summary_sheet["B3"] = entry.name
+    summary_sheet["A4"] = "Generated At"
+    summary_sheet["B4"] = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
+    summary_sheet["A5"] = "Tables"
+    summary_sheet["B5"] = len(tables)
+    summary_sheet["A6"] = "Processes"
+    summary_sheet["B6"] = len(processes)
+
+    process_status_counts: dict[str, int] = {}
+    for process in processes:
+        process_status_counts[process.status] = process_status_counts.get(process.status, 0) + 1
+
+    summary_sheet["A8"] = "Process Status"
+    summary_sheet["B8"] = "Count"
+    row_index = 9
+    for proc_status, count in process_status_counts.items():
+        summary_sheet.cell(row=row_index, column=1, value=proc_status)
+        summary_sheet.cell(row=row_index, column=2, value=count)
+        row_index += 1
+
+    if process_status_counts:
+        chart = BarChart()
+        chart.type = "col"
+        chart.title = "Process Status"
+        chart.y_axis.title = "Count"
+        chart.x_axis.title = "Status"
+        data = Reference(summary_sheet, min_col=2, min_row=8, max_row=row_index - 1)
+        categories = Reference(summary_sheet, min_col=1, min_row=9, max_row=row_index - 1)
+        chart.add_data(data, titles_from_data=True)
+        chart.set_categories(categories)
+        chart.shape = 4
+        summary_sheet.add_chart(chart, "D3")
+
+    # Data sheets
+    megabase_database = MegabaseSessionLocal()
+    try:
+        init_megabase(megabase_database)
+        for table in tables:
+            sheet_title = table.table[:31]
+            if sheet_title in workbook.sheetnames:
+                sheet_title = f"{sheet_title[:28]}_{tables.index(table)}"
+            worksheet = workbook.create_sheet(title=sheet_title)
+
+            try:
+                result = megabase_database.execute(sa_text(f'SELECT * FROM "{table.table}"'))
+                columns = [str(col) for col in result.keys()]
+                rows = result.fetchall()
+
+                worksheet.append(columns)
+                for row in rows:
+                    row_values = []
+                    for value in row:
+                        if value is None:
+                            row_values.append("")
+                        elif isinstance(value, (dict, list)):
+                            row_values.append(json.dumps(value, ensure_ascii=True))
+                        else:
+                            row_values.append(value)
+                    worksheet.append(row_values)
+            except Exception as error:
+                worksheet.append(["Error loading data", str(error)])
+    finally:
+        megabase_database.close()
+
+    output = io.BytesIO()
+    workbook.save(output)
+    output.seek(0)
+
+    safe_name = re.sub(r"[^\w\-]", "_", entry.name)[:50] or "report"
+    filename = f"{safe_name}_workbook.xlsx"
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    return Response(
+        content=output.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers=headers,
     )

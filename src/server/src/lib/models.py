@@ -1,7 +1,7 @@
 import uuid
 
 from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
@@ -64,6 +64,8 @@ class LogEntry(Base):
     tables = relationship("LogTable", back_populates="entry")
     messages = relationship("LogMessage", back_populates="entry")
     processes = relationship("LogProcess", back_populates="entry")
+    reports = relationship("LogReport", back_populates="entry", cascade="all, delete-orphan")
+    nl_queries = relationship("LogNlQuery", back_populates="entry", cascade="all, delete-orphan")
 
 
 class LogFile(Base):
@@ -200,3 +202,39 @@ class LogFewShotExample(Base):
     last_used = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class LogReport(Base):
+    __tablename__ = "log_reports"
+
+    id = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        index=True,
+        nullable=False,
+        default=uuid.uuid4,
+    )
+    entry_id = Column(UUID(as_uuid=True), ForeignKey("log_entries.id"), nullable=False, index=True)
+    content = Column(JSONB, nullable=False, default=dict)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    entry = relationship("LogEntry", back_populates="reports")
+
+
+class LogNlQuery(Base):
+    __tablename__ = "log_nl_queries"
+
+    id = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        index=True,
+        nullable=False,
+        default=uuid.uuid4,
+    )
+    entry_id = Column(UUID(as_uuid=True), ForeignKey("log_entries.id"), nullable=False, index=True)
+    question = Column(Text, nullable=False)
+    generated_sql = Column(Text, nullable=False)
+    results_json = Column(JSONB, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    entry = relationship("LogEntry", back_populates="nl_queries")

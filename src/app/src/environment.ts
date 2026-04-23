@@ -26,6 +26,3 @@ export function getEnv() {
 }
 
 export const ENVIRONMENT = getEnvVar<"production" | "development">("NODE_ENV", "development");
-
-export const isProduction = ENVIRONMENT === "production";
-export const isDevelopment = ENVIRONMENT === "development";

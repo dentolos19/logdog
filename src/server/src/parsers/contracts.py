@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
+from pathlib import Path
 from uuid import uuid4
 from typing import Any
 
@@ -26,6 +27,7 @@ class ColumnDefinition(BaseModel):
 
 class TableDefinition(BaseModel):
     table_name: str
+    display_name: str = ""
     columns: list[ColumnDefinition]
     ddl: str
 
@@ -142,5 +144,15 @@ def build_ddl(table_name: str, columns: list[ColumnDefinition]) -> str:
     return f"CREATE TABLE IF NOT EXISTS {safe_table} (\n{columns_sql}\n);"
 
 
-def make_table_name(parser_key: str, file_id: str | None, filename: str) -> str:
-    return uuid4().hex
+def make_display_name(parser_key: str, file_id: str | None, filename: str) -> str:
+    base_name = Path(filename).stem
+    if ":" in base_name:
+        base_name = base_name.split(":")[-1]
+    
+    name_parts = [part for part in [base_name, parser_key] if part]
+    combined = " ".join(name_parts)
+    return combined.replace("_", " ").title()
+
+
+def make_megabase_table_name() -> str:
+    return str(uuid4())

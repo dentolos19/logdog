@@ -7,6 +7,7 @@ import { Badge } from "#/components/ui/badge";
 import { Button } from "#/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "#/components/ui/dialog";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "#/components/ui/empty";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "#/components/ui/table";
 import { downloadLogFile, type LogFile, type LogProcess } from "#/lib/server";
 import {
   formatFileSize,
@@ -29,6 +30,7 @@ type TableGroup = {
   sourceFile: LogFile | null;
   tables: TableSummary[];
   totalRows: number;
+  hasMultipleTables: boolean;
 };
 
 export function TablesTab({ entryId, files, highlightRequest, onHighlightHandled, processes }: TablesTabProps) {
@@ -49,7 +51,7 @@ export function TablesTab({ entryId, files, highlightRequest, onHighlightHandled
   const [highlightedTableIds, setHighlightedTableIds] = useState<Set<string>>(new Set());
   const [highlightedGroupId, setHighlightedGroupId] = useState<string | null>(null);
   const groupElementsRef = useRef<Map<string, HTMLElement>>(new Map());
-  const tableElementsRef = useRef<Map<string, HTMLDivElement>>(new Map());
+  const tableElementsRef = useRef<Map<string, HTMLTableRowElement>>(new Map());
 
   const setGroupElement = useCallback((groupId: string, element: HTMLElement | null) => {
     if (element === null) {
@@ -60,7 +62,7 @@ export function TablesTab({ entryId, files, highlightRequest, onHighlightHandled
     groupElementsRef.current.set(groupId, element);
   }, []);
 
-  const setTableElement = useCallback((tableId: string, element: HTMLDivElement | null) => {
+  const setTableElement = useCallback((tableId: string, element: HTMLTableRowElement | null) => {
     if (element === null) {
       tableElementsRef.current.delete(tableId);
       return;
@@ -116,19 +118,32 @@ export function TablesTab({ entryId, files, highlightRequest, onHighlightHandled
           </EmptyHeader>
         </Empty>
       ) : (
-        <div className={"flex flex-col gap-2"}>
-          {tableGroups.map((group) => (
-            <TableGroupSection
-              entryId={entryId}
-              group={group}
-              highlightedTableIds={highlightedTableIds}
-              isHighlighted={highlightedGroupId === group.id}
-              key={group.id}
-              onInfoClick={(table) => setSelectedTable(table)}
-              setGroupElement={setGroupElement}
-              setTableElement={setTableElement}
-            />
-          ))}
+        <div className={"rounded-md border"}>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Source File</TableHead>
+                <TableHead>Table Name</TableHead>
+                <TableHead>Columns</TableHead>
+                <TableHead>Rows</TableHead>
+                <TableHead>Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {tableGroups.map((group) => (
+                <TableGroupRows
+                  entryId={entryId}
+                  group={group}
+                  highlightedTableIds={highlightedTableIds}
+                  isHighlighted={highlightedGroupId === group.id}
+                  key={group.id}
+                  onInfoClick={(table) => setSelectedTable(table)}
+                  setGroupElement={setGroupElement}
+                  setTableElement={setTableElement}
+                />
+              ))}
+            </TableBody>
+          </Table>
         </div>
       )}
 
@@ -137,7 +152,7 @@ export function TablesTab({ entryId, files, highlightRequest, onHighlightHandled
   );
 }
 
-function TableGroupSection({
+function TableGroupRows({
   entryId,
   group,
   highlightedTableIds,
@@ -152,78 +167,90 @@ function TableGroupSection({
   isHighlighted: boolean;
   onInfoClick: (table: TableSummary) => void;
   setGroupElement: (groupId: string, element: HTMLElement | null) => void;
-  setTableElement: (tableId: string, element: HTMLDivElement | null) => void;
+  setTableElement: (tableId: string, element: HTMLTableRowElement | null) => void;
 }) {
   const formattedDate =
     group.sourceFile !== null ? format(new Date(group.sourceFile.created_at), "MMM d, yyyy 'at' h:mm a") : null;
   const formattedSize = group.sourceFile !== null ? formatFileSize(group.sourceFile.size) : null;
 
   return (
-    <section
-      className={`flex flex-col gap-3 rounded-md border p-4 transition-all duration-500 ${
-        isHighlighted ? "bg-primary/10 ring-1 ring-primary/40" : ""
-      }`}
-      ref={(element) => setGroupElement(group.id, element)}
-    >
-      <div className={"flex items-center gap-3"}>
-        <FileTextIcon className={"size-4 shrink-0 text-muted-foreground"} />
-        <div className={"flex flex-1 flex-col gap-0.5 overflow-hidden"}>
-          <span className={"truncate font-medium font-mono text-sm"}>{group.label}</span>
-          <span className={"text-muted-foreground text-xs"}>
-            {group.tables.length} {group.tables.length === 1 ? "table" : "tables"} · {group.totalRows.toLocaleString()}{" "}
-            {group.totalRows === 1 ? "row" : "rows"}
-          </span>
-        </div>
-        <div className={"ml-auto flex shrink-0 items-center gap-1.5"}>
-          <Badge variant={"secondary"}>
-            {group.tables.length} {group.tables.length === 1 ? "table" : "tables"}
-          </Badge>
-          <Badge variant={"secondary"}>
-            {group.totalRows.toLocaleString()} {group.totalRows === 1 ? "row" : "rows"}
-          </Badge>
-        </div>
-      </div>
-
-      {formattedDate !== null && formattedSize !== null && (
-        <div className={"flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground text-xs"}>
-          <span>
-            Uploaded: <span className={"text-foreground"}>{formattedDate}</span>
-          </span>
-          <span>
-            Size: <span className={"text-foreground"}>{formattedSize}</span>
-          </span>
-        </div>
-      )}
-
-      <div className={"flex flex-col divide-y rounded-md border"}>
-        {group.tables.map((table) => (
-          <TableItem
-            entryId={entryId}
-            isHighlighted={highlightedTableIds.has(table.id)}
-            key={table.id}
-            onInfoClick={onInfoClick}
-            setTableElement={setTableElement}
-            table={table}
-          />
-        ))}
-      </div>
-    </section>
+    <>
+      {group.tables.map((table, index) => (
+        <TableRow
+          className={`transition-all duration-500 ${
+            isHighlighted ? "bg-primary/10 ring-1 ring-primary/40" : ""
+          } ${group.hasMultipleTables && index === 0 ? "border-t-2" : ""}`}
+          key={table.id}
+          ref={(element) => {
+            if (element !== null) {
+              setTableElement(table.id, element);
+              if (index === 0) {
+                setGroupElement(group.id, element);
+              }
+            }
+          }}
+        >
+          {index === 0 ? (
+            <TableCell className={"align-middle"} rowSpan={group.tables.length}>
+              <div className={"flex flex-col gap-0.5"}>
+                <div className={"flex items-center gap-2"}>
+                  <FileTextIcon className={"size-4 shrink-0 text-muted-foreground"} />
+                  <span className={"truncate font-medium font-mono text-sm"}>{group.label}</span>
+                </div>
+                {formattedDate !== null && formattedSize !== null && (
+                  <div className={"flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground text-xs"}>
+                    <span>
+                      Uploaded: <span className={"text-foreground"}>{formattedDate}</span>
+                    </span>
+                    <span>
+                      Size: <span className={"text-foreground"}>{formattedSize}</span>
+                    </span>
+                  </div>
+                )}
+              </div>
+            </TableCell>
+          ) : null}
+          <TableCell>
+            <div className={"flex items-center gap-2"}>
+              <FileSpreadsheetIcon className={"size-4 shrink-0 text-muted-foreground"} />
+              <span className={"truncate font-medium font-mono text-sm"}>{table.name}</span>
+            </div>
+            {table.sourceFile === null && index === 0 && (
+              <span className={"text-muted-foreground text-xs"}>Source file unknown</span>
+            )}
+          </TableCell>
+          <TableCell>
+            <Badge variant={"secondary"}>
+              {table.columns.length} {table.columns.length === 1 ? "column" : "columns"}
+            </Badge>
+          </TableCell>
+          <TableCell>
+            <Badge variant={"secondary"}>
+              {table.rowCount.toLocaleString()} {table.rowCount === 1 ? "row" : "rows"}
+            </Badge>
+          </TableCell>
+          <TableCell>
+            <div className={"flex items-center gap-1"}>
+              <Button asChild size={"sm"} variant={"ghost"}>
+                <Link params={{ id: entryId, tableId: table.id }} to={"/logs/$id/$tableId"}>
+                  <FileSpreadsheetIcon className={"size-4"} />
+                  View
+                </Link>
+              </Button>
+              <Button onClick={() => onInfoClick(table)} size={"sm"} variant={"ghost"}>
+                <InfoIcon className={"size-4"} />
+                Details
+              </Button>
+              <DownloadButton entryId={entryId} table={table} />
+            </div>
+          </TableCell>
+        </TableRow>
+      ))}
+    </>
   );
 }
 
-function TableItem({
-  table,
-  entryId,
-  isHighlighted,
-  onInfoClick,
-  setTableElement,
-}: {
-  table: TableSummary;
-  entryId: string;
-  isHighlighted: boolean;
-  onInfoClick: (table: TableSummary) => void;
-  setTableElement: (tableId: string, element: HTMLDivElement | null) => void;
-}) {
+function DownloadButton({ entryId, table }: { entryId: string; table: TableSummary }) {
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
 
@@ -254,53 +281,18 @@ function TableItem({
   };
 
   return (
-    <div
-      className={`flex flex-col gap-2 rounded-sm px-3 py-3 transition-all duration-500 ${
-        isHighlighted ? "bg-primary/10 ring-1 ring-primary/40 motion-safe:animate-pulse" : ""
-      }`}
-      ref={(element) => setTableElement(table.id, element)}
-    >
-      <div className={"flex items-center gap-3"}>
-        <FileSpreadsheetIcon className={"size-4 shrink-0 text-muted-foreground"} />
-        <div className={"flex flex-1 flex-col gap-0.5 overflow-hidden"}>
-          <span className={"truncate font-medium font-mono text-sm"}>{table.name}</span>
-          {table.sourceFile === null && <span className={"text-muted-foreground text-xs"}>Source file unknown</span>}
-        </div>
-
-        <div className={"ml-auto flex shrink-0 items-center gap-1.5"}>
-          <Badge variant={"secondary"}>
-            {table.columns.length} {table.columns.length === 1 ? "column" : "columns"}
-          </Badge>
-          <Badge variant={"secondary"}>
-            {table.rowCount.toLocaleString()} {table.rowCount === 1 ? "row" : "rows"}
-          </Badge>
-        </div>
-      </div>
-
-      <div className={"flex items-center gap-2"}>
-        <Button asChild size={"sm"} variant={"ghost"}>
-          <Link params={{ id: entryId, tableId: table.id }} to={"/logs/$id/$tableId"}>
-            <FileSpreadsheetIcon />
-            View
-          </Link>
-        </Button>
-        <Button onClick={() => onInfoClick(table)} size={"sm"} variant={"ghost"}>
-          <InfoIcon />
-          Details
-        </Button>
-        <Button
-          disabled={isDownloading || table.sourceFile === null}
-          onClick={() => void onDownload()}
-          size={"sm"}
-          variant={"ghost"}
-        >
-          <DownloadIcon />
-          Download
-        </Button>
-      </div>
-
+    <>
+      <Button
+        disabled={isDownloading || table.sourceFile === null}
+        onClick={() => void onDownload()}
+        size={"sm"}
+        variant={"ghost"}
+      >
+        <DownloadIcon className={"size-4"} />
+        Download
+      </Button>
       {downloadError !== null && <p className={"text-destructive text-xs"}>{downloadError}</p>}
-    </div>
+    </>
   );
 }
 
@@ -378,6 +370,7 @@ function groupTablesBySourceFile(tables: TableSummary[]) {
       sourceFile,
       tables: [table],
       totalRows: table.rowCount,
+      hasMultipleTables: false,
     });
   }
 
@@ -385,6 +378,7 @@ function groupTablesBySourceFile(tables: TableSummary[]) {
     .map((group) => ({
       ...group,
       tables: [...group.tables].sort((leftTable, rightTable) => leftTable.name.localeCompare(rightTable.name)),
+      hasMultipleTables: group.tables.length >= 2,
     }))
     .sort((leftGroup, rightGroup) => leftGroup.label.localeCompare(rightGroup.label));
 }
