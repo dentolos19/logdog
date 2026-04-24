@@ -3,11 +3,14 @@
 .idea/
 
 # Environment files
-.wrangler/
 .tanstack/
+.wrangler/
 node_modules/
 dist/
-*.d*
+build/
+out/
+*.d.ts
+*.tsbuildinfo
 
 # User files
 .env*
