@@ -1,0 +1,3 @@
+10.1.20.15 - - [01/Jan/2025:00:13:01 +0800] "POST /api/logs/upload HTTP/1.1" 201 482 "-" "LogdogUploader/1.0" machine_id=MCH0008 file=vendor_a_recipe.json
+10.1.20.15 - - [01/Jan/2025:00:13:05 +0800] "GET /api/logs/parse-status/abc123 HTTP/1.1" 200 812 "-" "LogdogUploader/1.0" status=parsed rows=128
+10.1.20.16 - - [01/Jan/2025:00:13:20 +0800] "POST /api/logs/upload HTTP/1.1" 422 227 "-" "LogdogUploader/1.0" status=unsupported reason=unknown_format

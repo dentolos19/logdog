@@ -1,0 +1,3 @@
+LEEF:2.0|Logdog|LithoTool|1.0|RecipeStarted|devTime=2025-01-01T00:11:00Z	devTimeFormat=yyyy-MM-dd'T'HH:mm:ss'Z'	usrName=system	tool=MCH0007	recipe=RCP_901	wafer=WFR_101
+LEEF:2.0|Logdog|LithoTool|1.0|DoseWarning|devTime=2025-01-01T00:11:12Z	devTimeFormat=yyyy-MM-dd'T'HH:mm:ss'Z'	tool=MCH0007	doseErrorPct=0.091	thresholdPct=0.000
+LEEF:2.0|Logdog|LithoTool|1.0|RecipeCompleted|devTime=2025-01-01T00:12:00Z	devTimeFormat=yyyy-MM-dd'T'HH:mm:ss'Z'	tool=MCH0007	recipe=RCP_901	result=PASS

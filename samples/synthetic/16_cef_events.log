@@ -1,0 +1,3 @@
+CEF:0|LogdogSynthetic|EtchTool|1.0|1001|RecipeStarted|3|rt=Jan 01 2025 00:09:00 dvc=MCH0006 cs1Label=Recipe cs1=RCP_300 suser=system msg=Recipe started for wafer WFR_010
+CEF:0|LogdogSynthetic|EtchTool|1.0|2002|PressureWarning|5|rt=Jan 01 2025 00:09:30 dvc=MCH0006 cs1Label=Recipe cs1=RCP_300 cn1Label=PressurePa cn1=1.75 msg=Pressure above warning threshold
+CEF:0|LogdogSynthetic|EtchTool|1.0|3003|ToolFault|8|rt=Jan 01 2025 00:10:00 dvc=MCH0006 cs1Label=FaultCode cs1=VACUUM_FAULT msg=Tool entered safe state

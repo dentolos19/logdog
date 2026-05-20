@@ -1,0 +1,8 @@
+01/01/2025 00:00:13.6798 Machine:MCH0001 (Rel:VER0001, KUMIMA [21402], KUMIxCALC_reticle_contamination, ?,?, 404)
+SYSTEM WARNING: KU-4921 DEFAULT
+Height difference (R1R3:1.958555[mm] or R2R4:5.731731[mm]) exceeds warning threshold of 0.000000[mm] reticle id:RETICLE0002.
+Be aware of possible reticle contamination (R1R3:1.958555[mm] or R2R4:5.731731[mm]) exceeds warning threshold of 0.000000[mm] reticle id:RETICLE0002. Will continue production, despite possible overlay and focus problems on product.
+
+01/01/2025 00:00:13.6801 Machine:MCH0001 (Rel:VER0001, KUMIMA [21402], KUMIxCALC_reticle_contamination, ?,?, 409)
+SYSTEM EVENT: ER-OFFF DEFAULT (linked to KU-4921)
+DEACTIVATE: KU-4921

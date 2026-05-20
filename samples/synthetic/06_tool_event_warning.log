@@ -1,0 +1,16 @@
+01/01/2025 00:00:00.1417 Machine:MCH0001 (Rel:VER0001, ERLO [20703], ERLogFile.cpp, ?,?, 245)
+SYSTEM EVENT: ER-4102 DEFAULT
+Log file 'ER/ER_event_log_mMCH0001_20250101_000000' is created, 'ER/ER_event_log_mMCH0001_20241231_235308' is closed.
+UTC-offset: +0800
+
+01/01/2025 00:00:00.2013 Machine:MCH0001 (Rel:VER0001, DWIO [dc], DWDMxOA_rq.c, ?,?, 432)
+SYSTEM WARNING: DW-20E2 DEFAULT
+The scan time is too short to perform an OASIS light measurement. Current scan time: 15.00 [ms], required minimum scan time: 25.00 [ms]
+Scan time too short to program oasis light trigger.
+Time specified: 15.00 ms
+Minimal time required: 25.00 ms
+[DWDMxOA_rq_program_light_trigger:DWDMxOA_LIGHT_TIMING_WARNING]
+
+01/01/2025 00:00:00.2222 Machine:MCH0001 (Rel:VER0001, DWIO [dc], DWDMxOA_rq.c, ?,?, 434)
+SYSTEM EVENT: ER-OFFF DEFAULT (linked to DW-20E2)
+DEACTIVATE: DW-20E2

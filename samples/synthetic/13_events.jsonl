@@ -1,0 +1,3 @@
+{"timestamp": "2025-01-01T00:02:01Z", "machine_id": "MCH0003", "severity": "INFO", "event_code": "STATE_CHANGE", "message": "Chamber C1 entered PROCESSING"}
+{"timestamp": "2025-01-01T00:02:14Z", "machine_id": "MCH0003", "severity": "WARN", "event_code": "VACUUM_DRIFT", "message": "Pressure exceeded soft limit", "pressure_pa": 1.21}
+{"timestamp": "2025-01-01T00:03:00Z", "machine_id": "MCH0003", "severity": "ERROR", "event_code": "RF_MISMATCH", "message": "RF power mismatch detected", "expected_w": 150, "actual_w": 119}

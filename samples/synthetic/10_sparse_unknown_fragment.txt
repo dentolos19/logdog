@@ -1,0 +1,26 @@
+{
+  "Keys": {
+    "ModuleID": "",
+    "RecipeStepID": "4.0",
+    "WaferID": ""
+  },
+  "Attributes": {
+    "Events": {
+      "ControlStateEvents": [
+        {"Name": "NAME_0003", "DateTime": "2025-12-16T12:11:35.000000Z"},
+        {"Name": "NAME_0004", "DateTime": "2025-12-16T12:18:20.000000Z"}
+      ]
+    },
+    "LPID": "LP_0001",
+    "SlotID": "SLOT_0002",
+    "Recipe": {
+      "RecipeID": "RCP_0002",
+      "Type": "PROCESS",
+      "SetPoints": [
+        {"SensorID": "SENSOR_0001", "DataType": "Float", "Value": ""},
+        {"SensorID": "SENSOR_0002", "DataType": "Float", "Value": ""},
+        {"SensorID": "SENSOR_0003", "DataType": "Float", "Value": ""}
+      ]
+    }
+  }
+}

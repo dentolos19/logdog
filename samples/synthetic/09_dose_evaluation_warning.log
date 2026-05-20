@@ -1,0 +1,13 @@
+01/01/2025 00:00:14.0478 Machine:MCH0001 (Rel:VER0001, DWME [dc], DWME_analysis.c, ?,?, 680)
+SYSTEM WARNING: DW-3411 SKIP
+The dose evaluation 0.0902843 [%] exceeds the dose evaluation warning level 0 [%]
+de_err=0.0902843 [%] de_warn_lvl=0 [%] ESET:93074.6 [bits]
+freq=50000 [hz] n_slit=32 mb_enabled=T action_handle=7152 exposure_handle=6847
+[DWME_analysis_determine_dose_performance_result]
+
+01/01/2025 00:00:14.2624 Machine:MCH0001 (Rel:VER0001, DWME [dc], DWME_analysis.c, ?,?, 680)
+SYSTEM WARNING: DW-3411 SKIP
+The dose evaluation 0.0862883 [%] exceeds the dose evaluation warning level 0 [%]
+de_err=0.0862883 [%] de_warn_lvl=0 [%] ESET:93106.8 [bits]
+freq=50000 [hz] n_slit=32 mb_enabled=T action_handle=7153 exposure_handle=6848
+[DWME_analysis_determine_dose_performance_result]

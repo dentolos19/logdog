@@ -1,0 +1,11 @@
+# HELP tool_pressure_pa Chamber pressure in pascals
+# TYPE tool_pressure_pa gauge
+tool_pressure_pa{machine="MCH0010",chamber="C1",recipe="RCP_660"} 0.91 1735689600000
+tool_pressure_pa{machine="MCH0010",chamber="C1",recipe="RCP_660"} 1.41 1735689610000
+# HELP tool_rf_power_w RF power in watts
+# TYPE tool_rf_power_w gauge
+tool_rf_power_w{machine="MCH0010",chamber="C1",recipe="RCP_660"} 150 1735689600000
+tool_rf_power_w{machine="MCH0010",chamber="C1",recipe="RCP_660"} 118 1735689610000
+# HELP tool_alarm_total Total alarms
+# TYPE tool_alarm_total counter
+tool_alarm_total{machine="MCH0010",alarm="RF_POWER_DROP"} 1 1735689610000

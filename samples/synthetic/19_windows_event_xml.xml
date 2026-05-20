@@ -1,0 +1,30 @@
+<Events>
+  <Event>
+    <System>
+      <Provider Name="LogdogToolAgent"/>
+      <EventID>4101</EventID>
+      <Level>3</Level>
+      <TimeCreated SystemTime="2025-01-01T00:14:00.000Z"/>
+      <Computer>MCH0009</Computer>
+    </System>
+    <EventData>
+      <Data Name="RecipeID">RCP_450</Data>
+      <Data Name="WaferID">WFR_221</Data>
+      <Data Name="Message">Recipe step exceeded expected duration</Data>
+    </EventData>
+  </Event>
+  <Event>
+    <System>
+      <Provider Name="LogdogToolAgent"/>
+      <EventID>5102</EventID>
+      <Level>2</Level>
+      <TimeCreated SystemTime="2025-01-01T00:14:30.000Z"/>
+      <Computer>MCH0009</Computer>
+    </System>
+    <EventData>
+      <Data Name="FaultCode">RF_POWER_DROP</Data>
+      <Data Name="ActualPowerW">91</Data>
+      <Data Name="ExpectedPowerW">150</Data>
+    </EventData>
+  </Event>
+</Events>

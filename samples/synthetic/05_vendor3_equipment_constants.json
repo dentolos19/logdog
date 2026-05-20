@@ -1,0 +1,53 @@
+{
+  "ControlJob": {
+    "Keys": {
+      "ControlJobID": null,
+      "ToolID": "EQP_0001",
+      "DateTime": "2026-02-18T03:54:42.343Z"
+    },
+    "Attributes": {
+      "Vendor": "VENDOR_0001",
+      "FileGeneratorSoftwareVersion": "VER_0001",
+      "ToolId": "EQP_0001",
+      "EthernetAddress": "NET_0001",
+      "ExpirationDate": "4/14/2026",
+      "EquipmentConstants": [
+        {
+          "Name": "NAME_0001",
+          "ConstantID": "31919427",
+          "Units": null,
+          "DataType": "Integer",
+          "Value": "1"
+        },
+        {
+          "Name": "NAME_0002",
+          "ConstantID": "31917558",
+          "Units": "%",
+          "DataType": "Float",
+          "Value": "3.0"
+        },
+        {
+          "Name": "NAME_0003",
+          "ConstantID": "31917559",
+          "Units": "%",
+          "DataType": "Float",
+          "Value": "2.0"
+        },
+        {
+          "Name": "NAME_0004",
+          "ConstantID": "31919428",
+          "Units": null,
+          "DataType": "String",
+          "Value": "Gas13"
+        },
+        {
+          "Name": "NAME_0005",
+          "ConstantID": "31918456",
+          "Units": "cycles",
+          "DataType": "Integer",
+          "Value": "3"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,20 @@
+<ProcessData>
+  <Header>
+    <ToolID>EQP_0002</ToolID>
+    <MachineID>MCH0002</MachineID>
+    <RecipeID>RCP_2048</RecipeID>
+    <LotID>LOT_0007</LotID>
+  </Header>
+  <Readings>
+    <Reading timestamp="2025-01-01T00:01:00Z" chamber="C2">
+      <Temperature unit="C">85.2</Temperature>
+      <Pressure unit="Pa">0.9</Pressure>
+      <RfPower unit="W">150</RfPower>
+    </Reading>
+    <Reading timestamp="2025-01-01T00:01:05Z" chamber="C2">
+      <Temperature unit="C">85.4</Temperature>
+      <Pressure unit="Pa">0.92</Pressure>
+      <RfPower unit="W">151</RfPower>
+    </Reading>
+  </Readings>
+</ProcessData>

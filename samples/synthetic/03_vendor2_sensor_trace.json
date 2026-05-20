@@ -1,0 +1,92 @@
+{
+  "ControlJob": {
+    "Keys": {
+      "CtrlJobID": "CJOB_0001",
+      "EquipmentID": "EQP_0001"
+    },
+    "Attributes": {
+      "FileType": "Process",
+      "JsonSchemaVersion": "4.0",
+      "Recipe": {
+        "RecipeID": "RCP_0001",
+        "Type": "SYSTEM"
+      },
+      "Events": {
+        "ControlStateEvents": [],
+        "Alarms": [],
+        "Errors": []
+      },
+      "SensorDescriptions": [
+        {
+          "SensorID": "SENSOR_0001",
+          "SVID(Monitor)": 17903052,
+          "SVID(Setting)": 17912155,
+          "DVID(Substrate)": 3465053,
+          "DVID(PJ)": 5143756,
+          "Unit": "mTorr",
+          "DataType": "Float"
+        },
+        {
+          "SensorID": "SENSOR_0002",
+          "SVID(Monitor)": 17903053,
+          "SVID(Setting)": 17912156,
+          "DVID(Substrate)": 3465054,
+          "DVID(PJ)": 5143757,
+          "Unit": "W",
+          "DataType": "Float"
+        },
+        {
+          "SensorID": "SENSOR_0003",
+          "SVID(Monitor)": 17903054,
+          "SVID(Setting)": 17912157,
+          "DVID(Substrate)": 3465055,
+          "DVID(PJ)": 5143758,
+          "Unit": "sccm",
+          "DataType": "Float"
+        },
+        {
+          "SensorID": "SENSOR_0004",
+          "SVID(Monitor)": 17903055,
+          "SVID(Setting)": 17912158,
+          "DVID(Substrate)": 3465056,
+          "DVID(PJ)": 5143759,
+          "Unit": "%",
+          "DataType": "Float"
+        },
+        {
+          "SensorID": "SENSOR_0005",
+          "SVID(Monitor)": 17903056,
+          "SVID(Setting)": 17912159,
+          "DVID(Substrate)": 3465057,
+          "DVID(PJ)": 5143760,
+          "Unit": "C",
+          "DataType": "Float"
+        }
+      ]
+    },
+    "ProcessJobs": [
+      {
+        "Keys": {
+          "PRJobID": "PRJOB_0001",
+          "RecipeID": "RCP_0001",
+          "Type": "SYSTEM"
+        },
+        "Attributes": {
+          "LotID": "LOT_0001",
+          "Events": {
+            "ControlStateEvents": [
+              {
+                "Name": "NAME_0001",
+                "DateTime": "2025-12-16T04:22:49.000000Z"
+              },
+              {
+                "Name": "NAME_0002",
+                "DateTime": "2025-12-16T13:39:38.000000Z"
+              }
+            ]
+          }
+        }
+      }
+    ]
+  }
+}

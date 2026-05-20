@@ -1,0 +1,3 @@
+timestamp=2025-01-01T00:05:00Z machine=MCH0004 tool=ETCH_01 chamber=C3 lot=LOT_0012 wafer=WFR_0023 recipe=RCP_0178 step=ASH pressure_pa=0.88 rf_power_w=300 status=OK
+timestamp=2025-01-01T00:05:10Z machine=MCH0004 tool=ETCH_01 chamber=C3 lot=LOT_0012 wafer=WFR_0023 recipe=RCP_0178 step=ASH pressure_pa=0.95 rf_power_w=305 status=OK
+timestamp=2025-01-01T00:05:20Z machine=MCH0004 tool=ETCH_01 chamber=C3 lot=LOT_0012 wafer=WFR_0023 recipe=RCP_0178 step=ASH pressure_pa=1.30 rf_power_w=260 status=WARN code=PRESSURE_SPIKE

@@ -1,0 +1,9 @@
+01/01/2025 00:00:02.4290 Machine:MCH0001 (Rel:VER0001, RHEUOPIVR [2100] [ha], RHEU_RYVU_Wrapper.cpp, ?,?, 529)
+SYSTEM EVENT: RH-8052 DEFAULT
+IVR complete move
+IVR is now at logical position: RYUVXA_IVR_LOGICAL_POS_RED_2_UP_EXCHANGE
+
+01/01/2025 00:00:10.3578 Machine:MCH0001 (Rel:VER0001, RHEUOPIVR [2100] [ha], RHEU_OPR_IvrPick.cpp, ?,?, 627)
+SYSTEM EVENT: RH-8053 DEFAULT
+IVR picked reticle from RED
+IVR removed IP containing reticle RETICLEB0001 from RED arm 2 (RED2: StrG=8.48 N, Z=5.26 V, IVR: Z1=7.26 V, Z2=6.85 V)
