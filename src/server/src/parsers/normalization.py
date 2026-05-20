@@ -1,106 +1,205 @@
 from __future__ import annotations
 
-import hashlib
 import re
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 
-MAX_IDENTIFIER_LENGTH = 63
-NUMBER_RE = re.compile(r"^[+-]?\d+(?:\.\d+)?$")
-ISO_TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}")
+# Common timestamp formats
+_TIMESTAMP_FORMATS = [
+    "%Y-%m-%dT%H:%M:%S.%fZ",
+    "%Y-%m-%dT%H:%M:%S.%f%z",
+    "%Y-%m-%dT%H:%M:%SZ",
+    "%Y-%m-%dT%H:%M:%S%z",
+    "%Y-%m-%d %H:%M:%S.%f",
+    "%Y-%m-%d %H:%M:%S",
+    "%Y-%m-%d",
+    "%m/%d/%Y %H:%M:%S.%f",
+    "%m/%d/%Y %H:%M:%S",
+    "%d/%b/%Y:%H:%M:%S %z",
+    "%b %d %H:%M:%S",
+]
+
+# Log level keywords
+_LOG_LEVEL_KEYWORDS = {
+    "trace": "TRACE",
+    "debug": "DEBUG",
+    "info": "INFO",
+    "information": "INFO",
+    "notice": "NOTICE",
+    "warn": "WARNING",
+    "warning": "WARNING",
+    "error": "ERROR",
+    "err": "ERROR",
+    "fatal": "FATAL",
+    "critical": "CRITICAL",
+    "crit": "CRITICAL",
+    "alert": "ALERT",
+    "emerg": "EMERGENCY",
+    "emergency": "EMERGENCY",
+}
+
+# Regex for sanitizing identifiers
+_IDENTIFIER_SANITIZE_RE = re.compile(r"[^a-zA-Z0-9_]")
+_IDENTIFIER_START_RE = re.compile(r"^[^a-zA-Z_]")
 
 
-def sanitize_identifier(value: str, max_length: int = MAX_IDENTIFIER_LENGTH) -> str:
-    sanitized = "".join(character if character.isalnum() or character == "_" else "_" for character in value.strip())
-    sanitized = "_".join(part for part in sanitized.split("_") if part).lower()
-    if not sanitized:
-        sanitized = "field"
-    if sanitized[0].isdigit():
-        sanitized = f"field_{sanitized}"
-
-    if len(sanitized) <= max_length:
-        return sanitized
-
-    digest = hashlib.md5(sanitized.encode("utf-8"), usedforsecurity=False).hexdigest()[:8]
-    prefix_length = max(1, max_length - 9)
-    truncated = sanitized[:prefix_length].rstrip("_") or "field"
-    return f"{truncated}_{digest}"
+def sanitize_identifier(name: str) -> str:
+    """Convert a string into a valid SQL identifier."""
+    if not name:
+        return "_unnamed"
+    # Replace non-alphanumeric/underscore with underscore
+    sanitized = _IDENTIFIER_SANITIZE_RE.sub("_", name)
+    # Ensure starts with letter or underscore
+    sanitized = _IDENTIFIER_START_RE.sub("_", sanitized)
+    # Collapse multiple underscores
+    sanitized = re.sub(r"_+", "_", sanitized)
+    # Strip leading/trailing underscores
+    sanitized = sanitized.strip("_")
+    return sanitized or "_unnamed"
 
 
-def unique_identifier(base: str, existing: set[str], max_length: int = MAX_IDENTIFIER_LENGTH) -> str:
-    candidate = sanitize_identifier(base, max_length=max_length)
-    if candidate not in existing:
-        return candidate
+def unique_identifier(base: str, seen: set[str]) -> str:
+    """Ensure an identifier is unique within a set."""
+    candidate = base
+    counter = 1
+    while candidate in seen:
+        candidate = f"{base}_{counter}"
+        counter += 1
+    seen.add(candidate)
+    return candidate
 
-    index = 2
-    while True:
-        suffix = f"_{index}"
-        prefix_length = max(1, max_length - len(suffix))
-        truncated = candidate[:prefix_length].rstrip("_") or "field"
-        unique_name = f"{truncated}{suffix}"
-        if unique_name not in existing:
-            return unique_name
-        index += 1
+
+def coerce_scalar(value: str) -> Any:
+    """Try to coerce a string value into int, float, bool, or datetime."""
+    if not value or not value.strip():
+        return None
+
+    stripped = value.strip()
+
+    # Boolean
+    if stripped.lower() in ("true", "yes", "on"):
+        return True
+    if stripped.lower() in ("false", "no", "off"):
+        return False
+
+    # Timestamp (try before integer—epoch ms looks like a number)
+    ts = normalize_iso_timestamp(stripped)
+    if ts:
+        return ts
+
+    # Integer — guard against PostgreSQL INTEGER overflow (> 2^31-1)
+    try:
+        ival = int(stripped)
+        max_pg_int = 2_147_483_647
+        if abs(ival) > max_pg_int:
+            # Large integer → keep as string so it maps to TEXT / BIGINT
+            return stripped
+        return ival
+    except ValueError:
+        pass
+
+    # Float
+    try:
+        return float(stripped)
+    except ValueError:
+        pass
+
+    return stripped
 
 
 def normalize_iso_timestamp(value: str) -> str | None:
-    candidate = value.strip().replace(" ", "T")
-    if candidate.endswith("Z"):
-        candidate = candidate[:-1] + "+00:00"
+    """Try to parse a timestamp string and return ISO-8601 format.
 
-    try:
-        parsed = datetime.fromisoformat(candidate)
-    except ValueError:
+    Handles epoch milliseconds (13-digit), epoch seconds (10-digit),
+    ISO-8601, RFC-2822, and common log formats.
+    """
+    if not value or not value.strip():
         return None
 
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=UTC)
-    return parsed.isoformat()
+    stripped = value.strip()
 
-
-def coerce_scalar(value: Any, preserve_empty: bool = True) -> Any:
-    if value is None:
-        return None
-
-    if isinstance(value, (bool, int, float)):
-        return value
-
-    text = str(value).strip()
-    if text == "":
-        return "" if preserve_empty else None
-
-    lowered = text.lower()
-    if lowered in {"null", "none", "nan", "n/a"}:
-        return None
-    if lowered in {"true", "false"}:
-        return lowered == "true"
-    if lowered in {"pass", "warn", "warning", "fail", "error", "ok"}:
-        return lowered.upper().replace("WARNING", "WARN")
-
-    cleaned = text.rstrip("|,;:])}")
-    if NUMBER_RE.match(cleaned):
+    # Epoch milliseconds — 13 digits, starts around 2001
+    if stripped.isdigit() and len(stripped) == 13:
         try:
-            if "." in cleaned:
-                return float(cleaned)
-            return int(cleaned)
-        except ValueError:
+            ms_val = int(stripped) / 1000.0
+            dt = datetime.fromtimestamp(ms_val, tz=timezone.utc)
+            return dt.isoformat()
+        except (ValueError, OSError):
             pass
 
-    if ISO_TIMESTAMP_RE.match(text):
-        normalized = normalize_iso_timestamp(text)
-        if normalized is not None:
-            return normalized
+    # Epoch seconds — 10 digits, in a reasonable range
+    if stripped.isdigit() and len(stripped) == 10:
+        try:
+            sec_val = int(stripped)
+            if 946_684_800 <= sec_val <= 4_102_444_800:  # 2000-2100
+                dt = datetime.fromtimestamp(sec_val, tz=timezone.utc)
+                return dt.isoformat()
+        except (ValueError, OSError):
+            pass
 
-    return text
+    for fmt in _TIMESTAMP_FORMATS:
+        try:
+            dt = datetime.strptime(stripped, fmt)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.isoformat()
+        except ValueError:
+            continue
+
+    return None
 
 
 def sanitize_db_value(value: Any) -> Any:
+    """Sanitize a value for database storage."""
+    if value is None:
+        return None
     if isinstance(value, str):
+        # Remove null bytes
         return value.replace("\x00", "")
     if isinstance(value, dict):
-        return {key: sanitize_db_value(item) for key, item in value.items()}
-    if isinstance(value, list):
-        return [sanitize_db_value(item) for item in value]
-    if isinstance(value, tuple):
+        return {k: sanitize_db_value(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
         return [sanitize_db_value(item) for item in value]
     return value
+
+
+def infer_log_level(text: str) -> str:
+    """Infer log level from text content."""
+    if not text:
+        return "INFO"
+
+    upper = text.upper()
+    for keyword, level in _LOG_LEVEL_KEYWORDS.items():
+        if keyword.upper() in upper:
+            return level
+
+    return "INFO"
+
+
+def infer_sql_type(values: list[Any]) -> str:
+    """Infer SQL type from a list of sample values."""
+    non_null = [v for v in values if v is not None]
+    if not non_null:
+        return "TEXT"
+
+    # Check if all are booleans
+    if all(isinstance(v, bool) for v in non_null):
+        return "BOOLEAN"
+
+    # Check if all are integers
+    if all(isinstance(v, int) and not isinstance(v, bool) for v in non_null):
+        max_pg_int = 2_147_483_647  # PostgreSQL INTEGER max
+        for v in non_null:
+            if isinstance(v, int) and abs(v) > max_pg_int:
+                return "BIGINT"
+        return "INTEGER"
+
+    # Check if all are floats or ints
+    if all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in non_null):
+        return "FLOAT"
+
+    # Check if all look like timestamps
+    if all(isinstance(v, str) and normalize_iso_timestamp(v) for v in non_null):
+        return "TEXT"
+
+    return "TEXT"

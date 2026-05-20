@@ -18,6 +18,8 @@ logger = logging.getLogger(__name__)
 
 
 class ParserPipeline(ABC):
+    """Abstract base for a parser pipeline."""
+
     parser_key: str = ""
 
     @abstractmethod
@@ -39,9 +41,16 @@ class ParserPipeline(ABC):
 
 
 class _ParserRegistry:
+    """Singleton registry of parser pipelines.
+
+    Currently registers exactly two pipelines:
+        *universal_ai* — AI-driven universal parser.
+        *raw_ingest*  — safety fallback (line-oriented raw ingest).
+    """
+
     def __init__(self) -> None:
         self._pipelines: dict[str, ParserPipeline] = {}
-        self._fallback_order = {"unified": 0}
+        self._fallback_order = {"raw_ingest": 0}
         self._discovery_done = False
 
     def register(self, pipeline: ParserPipeline) -> None:
@@ -58,7 +67,8 @@ class _ParserRegistry:
         self.discover()
         if parser_key not in self._pipelines:
             raise KeyError(
-                f"No parser pipeline registered for key '{parser_key}'. Registered keys: {sorted(self._pipelines)}"
+                f"No parser pipeline registered for key '{parser_key}'. "
+                f"Registered keys: {sorted(self._pipelines)}"
             )
         return self._pipelines[parser_key]
 
@@ -143,8 +153,8 @@ class _ParserRegistry:
 
             if not best.supported:
                 warnings.append(
-                    f"No parser strongly supports '{file_input.filename}', using '{best.parser_key}' fallback "
-                    f"(score={best.score:.2f})."
+                    f"No parser strongly supports '{file_input.filename}', "
+                    f"using '{best.parser_key}' fallback (score={best.score:.2f})."
                 )
 
             grouped.setdefault(best.parser_key, []).append(file_input)
@@ -168,42 +178,12 @@ class _ParserRegistry:
             self._pipelines.clear()
 
         try:
-            from parsers.deterministic import (
-                ApacheAccessPipeline,
-                BinaryHexPipeline,
-                CsvPipeline,
-                JsonLinesPipeline,
-                KeyValuePipeline,
-                LogfmtPipeline,
-                NginxAccessPipeline,
-                SectionedKeyValuePipeline,
-                SyslogPipeline,
-                TimestampedEventTextPipeline,
-                XmlPipeline,
-            )
+            from parsers.engine import RawIngestFallbackParser, UniversalAIParser
 
-            # Structured formats first (higher priority)
-            self.register(JsonLinesPipeline())
-            self.register(XmlPipeline())
-            self.register(CsvPipeline())
-            self.register(SectionedKeyValuePipeline())
-            self.register(TimestampedEventTextPipeline())
-            # Semi-structured / unstructured formats
-            self.register(SyslogPipeline())
-            self.register(ApacheAccessPipeline())
-            self.register(NginxAccessPipeline())
-            self.register(LogfmtPipeline())
-            self.register(KeyValuePipeline())
-            self.register(BinaryHexPipeline())
+            self.register(UniversalAIParser())
+            self.register(RawIngestFallbackParser())
         except Exception as error:  # noqa: BLE001
-            logger.warning("Could not register deterministic pipelines: %s", error)
-
-        try:
-            from parsers.unified.pipeline import UnifiedPipeline
-
-            self.register(UnifiedPipeline())
-        except Exception as error:  # noqa: BLE001
-            logger.warning("Could not register unified pipeline: %s", error)
+            logger.warning("Could not register parser pipelines: %s", error)
 
         self._discovery_done = True
 

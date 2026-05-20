@@ -119,6 +119,49 @@ BASELINE_COLUMNS: list[ColumnDefinition] = [
 BASELINE_COLUMN_NAMES: frozenset[str] = frozenset(column.name for column in BASELINE_COLUMNS)
 
 
+# ── AI Parser Contracts ────────────────────────────────────────────────────
+
+
+class AiColumnPlan(BaseModel):
+    """AI-suggested column for a parsed log table."""
+    name: str = Field(description="Canonical column name")
+    type: str = Field(default="TEXT", description="SQL type: TEXT, INTEGER, BIGINT, FLOAT, BOOLEAN, DATETIME")
+    description: str = Field(default="", description="Semantic description of the field")
+    nullable: bool = True
+    source_pattern: str = Field(default="", description="What the AI looked for (e.g. 'machine ID', 'event code')")
+
+
+class AiSchemaPlan(BaseModel):
+    """Full AI-suggested schema plan for a parsed log file."""
+    table_name: str = Field(default="", description="Suggested table name (short, kebab-case)")
+    display_name: str = Field(default="", description="Human-friendly table name")
+    columns: list[AiColumnPlan] = Field(description="Suggested columns")
+    confidence: float = Field(ge=0.0, le=1.0, description="Overall confidence in this schema")
+    notes: str = Field(default="", description="Any caveats or notes about the extraction")
+
+
+class AiExtractionBatch(BaseModel):
+    """Structured result from AI extraction of one chunk."""
+    rows: list[dict[str, Any]] = Field(description="Extracted row objects")
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0, description="Per-batch confidence")
+    warnings: list[str] = Field(default_factory=list, description="Warnings for this batch")
+
+
+class AiExtractionDiagnostics(BaseModel):
+    """Diagnostics for AI-powered parser runs."""
+    model: str = ""
+    prompt_version: str = ""
+    schema_cache_hit: bool = False
+    schema_confidence: float = 0.0
+    batch_count: int = 0
+    total_rows: int = 0
+    failed_batch_count: int = 0
+    repair_batch_count: int = 0
+    average_confidence: float = 0.0
+    fallback_reason: str = ""
+    json_enriched_count: int = 0
+
+
 def _quote_identifier(name: str) -> str:
     escaped = name.replace('"', '""')
     return f'"{escaped}"'
