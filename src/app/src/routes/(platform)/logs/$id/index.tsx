@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { DownloadIcon, PencilIcon, Trash2Icon } from "lucide-react";
-import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { Alert, AlertDescription, AlertTitle } from "#/components/ui/alert";
@@ -316,6 +316,25 @@ function LogGroupPage() {
     setTableHighlightRequest(null);
   }, []);
 
+  const mainRef = useRef<HTMLDivElement>(null);
+  const [mainWidth, setMainWidth] = useState<number | null>(null);
+
+  useEffect(() => {
+    const element = mainRef.current;
+    if (element === null) {
+      return;
+    }
+
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry !== undefined) {
+        setMainWidth(entry.contentRect.width);
+      }
+    });
+
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
   return (
     <div className={"flex h-full flex-col"}>
       <PageHeader
@@ -376,7 +395,7 @@ function LogGroupPage() {
         )}
       </PageHeader>
 
-      <main className={"flex flex-1 flex-col gap-6 overflow-auto"}>
+      <main className={"flex flex-1 flex-col gap-6 overflow-y-auto min-w-0"} ref={mainRef}>
         {group === null && fetchError === null && (
           <div className={"flex flex-col gap-6"}>
             <Skeleton className={"h-28 w-full rounded-lg"} />
@@ -419,13 +438,15 @@ function LogGroupPage() {
                     <AlertDescription>{filesError}</AlertDescription>
                   </Alert>
                 )}
-                <TablesTab
-                  entryId={id}
-                  files={files}
-                  highlightRequest={tableHighlightRequest}
-                  onHighlightHandled={onTableHighlightHandled}
-                  processes={processes}
-                />
+                <div style={mainWidth !== null ? { maxWidth: `${mainWidth}px` } : undefined}>
+                  <TablesTab
+                    entryId={id}
+                    files={files}
+                    highlightRequest={tableHighlightRequest}
+                    onHighlightHandled={onTableHighlightHandled}
+                    processes={processes}
+                  />
+                </div>
               </section>
             </TabsContent>
 

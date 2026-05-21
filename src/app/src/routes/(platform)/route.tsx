@@ -78,7 +78,7 @@ function PlatformInner() {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset className={"h-dvh overflow-hidden"}>
+      <SidebarInset className={"h-dvh w-0 overflow-hidden"}>
         <header className={"sticky top-0 z-20 flex h-12 shrink-0 items-center gap-2 border-b bg-sidebar px-4"}>
           <SidebarTrigger className={"-ml-1"} />
           {isLoading ? (

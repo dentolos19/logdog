@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import type { ColumnDef, PaginationState, SortingState, VisibilityState } from "@tanstack/react-table";
 import { format } from "date-fns";
 import { ChevronDownIcon, DownloadIcon, FileSpreadsheetIcon, FileTextIcon, InfoIcon, TableIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "#/components/ui/alert";
 import { Badge } from "#/components/ui/badge";
@@ -156,6 +156,25 @@ function LogTablePage() {
   const hasLoadingState = entryLoading || filesLoading || processesLoading;
   const hasRequestError = entryError !== null || filesError !== null || processesError !== null;
 
+  const mainRef = useRef<HTMLDivElement>(null);
+  const [mainWidth, setMainWidth] = useState<number | null>(null);
+
+  useEffect(() => {
+    const element = mainRef.current;
+    if (element === null) {
+      return;
+    }
+
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry !== undefined) {
+        setMainWidth(entry.contentRect.width);
+      }
+    });
+
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
   return (
     <div className={"flex h-full flex-col"}>
       <PageHeader
@@ -174,10 +193,8 @@ function LogTablePage() {
           <div className={"flex items-center gap-2"}>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button disabled={downloadingFormat !== null} size={"sm"} variant={"ghost"}>
+                <Button disabled={downloadingFormat !== null} size={"icon-sm"} variant={"ghost"}>
                   {downloadingFormat !== null ? <Spinner /> : <DownloadIcon />}
-                  Download
-                  <ChevronDownIcon />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align={"end"} className={"w-56"}>
@@ -197,15 +214,14 @@ function LogTablePage() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            <Button onClick={() => setIsDetailsOpen(true)} size={"sm"} variant={"ghost"}>
+            <Button onClick={() => setIsDetailsOpen(true)} size={"icon-sm"} variant={"ghost"}>
               <InfoIcon />
-              Details
             </Button>
           </div>
         )}
       </PageHeader>
 
-      <main className={"flex flex-1 flex-col gap-4 p-4"}>
+      <main className={"flex min-w-0 flex-1 flex-col gap-4 p-4"} ref={mainRef}>
         {hasLoadingState && (
           <div className={"flex flex-col gap-3"}>
             <Skeleton className={"h-24 w-full rounded-lg"} />
@@ -261,7 +277,7 @@ function LogTablePage() {
         )}
 
         {!hasLoadingState && !hasRequestError && table !== null && (
-          <>
+          <div style={mainWidth !== null ? { maxWidth: `${mainWidth}px` } : undefined}>
             <section className={"flex flex-col gap-3 rounded-md border p-4"}>
               <div className={"flex items-start gap-3"}>
                 <FileTextIcon className={"mt-0.5 size-4 shrink-0 text-muted-foreground"} />
@@ -300,7 +316,7 @@ function LogTablePage() {
             <TableRowsDataTable entryId={id} table={table} />
 
             {isDetailsOpen && <TableDetailsDialog onClose={() => setIsDetailsOpen(false)} table={table} />}
-          </>
+          </div>
         )}
       </main>
     </div>
@@ -486,7 +502,7 @@ function TableRowsDataTable({ table, entryId }: { table: TableSummary; entryId: 
 
   return (
     <>
-      <div className={"flex w-full flex-wrap items-center gap-2 rounded-md border p-2"}>
+      <div className={"my-2 flex w-full flex-wrap items-center gap-2 rounded-md border p-2"}>
         <Input
           className={"h-8 w-56"}
           onChange={(event) => setSearchText(event.target.value)}
