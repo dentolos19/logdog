@@ -4,6 +4,8 @@ import re
 from datetime import datetime, timezone
 from typing import Any
 
+_TSTYPE = datetime | None
+
 # Common timestamp formats
 _TIMESTAMP_FORMATS = [
     "%Y-%m-%dT%H:%M:%S.%fZ",
@@ -149,6 +151,64 @@ def normalize_iso_timestamp(value: str) -> str | None:
     return None
 
 
+def parse_timestamp(value: Any) -> datetime | None:
+    """Parse a timestamp value into a timezone-aware UTC datetime.
+
+    Handles ISO-8601 strings, Unix seconds (int/float 10-digit),
+    Unix milliseconds (int/float 13-digit), and ``datetime`` objects.
+    Returns ``None`` if the value cannot be parsed.
+    """
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+    if isinstance(value, (int, float)):
+        # Unix milliseconds (13 digits, roughly post-2001)
+        if value > 10_000_000_000:  # > 1000 seconds from epoch
+            # Treat as milliseconds
+            dt = datetime.fromtimestamp(value / 1000.0, tz=timezone.utc)
+            return dt
+        # Unix seconds
+        if 946_684_800 <= value <= 4_102_444_800:  # 2000-2100
+            dt = datetime.fromtimestamp(value, tz=timezone.utc)
+            return dt
+        return None
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        # Epoch milliseconds (13-digit string)
+        if stripped.isdigit() and len(stripped) == 13:
+            try:
+                ms_val = int(stripped) / 1000.0
+                dt = datetime.fromtimestamp(ms_val, tz=timezone.utc)
+                return dt
+            except (ValueError, OSError):
+                pass
+        # Epoch seconds (10-digit string)
+        if stripped.isdigit() and len(stripped) == 10:
+            try:
+                sec_val = int(stripped)
+                if 946_684_800 <= sec_val <= 4_102_444_800:
+                    dt = datetime.fromtimestamp(sec_val, tz=timezone.utc)
+                    return dt
+            except (ValueError, OSError):
+                pass
+        # Common timestamp formats
+        for fmt in _TIMESTAMP_FORMATS:
+            try:
+                dt = datetime.strptime(stripped, fmt)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                return dt
+            except ValueError:
+                continue
+        return None
+    return None
+
+
 def sanitize_db_value(value: Any) -> Any:
     """Sanitize a value for database storage."""
     if value is None:
@@ -163,17 +223,21 @@ def sanitize_db_value(value: Any) -> Any:
     return value
 
 
-def infer_log_level(text: str) -> str:
-    """Infer log level from text content."""
+def infer_log_level(text: str) -> str | None:
+    """Infer log level from text content.
+
+    Returns the level string (e.g. ``"ERROR"``) or ``None``
+    if no level keyword is detected.
+    """
     if not text:
-        return "INFO"
+        return None
 
     upper = text.upper()
     for keyword, level in _LOG_LEVEL_KEYWORDS.items():
         if keyword.upper() in upper:
             return level
 
-    return "INFO"
+    return None
 
 
 def infer_sql_type(values: list[Any]) -> str:
@@ -199,7 +263,9 @@ def infer_sql_type(values: list[Any]) -> str:
         return "FLOAT"
 
     # Check if all look like timestamps
-    if all(isinstance(v, str) and normalize_iso_timestamp(v) for v in non_null):
-        return "TEXT"
+    if all(isinstance(v, str) and parse_timestamp(v) for v in non_null):
+        return "TIMESTAMP"
+    if all(parse_timestamp(v) for v in non_null):
+        return "TIMESTAMP"
 
     return "TEXT"

@@ -6,6 +6,7 @@ import {
   CpuIcon,
   FileTextIcon,
   FlaskConicalIcon,
+  InfoIcon,
   UploadIcon,
   XIcon,
 } from "lucide-react";
@@ -19,12 +20,13 @@ import { ScrollArea } from "#/components/ui/scroll-area";
 import { Separator } from "#/components/ui/separator";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "#/components/ui/sheet";
 import { Spinner } from "#/components/ui/spinner";
+import { Tooltip, TooltipContent, TooltipTrigger } from "#/components/ui/tooltip";
 import { cn } from "#/lib/utils";
 
 type LocalParseResult = {
   filename: string;
   stages_executed: string[];
-  confidence: number;
+  heuristic_preview: number;
   format_detected: string | null;
   total_latency_ms: number;
   ai_fallback_used: boolean;
@@ -104,7 +106,7 @@ function ParserTesterBody() {
           return {
             filename: file.name,
             stages_executed: ["classification", "field-extraction", "normalization"],
-            confidence: Math.min(0.98, Math.max(0.4, 0.6 + Math.min(lines.length, 100) / 250)),
+            heuristic_preview: Math.min(0.98, Math.max(0.4, 0.6 + Math.min(lines.length, 100) / 250)),
             format_detected: detectedFormat,
             total_latency_ms: latency,
             ai_fallback_used: detectedFormat === "plain_text",
@@ -247,7 +249,7 @@ function ParserTesterBody() {
 }
 
 function ParseResultCard({ result }: { result: LocalParseResult }) {
-  const percent = Math.round(result.confidence * 100);
+  const percent = Math.round(result.heuristic_preview * 100);
   const row = result.log_row;
 
   return (
@@ -273,7 +275,18 @@ function ParseResultCard({ result }: { result: LocalParseResult }) {
 
       <div className={"flex flex-col gap-1"}>
         <div className={"flex items-center justify-between"}>
-          <span className={"text-muted-foreground text-xs"}>Parse confidence</span>
+          <div className={"flex items-center gap-1"}>
+            <span className={"text-muted-foreground text-xs"}>Heuristic preview</span>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <InfoIcon className={"size-3 text-muted-foreground/60"} />
+              </TooltipTrigger>
+              <TooltipContent>
+                Client-side estimate only. Real parser confidence is computed by the backend after extraction quality
+                checks.
+              </TooltipContent>
+            </Tooltip>
+          </div>
           <span className={"font-medium text-xs"}>{percent}%</span>
         </div>
         <Progress className={"h-1.5"} value={percent} />

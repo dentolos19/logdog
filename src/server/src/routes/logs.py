@@ -31,6 +31,7 @@ from lib.megabase import query_records as megabase_query_records
 from lib.ai import get_generative_model
 from lib.models import Asset, LogGroup, LogFile, LogMessage, LogProcess, LogReport, LogTable, User
 from lib.storage import delete_file, download_file, upload_file
+from parsers.extra_grouping import group_rows_by_extra
 from parsers.orchestrator import create_process, enqueue_process, mark_process_failed
 from routes.auth import get_current_user
 
@@ -642,7 +643,7 @@ def _get_table_records(group_id: str, table_name: str, current_user: User, datab
     finally:
         megabase_database.close()
 
-    return records
+    return group_rows_by_extra(records)
 
 
 def _serialize_value(value: Any) -> str:

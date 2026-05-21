@@ -100,15 +100,23 @@ def _uuid7() -> uuid.UUID:
     return uuid.UUID(bytes=bytes(value))
 
 
-def _normalize_record_id(value: object) -> uuid.UUID | None:
-    if value is None or value == "":
+def _uuid7_str() -> str:
+    """Return a UUIDv7 string for use as a text ID."""
+    return str(_uuid7())
+
+
+def _normalize_record_id(value: object) -> str | None:
+    """Normalize a record id to a string.
+
+    Accepts any non-empty string or UUID value as a valid id.
+    Returns ``None`` for missing/empty values.
+    """
+    if value is None:
         return None
-    if isinstance(value, uuid.UUID):
-        return value
-    try:
-        return uuid.UUID(str(value))
-    except (TypeError, ValueError):
-        raise ValueError("Megabase id values must be valid UUIDs when provided.")
+    if isinstance(value, str):
+        stripped = value.strip()
+        return stripped if stripped else None
+    return str(value)
 
 
 def _get_session():
@@ -136,11 +144,11 @@ def _parse_column(col_def: dict) -> Column:
     if col_name == "id":
         return Column(
             col_name,
-            UUID(as_uuid=True),
+            Text(),
             primary_key=True,
             nullable=False,
             index=True,
-            default=_uuid7,
+            default=_uuid7_str,
         )
 
     if col_def.get("primary_key"):
@@ -161,7 +169,7 @@ def _ensure_schema_id_column(schema: dict) -> dict:
     id_column = next((column for column in columns if column.get("name") == "id"), None)
     normalized_id = {
         "name": "id",
-        "type": "uuid",
+        "type": "text",
         "primary_key": True,
         "nullable": False,
         "index": True,
@@ -313,7 +321,7 @@ def _load_registry(session: Session):
         _registry_locked = False
 
 
-def insert_record(session: Session, table_name: str, data: dict) -> uuid.UUID:
+def insert_record(session: Session, table_name: str, data: dict) -> str:
     if table_name not in metadata.tables:
         raise ValueError(f"Table '{table_name}' not found. Create it first with create_table().")
 
@@ -323,17 +331,17 @@ def insert_record(session: Session, table_name: str, data: dict) -> uuid.UUID:
     if "id" in table.c:
         normalized_id = _normalize_record_id(data.get("id"))
         if normalized_id is None:
-            data["id"] = _uuid7()
+            data["id"] = _uuid7_str()
         else:
             data["id"] = normalized_id
 
     session.execute(table.insert().values(**data))
     session.commit()
 
-    return data.get("id", uuid.uuid4())
+    return str(data["id"])
 
 
-def get_record(session: Session, table_name: str, record_id: uuid.UUID) -> dict | None:
+def get_record(session: Session, table_name: str, record_id: str) -> dict | None:
     if table_name not in metadata.tables:
         raise ValueError(f"Table '{table_name}' not found")
 
@@ -347,7 +355,7 @@ def get_record(session: Session, table_name: str, record_id: uuid.UUID) -> dict 
     return dict(result._mapping)
 
 
-def update_record(session: Session, table_name: str, record_id: uuid.UUID, data: dict) -> dict | None:
+def update_record(session: Session, table_name: str, record_id: str, data: dict) -> dict | None:
     if table_name not in metadata.tables:
         raise ValueError(f"Table '{table_name}' not found")
 
@@ -363,7 +371,7 @@ def update_record(session: Session, table_name: str, record_id: uuid.UUID, data:
     return dict(result._mapping)
 
 
-def delete_record(session: Session, table_name: str, record_id: uuid.UUID) -> bool:
+def delete_record(session: Session, table_name: str, record_id: str) -> bool:
     if table_name not in metadata.tables:
         raise ValueError(f"Table '{table_name}' not found")
 

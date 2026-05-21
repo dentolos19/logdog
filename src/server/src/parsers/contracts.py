@@ -93,15 +93,15 @@ class FileParserSelection(BaseModel):
 BASELINE_COLUMNS: list[ColumnDefinition] = [
     ColumnDefinition(
         name="id",
-        sql_type="INTEGER",
+        sql_type="TEXT",
         nullable=False,
         primary_key=True,
-        description="Auto-incrementing primary key.",
+        description="Log-provided ID or generated UUIDv7 string.",
     ),
     ColumnDefinition(
         name="timestamp",
-        sql_type="TEXT",
-        description="Normalized ISO-8601 timestamp, if detectable.",
+        sql_type="TIMESTAMP",
+        description="Normalized timezone-aware timestamp.",
     ),
     ColumnDefinition(
         name="raw",
@@ -112,7 +112,7 @@ BASELINE_COLUMNS: list[ColumnDefinition] = [
     ColumnDefinition(
         name="extra",
         sql_type="TEXT",
-        description="JSON blob for data that cannot be represented as columns.",
+        description="JSON blob for sparse or event-specific fields.",
     ),
 ]
 
@@ -160,6 +160,8 @@ class AiExtractionDiagnostics(BaseModel):
     average_confidence: float = 0.0
     fallback_reason: str = ""
     json_enriched_count: int = 0
+    confidence_components: dict[str, float] = Field(default_factory=dict)
+    confidence_formula_version: str = ""
 
 
 def _quote_identifier(name: str) -> str:

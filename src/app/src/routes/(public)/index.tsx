@@ -139,8 +139,7 @@ function LandingPage() {
 
       <nav className={"relative z-10 mx-auto flex max-w-7xl items-center justify-between px-6 py-4"}>
         <div className={"flex items-center"}>
-          <img alt="Logdog" className="h-11 w-auto dark:hidden" src="/logo.png" />
-          <img alt="Logdog" className="hidden h-11 w-auto dark:block" src="/logo-dark.png" />
+          <img alt="Logdog" className="h-11 w-auto" src="/logo-dark.png" />
         </div>
 
         <div className={"hidden items-center gap-7 text-sm text-zinc-400 md:flex"}>

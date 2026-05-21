@@ -31,6 +31,7 @@ from parsers.normalization import (
     sanitize_identifier,
     unique_identifier,
 )
+from parsers.extra_grouping import group_rows_by_extra
 from parsers.preprocessor import FileInput
 from parsers.registry import ParserPipeline
 
@@ -111,6 +112,149 @@ def _make_chunk(
 
 CSV_DELIMITERS = ",\t|;"
 
+# Regex for detecting lines that look like the start of a log record
+# Matches: ISO timestamps, US date format, syslog-like dates
+_LOG_RECORD_START_RE = re.compile(
+    r"("
+    r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?"  # ISO: 2025-01-01T00:00:00(.ffffff)? or 2025-01-01 00:00:00
+    r"|"
+    r"\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?"  # US: 01/01/2025 00:00:00(.ffffff)?
+    r"|"
+    r"[A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}"  # Syslog: Jan  1 00:00:00
+    r")"
+)
+
+
+def _looks_like_json_lines(lines: list[str]) -> bool:
+    """Check if the content looks like newline-delimited JSON (JSONL).
+
+    Returns True if >50% of non-empty lines are valid JSON objects/arrays.
+    """
+    if not lines:
+        return False
+    non_empty = [ln for ln in lines if ln.strip()]
+    if not non_empty:
+        return False
+    json_count = 0
+    for ln in non_empty[:100]:
+        stripped = ln.strip()
+        if stripped.startswith("{") or stripped.startswith("["):
+            try:
+                import json
+                json.loads(stripped)
+                json_count += 1
+            except (json.JSONDecodeError, ValueError):
+                pass
+    return json_count / len(non_empty) > 0.5
+
+
+def _split_blank_line_groups(content: str) -> list[dict[str, Any]]:
+    """Split content into groups of non-blank lines separated by blank lines.
+
+    Returns a list of dicts, each with:
+      - lines: list[str] — the non-blank lines in the group
+      - start_line: int — 1-based line number of the first line
+      - end_line: int — 1-based line number of the last line
+      - raw: str — joined text of the group
+    """
+    all_lines = content.splitlines()
+    groups: list[dict[str, Any]] = []
+    current: list[str] = []
+    current_start = 1
+
+    for idx, line in enumerate(all_lines):
+        line_num = idx + 1
+        if not line.strip():
+            if current:
+                groups.append({
+                    "lines": current,
+                    "start_line": current_start,
+                    "end_line": line_num - 1,
+                    "raw": "\n".join(current),
+                })
+                current = []
+            current_start = line_num + 1
+        else:
+            if not current:
+                current_start = line_num
+            current.append(line)
+
+    if current:
+        groups.append({
+            "lines": current,
+            "start_line": current_start,
+            "end_line": len(all_lines),
+            "raw": "\n".join(current),
+        })
+
+    return groups
+
+
+def _looks_like_multiline_records(
+    groups: list[dict[str, Any]],
+    content: str = "",
+) -> bool:
+    """Check if blank-line-separated groups should be treated as multiline records.
+
+    Returns True when:
+      - There is at least one group with 2+ lines
+      - There are actual blank lines in the content (not a single block)
+      - The first lines of multi-line groups look like event starts or
+        continuation lines mostly do NOT look like new event starts
+    """
+    if not groups:
+        return False
+
+    # Require at least one blank-line separator in the content.
+    # Without blank lines, a single multi-line group is just unseparated lines.
+    if not content or "\n\n" not in content:
+        return False
+
+    # If all groups are single-line, no grouping needed
+    multi_line_groups = [g for g in groups if len(g["lines"]) > 1]
+    if not multi_line_groups:
+        return False
+
+    # Check if the first lines of multi-line groups look like event starts
+    first_lines = [g["lines"][0] for g in multi_line_groups]
+    event_start_hits = sum(1 for ln in first_lines if _LOG_RECORD_START_RE.match(ln))
+
+    # Require >50% of multi-line group first lines to match event start pattern
+    if event_start_hits / len(first_lines) > 0.5:
+        return True
+
+    # Alternative: check if continuation lines mostly do NOT look like event starts
+    all_continuation_lines = []
+    for g in multi_line_groups:
+        all_continuation_lines.extend(g["lines"][1:])
+    if all_continuation_lines:
+        continuation_starts = sum(1 for ln in all_continuation_lines if _LOG_RECORD_START_RE.match(ln))
+        # If <20% of continuation lines look like new events, grouping is likely correct
+        if continuation_starts / len(all_continuation_lines) < 0.2:
+            return True
+
+    return False
+
+
+def _extract_leading_timestamp(text: str) -> str:
+    """Extract and normalize a leading timestamp from the first line of *text*.
+
+    Tries to normalize to ISO-8601 first. If that fails (e.g. the captured
+    text is partial), returns the raw captured text as a best-effort fallback.
+    Returns empty string if no timestamp is found.
+    """
+    first_newline = text.find("\n")
+    first_line = text[:first_newline] if first_newline > 0 else text
+    match = _LOG_RECORD_START_RE.match(first_line.strip())
+    if match:
+        raw_ts = match.group(0)
+        normalized = normalize_iso_timestamp(raw_ts)
+        if normalized:
+            return normalized
+        # Best-effort fallback: return raw captured text
+        return raw_ts
+    return ""
+
 
 def sniff_is_csv(content: str) -> tuple[csv.Dialect, bool] | None:
     """Try to detect if *content* is delimiter-separated with quoting.
@@ -125,6 +269,64 @@ def sniff_is_csv(content: str) -> tuple[csv.Dialect, bool] | None:
         return None
 
 
+def _normalize_json_records(content: str, filename: str) -> list[dict[str, Any]] | None:
+    """Parse *content* as a JSON document and emit logical records.
+
+    Returns a list of record dicts, or *None* if *content* is not valid JSON.
+
+    For a top-level JSON object, emits one record with flattened fields.
+    For a top-level JSON array of objects, emits one record per element.
+    Nested objects and arrays are stored as JSON strings (via
+    ``_flatten_json_object``).
+    """
+    stripped = content.strip()
+    if not (stripped.startswith("{") or stripped.startswith("[")):
+        return None
+
+    try:
+        data = json.loads(stripped, strict=False)
+    except (json.JSONDecodeError, ValueError):
+        return None
+
+    if isinstance(data, dict):
+        # Single document: flatten and emit one record
+        flat = _flatten_json_object(data, prefix="")
+        record: dict[str, Any] = {
+            "source": filename,
+            "record_index": 0,
+            "raw": stripped[:2000],
+            "message": stripped[:500],
+        }
+        record.update(flat)
+        return [record]
+
+    if isinstance(data, list):
+        records: list[dict[str, Any]] = []
+        for idx, item in enumerate(data):
+            if isinstance(item, dict):
+                flat = _flatten_json_object(item, prefix="")
+                item_json = json.dumps(item, ensure_ascii=True)
+                record = {
+                    "source": filename,
+                    "record_index": idx,
+                    "raw": item_json[:2000],
+                    "message": item_json[:500],
+                }
+                record.update(flat)
+            else:
+                item_json = json.dumps(item, ensure_ascii=True)
+                record = {
+                    "source": filename,
+                    "record_index": idx,
+                    "raw": item_json[:2000],
+                    "message": item_json[:500],
+                }
+            records.append(record)
+        return records
+
+    return None
+
+
 def normalize_records(
     content: str,
     filename: str = "",
@@ -134,15 +336,29 @@ def normalize_records(
     For delimiter-separated content (CSV) it uses ``csv.DictReader`` so
     quoted multiline cells are preserved correctly.  For well-formed XML
     documents it uses DOM-based extraction to emit one record per logical
-    row element.  For everything else it falls back to physical-line splitting.
+    row element.  For well-formed JSON documents (object or array) it emits
+    one record per logical item.  For everything else it falls back to
+    physical-line splitting.
 
     Returns a list of records.  Each record has at minimum:
-        ``source``, ``record_index``, ``raw``, ``message``.
+        ``source``, ``raw``, ``message``.
     """
     if not content.strip():
         return []
 
-    sniffed = sniff_is_csv(content)
+    # Try JSON document normalization first (before CSV sniffing) to
+    # catch pretty-printed JSON objects/arrays that would otherwise be
+    # fragmented by the CSV sniffer matching on commas inside the JSON.
+    json_records = _normalize_json_records(content, filename)
+    if json_records is not None:
+        return json_records
+
+    # Skip CSV sniffing if content looks like JSON Lines (>50% lines are JSON)
+    # to avoid CSV sniffer incorrectly matching JSON lines containing commas.
+    all_lines_check = [ln for ln in content.splitlines() if ln.strip()]
+    sniffed = None
+    if all_lines_check and not _looks_like_json_lines(all_lines_check):
+        sniffed = sniff_is_csv(content)
 
     if sniffed:
         dialect, has_header = sniffed
@@ -169,7 +385,32 @@ def normalize_records(
     if xml_records is not None:
         return xml_records
 
-    # Fallback: line-based
+    # ── Fallback: try blank-line-separated multiline grouping first ──
+    groups = _split_blank_line_groups(content)
+
+    # Check if the file looks like multiline records separated by blank lines.
+    # We only group if there are multi-line groups whose first lines look like
+    # event starts (timestamps, etc.) AND the content is not JSONL.
+    all_lines = [ln for ln in content.splitlines() if ln.strip()]
+    use_multiline = not _looks_like_json_lines(all_lines) and _looks_like_multiline_records(groups, content=content)
+
+    if use_multiline:
+        records = []
+        for idx, group in enumerate(groups):
+            raw = group["raw"]
+            timestamp = _extract_leading_timestamp(raw)
+            records.append({
+                "source": filename,
+                "record_index": idx,
+                "raw": raw,
+                "message": raw[:500],
+                "timestamp": timestamp,
+                "source_line": group["start_line"],
+                "end_line": group["end_line"],
+            })
+        return records
+
+    # ── Fallback: per-physical-line (default for single-line logs) ──
     records = []
     for idx, line in enumerate(content.splitlines()):
         stripped = line.strip()
@@ -606,7 +847,9 @@ def _extract_child_tables(
                     row["raw"] = json.dumps(item)[:2000]
                     row["message"] = json.dumps(item)[:500]
                     row["timestamp"] = row.get("timestamp", "")
-                    row["log_level"] = "INFO"
+                    level = infer_log_level(row.get("message", ""))
+                    if level is not None:
+                        row["log_level"] = level
                     child_tables[table_key]["rows"].append(row)
                     _collect_columns(row, child_tables[table_key]["columns"])
 
@@ -866,7 +1109,7 @@ def _merge_enriched_fields(
 SPARSITY_THRESHOLD = 0.6  # columns with >60% null are demoted to attributes
 
 COMMON_COLUMNS = frozenset({
-    "timestamp", "source", "record_index", "event_type", "message",
+    "timestamp", "source", "event_type", "message",
     "log_level", "request_id", "service", "function_name",
     "function_request_id", "xray_trace_id", "version", "severity",
     "cold_start", "function_memory_size", "function_arn", "event_code",
@@ -884,13 +1127,13 @@ def _add_to_collect(value: Any, col_map: dict[str, set[Any]], key: str) -> None:
 
 
 def _apply_sparsity_control(rows: list[dict[str, Any]]) -> list[ColumnDefinition]:
-    """Demote very sparse columns into an ``attributes`` JSON column.
+    """Demote very sparse columns into the ``extra`` JSON column.
 
     Examines all rows and computes null density per column.  Columns with
-    density > *SPARSITY_THRESHOLD* (and not in *COMMON_COLUMNS*) are moved
-    into the ``attributes`` dict of each row.
+    density > *SPARSITY_THRESHOLD* (and not in *COMMON_COLUMNS* or baseline)
+    are moved into the ``extra`` dict of each row.
 
-    Returns the final list of *ColumnDefinition* (includes ``attributes``).
+    Returns the final list of *ColumnDefinition* (includes ``extra``).
     """
     if not rows:
         return _build_columns({}, rows)
@@ -918,33 +1161,224 @@ def _apply_sparsity_control(rows: list[dict[str, Any]]) -> list[ColumnDefinition
             else:
                 _add_to_collect(value, kept_cols, key)
         if demoted:
-            existing_attrs = row.get("attributes")
-            if existing_attrs and isinstance(existing_attrs, str):
+            existing_extra = row.get("extra")
+            if existing_extra and isinstance(existing_extra, str):
                 try:
-                    existing = json.loads(existing_attrs)
+                    existing = json.loads(existing_extra)
                 except (json.JSONDecodeError, TypeError):
                     existing = {}
-            elif existing_attrs and isinstance(existing_attrs, dict):
-                existing = existing_attrs
+            elif existing_extra and isinstance(existing_extra, dict):
+                existing = existing_extra
             else:
                 existing = {}
             existing.update(demoted)
-            row["attributes"] = json.dumps(existing, ensure_ascii=True, default=str)
+            row["extra"] = json.dumps(existing, ensure_ascii=True, default=str, sort_keys=True)
 
     # Build column definitions
     columns = _build_columns(kept_cols, rows)
 
-    # Ensure attributes column exists
-    attr_names = {c.name for c in columns}
-    if "attributes" not in attr_names:
+    # Ensure extra column exists (baseline already provides it, but be safe)
+    col_names = {c.name for c in columns}
+    if "extra" not in col_names:
         columns.append(ColumnDefinition(
-            name="attributes",
+            name="extra",
             sql_type="TEXT",
             description="JSON blob for sparse or event-specific fields.",
             nullable=True,
         ))
 
     return columns
+
+
+# ── Confidence scoring helpers ─────────────────────────────────────────
+
+
+CONFIDENCE_FORMULA_VERSION = "parser-v1"
+"""Version identifier for the parser confidence formula."""
+
+
+def _clamp_confidence(value: float) -> float:
+    """Clamp confidence to [0, 1]."""
+    return max(0.0, min(1.0, value))
+
+
+def _value_matches_sql_type(value: Any, sql_type: str) -> bool:
+    """Check if a value is compatible with its declared SQL type."""
+    if value is None:
+        return True
+    upper = sql_type.upper()
+    if upper == "TEXT":
+        return isinstance(value, str)
+    if upper in ("INTEGER", "BIGINT"):
+        return isinstance(value, int) and not isinstance(value, bool)
+    if upper == "FLOAT":
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    if upper == "BOOLEAN":
+        return isinstance(value, bool)
+    if upper in ("DATETIME", "TIMESTAMP"):
+        return isinstance(value, str) and len(value) > 0
+    return True
+
+
+def _compute_row_completeness(rows: list[dict[str, Any]], columns: list[ColumnDefinition]) -> float:
+    """Fraction of non-baseline, non-null cells across all rows.
+
+    Measures how completely the extracted rows populate the schema columns.
+    """
+    if not rows or not columns:
+        return 0.0
+    baseline_names = BASELINE_COLUMN_NAMES
+    schema_cols = [c for c in columns if c.name not in baseline_names and c.name != "extra"]
+    if not schema_cols:
+        return 1.0  # no extra columns to judge
+    total_cells = len(rows) * len(schema_cols)
+    filled = 0
+    for row in rows:
+        for col in schema_cols:
+            val = row.get(col.name)
+            if val is not None and val != "":
+                filled += 1
+    return filled / total_cells if total_cells > 0 else 0.0
+
+
+def _compute_type_conformity(rows: list[dict[str, Any]], columns: list[ColumnDefinition]) -> float:
+    """Fraction of non-null cells whose values match their declared SQL type.
+
+    Measures type-correctness of extracted data.
+    """
+    if not rows or not columns:
+        return 0.0
+    baseline_names = BASELINE_COLUMN_NAMES
+    schema_cols = [c for c in columns if c.name not in baseline_names and c.name != "extra"]
+    if not schema_cols:
+        return 1.0
+    total = 0
+    conforming = 0
+    for row in rows:
+        for col in schema_cols:
+            val = row.get(col.name)
+            if val is not None:
+                total += 1
+                if _value_matches_sql_type(val, col.sql_type):
+                    conforming += 1
+    return conforming / total if total > 0 else 0.0
+
+
+def _compute_timestamp_success(rows: list[dict[str, Any]]) -> float:
+    """Fraction of rows where the timestamp field is non-empty and parseable.
+
+    Timestamp is a critical field for log data; this measures extraction
+    quality for this key signal.
+    """
+    if not rows:
+        return 0.0
+    from parsers.normalization import parse_timestamp
+
+    success = 0
+    for row in rows:
+        ts = row.get("timestamp")
+        if ts and isinstance(ts, str) and parse_timestamp(ts) is not None:
+            success += 1
+    return success / len(rows)
+
+
+def _compute_parser_confidence(
+    *,
+    total_rows: int,
+    successful_batch_count: int,
+    failed_batch_count: int,
+    rows_from_ai: int,
+    rows_from_fallback: int,
+    rows: list[dict[str, Any]],
+    columns: list[ColumnDefinition],
+    llm_average_confidence: float = 0.0,
+) -> tuple[float, dict[str, float]]:
+    """Compute extraction confidence from observable quality signals.
+
+    The formula combines multiple deterministic signals:
+      - batch_success_rate: fraction of extraction batches that succeeded
+      - fallback_rate: fraction of rows that came from fallback/repair
+      - row_completeness: how fully the schema columns are populated
+      - type_conformity: type correctness of extracted values
+      - timestamp_parse_success: fraction of rows with parseable timestamps
+      - llm_batch_confidence: average LLM-reported batch confidence (if available)
+
+    Returns (confidence, components_dict).
+    """
+    if total_rows == 0:
+        return 0.0, {}
+
+    total_batches = successful_batch_count + failed_batch_count
+    batch_success_rate = successful_batch_count / total_batches if total_batches > 0 else 0.0
+
+    total_extracted = rows_from_ai + rows_from_fallback
+    fallback_rate = rows_from_fallback / total_extracted if total_extracted > 0 else 0.0
+
+    row_completeness = _compute_row_completeness(rows, columns)
+    type_conformity = _compute_type_conformity(rows, columns)
+    timestamp_success = _compute_timestamp_success(rows)
+
+    components = {
+        "batch_success_rate": round(batch_success_rate, 4),
+        "fallback_rate": round(fallback_rate, 4),
+        "row_completeness": round(row_completeness, 4),
+        "type_conformity": round(type_conformity, 4),
+        "timestamp_parse_success": round(timestamp_success, 4),
+        "llm_batch_confidence_avg": round(llm_average_confidence, 4),
+    }
+
+    # Weighted composite: penalize fallback, reward structural quality
+    confidence = (
+        0.25 * batch_success_rate
+        + 0.20 * (1.0 - fallback_rate)
+        + 0.20 * row_completeness
+        + 0.15 * type_conformity
+        + 0.10 * timestamp_success
+        + 0.10 * llm_average_confidence
+    )
+
+    return _clamp_confidence(confidence), components
+
+
+def _compute_raw_fallback_confidence(rows: list[dict[str, Any]]) -> float:
+    """Compute confidence for raw-ingest fallback rows.
+
+    Since no AI was used, confidence is based on:
+      - row completeness (how many fields beyond baseline were extracted)
+      - timestamp success rate
+      - enrichment rate (JSON/logfmt/kv found)
+      - type conformity for enriched fields
+    """
+    if not rows:
+        return 0.0
+
+    # Count enriched fields per row
+    enriched_counts = []
+    for row in rows:
+        enriched = set(row.keys()) - BASELINE_COLUMN_NAMES - {"source", "message", "source_line"}
+        enriched_counts.append(len(enriched))
+    avg_enriched = sum(enriched_counts) / len(enriched_counts) if enriched_counts else 0.0
+
+    # Timestamp success
+    from parsers.normalization import parse_timestamp
+
+    ts_success = sum(1 for r in rows if r.get("timestamp") and parse_timestamp(r.get("timestamp")))
+    ts_rate = ts_success / len(rows)
+
+    # Enrichment rate: fraction of rows with at least one enriched field
+    enrichment_rate = sum(1 for c in enriched_counts if c > 0) / len(rows) if rows else 0.0
+
+    # Normalized enrichment score (cap at 5 enriched fields = max score)
+    enrichment_score = min(avg_enriched / 5.0, 1.0)
+
+    confidence = (
+        0.35 * enrichment_rate
+        + 0.30 * enrichment_score
+        + 0.25 * ts_rate
+        + 0.10 * (1.0 if avg_enriched > 0 else 0.0)
+    )
+
+    return _clamp_confidence(confidence)
 
 
 # ── AI / Universal Parser ──────────────────────────────────────────────
@@ -1061,8 +1495,12 @@ class UniversalAIParser(ParserPipeline):
 
         # ── 5. AI extraction from records ───────────────────────────
         batch_count = 0
+        successful_batch_count = 0
+        failed_batch_count = 0
         repair_count = 0
-        confidences: list[float] = []
+        rows_from_ai = 0
+        rows_from_fallback = 0
+        llm_confidences: list[float] = []
 
         if columns_plan:
             # Group records into batches for AI extraction
@@ -1080,14 +1518,14 @@ class UniversalAIParser(ParserPipeline):
                     logger.debug("AI extraction failed for batch %d: %s", batch_count, e)
                     batch = None
 
-                if batch and batch.rows and batch.confidence >= 0.3:
-                    confidences.append(batch.confidence)
+                if batch and batch.rows:
+                    successful_batch_count += 1
+                    llm_confidences.append(batch.confidence)
                     for row_data in batch.rows:
                         if isinstance(row_data, dict):
                             row_data.setdefault("source", filename)
                             row_data.setdefault("raw", "")
                             row_data.setdefault("message", "")
-                            row_data.setdefault("log_level", "INFO")
                             # Embed enriched fields from the input record
                             rec_idx = row_data.get("record_index")
                             if rec_idx is not None:
@@ -1100,20 +1538,24 @@ class UniversalAIParser(ParserPipeline):
                                                 row_data[k] = v
                                         break
                             _enrich_row_fields(row_data)
+                            row_data.pop("record_index", None)
                             all_rows.append(row_data)
+                            rows_from_ai += 1
                             _collect_columns(row_data, all_columns)
                 else:
+                    failed_batch_count += 1
                     # Fall back: use the normalized records directly
                     repair_count += 1
                     for rec in batch_records:
+                        level = infer_log_level(rec.get("message", ""))
                         row_data = {
                             "source": rec.get("source", filename),
                             "raw": rec.get("raw", "")[:2000],
                             "message": rec.get("message", "")[:500],
                             "timestamp": rec.get("timestamp", ""),
-                            "log_level": infer_log_level(rec.get("message", "")),
-                            "record_index": rec.get("record_index"),
                         }
+                        if level is not None:
+                            row_data["log_level"] = level
                         # Copy enriched payload fields
                         for k, v in rec.items():
                             if k not in row_data and k not in (
@@ -1122,19 +1564,22 @@ class UniversalAIParser(ParserPipeline):
                                 row_data[k] = v
                         _enrich_row_fields(row_data)
                         all_rows.append(row_data)
+                        rows_from_fallback += 1
                         _collect_columns(row_data, all_columns)
         else:
             # No AI schema — use normalized records directly
+            failed_batch_count = 1
             repair_count = 1
             for rec in all_records:
+                level = infer_log_level(rec.get("message", ""))
                 row_data = {
                     "source": rec.get("source", filename),
                     "raw": rec.get("raw", "")[:2000],
                     "message": rec.get("message", "")[:500],
                     "timestamp": rec.get("timestamp", ""),
-                    "log_level": infer_log_level(rec.get("message", "")),
-                    "record_index": rec.get("record_index"),
                 }
+                if level is not None:
+                    row_data["log_level"] = level
                 for k, v in rec.items():
                     if k not in row_data and k not in (
                         "raw", "source", "record_index", "message"
@@ -1142,20 +1587,25 @@ class UniversalAIParser(ParserPipeline):
                         row_data[k] = v
                 _enrich_row_fields(row_data)
                 all_rows.append(row_data)
+                rows_from_fallback += 1
                 _collect_columns(row_data, all_columns)
 
         # ── 6. Apply sparsity control ───────────────────────────────
         columns = _apply_sparsity_control(all_rows)
 
+        # ── 7. Group rows by extra similarity ───────────────────────
+        all_rows = group_rows_by_extra(all_rows)
+
+        llm_average_confidence = round(
+            sum(llm_confidences) / len(llm_confidences), 4
+        ) if llm_confidences else 0.0
+
         diag.batch_count = batch_count
         diag.total_rows = len(all_rows)
         diag.repair_batch_count = repair_count
-        diag.average_confidence = round(
-            sum(confidences) / len(confidences), 2
-        ) if confidences else 0.0
+        diag.average_confidence = llm_average_confidence
         diag.json_enriched_count = json_enriched_count
 
-        final_confidence = max(diag.average_confidence, 0.3) if all_rows else 0.0
         if not all_rows:
             return ParserPipelineResult(
                 table_definitions=[],
@@ -1165,6 +1615,20 @@ class UniversalAIParser(ParserPipeline):
                 confidence=0.0,
                 diagnostics=diag.model_dump(),
             )
+
+        # Composite confidence from quality signals (no floor)
+        final_confidence, conf_components = _compute_parser_confidence(
+            total_rows=len(all_rows),
+            successful_batch_count=successful_batch_count,
+            failed_batch_count=failed_batch_count,
+            rows_from_ai=rows_from_ai,
+            rows_from_fallback=rows_from_fallback,
+            rows=all_rows,
+            columns=columns,
+            llm_average_confidence=llm_average_confidence,
+        )
+        diag.confidence_components = conf_components
+        diag.confidence_formula_version = CONFIDENCE_FORMULA_VERSION
 
         table_def = TableDefinition(
             table_name=table_name,
@@ -1230,14 +1694,16 @@ class RawIngestFallbackParser(ParserPipeline):
             sep_lines = self._split_by_separator(lines, file_input.filename)
             for entry in sep_lines:
                 raw = entry["raw"]
+                level = infer_log_level(raw)
                 row: dict[str, Any] = {
                     "source": file_input.filename,
                     "raw": raw[:2000],
                     "message": raw[:500],
                     "timestamp": entry.get("timestamp", ""),
-                    "log_level": infer_log_level(raw),
                     "source_line": entry.get("start_line", 0),
                 }
+                if level is not None:
+                    row["log_level"] = level
 
                 # Try basic generic extraction
                 _enrich_row_fields(row)
@@ -1270,6 +1736,13 @@ class RawIngestFallbackParser(ParserPipeline):
                 diagnostics={"skip_table": True},
             )
 
+        # Compute confidence from raw-row quality signals (enrichment, timestamps)
+        final_confidence = _compute_raw_fallback_confidence(all_rows)
+        # Track enrichment stats in diagnostics
+        enriched_count = sum(
+            1 for r in all_rows if len(set(r.keys()) - BASELINE_COLUMN_NAMES - {"source", "message", "source_line"}) > 0
+        )
+
         table_def = TableDefinition(
             table_name=table_name,
             display_name=make_display_name("raw_ingest", None, file_inputs[0].filename if file_inputs else "data"),
@@ -1281,9 +1754,14 @@ class RawIngestFallbackParser(ParserPipeline):
             table_definitions=[table_def],
             records={table_name: all_rows},
             parser_key=self.parser_key,
-            confidence=0.3,
+            confidence=round(final_confidence, 2),
             warnings=["Used raw ingest fallback parser — no AI schema was applied."],
-            diagnostics={"row_counts": {table_name: len(all_rows)}},
+            diagnostics={
+                "row_counts": {table_name: len(all_rows)},
+                "enriched_row_count": enriched_count,
+                "timestamp_success_rate": round(_compute_timestamp_success(all_rows), 4),
+                "confidence_formula_version": CONFIDENCE_FORMULA_VERSION,
+            },
         )
 
     def supports(self, request: ParserSupportRequest) -> ParserSupportResult:

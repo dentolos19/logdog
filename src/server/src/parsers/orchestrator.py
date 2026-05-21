@@ -390,12 +390,21 @@ def _parse_and_merge(
     file_inputs: list[FileInput],
     classification: ClassificationResult,
 ) -> ParserPipelineResult:
-    """Parse all files using the universal AI parser, falling back to raw ingest."""
+    """Parse all files using the universal AI parser, falling back to raw ingest.
+
+    Confidence aggregation uses conservative row-weighted scoring:
+      - Each parser's confidence is weighted by its row contribution.
+      - Fallback usage incurs a penalty.
+      - If raw_ingest contributes >=50% of rows the result is capped at 0.55.
+      - If raw_ingest contributes >=80% of rows the result is capped at 0.45.
+    """
     merged_table_definitions: list[Any] = []
     merged_records: dict[str, list[dict[str, Any]]] = {}
     merged_warnings: list[str] = []
-    confidence_values: list[float] = []
     used_parser_keys: list[str] = []
+    # Track per-parser confidence and row counts for weighted aggregation
+    parser_confidences: list[float] = []
+    parser_row_counts: list[int] = []
     merged_diagnostics: dict[str, Any] = {
         "parsers": {},
         "fallbacks": [],
@@ -403,6 +412,7 @@ def _parse_and_merge(
     }
 
     # Try universal AI parser first
+    ai_result = None
     try:
         ai_pipeline = ParserRegistry.route("universal_ai")
         ai_result = ai_pipeline.ingest(file_inputs, classification)
@@ -410,9 +420,12 @@ def _parse_and_merge(
         merged_table_definitions.extend(ai_result.table_definitions)
         merged_records.update(ai_result.records)
         merged_warnings.extend(ai_result.warnings)
-        confidence_values.append(ai_result.confidence)
         used_parser_keys.append(ai_result.parser_key)
         merged_diagnostics["parsers"]["universal_ai"] = ai_result.diagnostics or {}
+
+        ai_row_count = sum(len(rows) for rows in ai_result.records.values())
+        parser_confidences.append(ai_result.confidence)
+        parser_row_counts.append(ai_row_count)
     except Exception as error:  # noqa: BLE001
         logger.exception("Universal AI parser failed")
         merged_warnings.append(f"Universal AI parser failed: {error}")
@@ -421,10 +434,11 @@ def _parse_and_merge(
             "to_parser": "raw_ingest",
             "reason": str(error),
         })
-        ai_result = None
 
     # If AI returned no rows or failed, fall back to raw ingest
-    if ai_result is None or ai_result.confidence < 0.1 or not merged_records:
+    ai_has_rows = ai_result is not None and any(ai_result.records.values())
+    if not ai_has_rows:
+        fallback_used = True
         try:
             fallback_pipeline = ParserRegistry.route("raw_ingest")
             fallback_result = fallback_pipeline.ingest(file_inputs, classification)
@@ -435,21 +449,74 @@ def _parse_and_merge(
             if fallback_result.records:
                 merged_records.update(fallback_result.records)
             merged_warnings.extend(fallback_result.warnings)
-            confidence_values.append(fallback_result.confidence)
             used_parser_keys.append(fallback_result.parser_key)
             merged_diagnostics["parsers"]["raw_ingest"] = fallback_result.diagnostics or {}
             merged_diagnostics["fallbacks"].append({
                 "from_parser": "universal_ai" if ai_result is not None else "(none)",
                 "to_parser": "raw_ingest",
-                "reason": "AI parser produced insufficient rows" if ai_result else "AI parser failed",
+                "reason": "AI parser produced no rows" if ai_result else "AI parser failed",
             })
+
+            fallback_row_count = sum(len(rows) for rows in fallback_result.records.values())
+            parser_confidences.append(fallback_result.confidence)
+            parser_row_counts.append(fallback_row_count)
         except Exception as fallback_error:  # noqa: BLE001
             logger.exception("Raw ingest fallback also failed")
             merged_warnings.append(f"Raw ingest fallback also failed: {fallback_error}")
+            fallback_used = False
+    else:
+        fallback_used = False
 
-    final_confidence = (
-        round(sum(confidence_values) / len(confidence_values), 2) if confidence_values else 0.0
-    )
+    # ── Conservative confidence aggregation ──────────────────────────
+    total_rows = sum(parser_row_counts)
+
+    if total_rows == 0:
+        final_confidence = 0.0
+    elif not parser_confidences:
+        final_confidence = 0.0
+    else:
+        # Row-weighted average of parser confidences
+        weighted_confidence = sum(
+            conf * count for conf, count in zip(parser_confidences, parser_row_counts)
+        ) / total_rows
+
+        # Determine raw_ingest row ratio (if fallback was used)
+        raw_ingest_row_ratio = 0.0
+        fallback_penalty = 0.0
+        applied_cap = None
+
+        if fallback_used and len(parser_row_counts) > 1:
+            # The fallback parser is always the last one in the list
+            raw_ingest_row_ratio = parser_row_counts[-1] / total_rows if total_rows > 0 else 0.0
+            # Fallback penalty scales with how much of the data came from raw_ingest
+            fallback_penalty = 0.15 + 0.25 * raw_ingest_row_ratio
+        elif fallback_used and len(parser_row_counts) == 1:
+            # Only fallback parser ran (no AI result at all)
+            raw_ingest_row_ratio = 1.0
+            fallback_penalty = 0.15 + 0.25 * 1.0
+
+        final_confidence = weighted_confidence - fallback_penalty
+
+        # Apply caps for fallback-heavy results
+        if raw_ingest_row_ratio >= 0.80:
+            final_confidence = min(final_confidence, 0.45)
+            applied_cap = 0.45
+        elif raw_ingest_row_ratio >= 0.50:
+            final_confidence = min(final_confidence, 0.55)
+            applied_cap = 0.55
+
+        final_confidence = max(0.0, min(1.0, final_confidence))
+
+        merged_diagnostics["confidence_aggregation"] = {
+            "formula_version": "orchestrator-v1",
+            "weighted_confidence": round(weighted_confidence, 4),
+            "fallback_used": fallback_used,
+            "raw_ingest_row_ratio": round(raw_ingest_row_ratio, 4),
+            "fallback_penalty": round(fallback_penalty, 4),
+            "applied_cap": applied_cap,
+            "final_confidence": round(final_confidence, 4),
+        }
+
     final_parser_key = "mixed"
     if len(set(used_parser_keys)) == 1 and used_parser_keys:
         final_parser_key = used_parser_keys[0]
@@ -464,7 +531,7 @@ def _parse_and_merge(
         records=merged_records,
         parser_key=final_parser_key,
         warnings=merged_warnings,
-        confidence=final_confidence,
+        confidence=round(final_confidence, 2),
         diagnostics=merged_diagnostics,
     )
 
@@ -496,11 +563,10 @@ def _ensure_megabase_table(megabase_db: Session, table_definition: Any) -> None:
                 "name": column.name,
                 "type": _sql_to_megabase_type(column.sql_type),
                 "nullable": column.nullable,
-                "primary_key": bool(column.primary_key and column.name != "id"),
+                "primary_key": column.primary_key,
                 "description": column.description or "",
             }
             for column in table_definition.columns
-            if column.name != "id"
         ]
     }
 
@@ -517,13 +583,21 @@ def _insert_rows(
     rows: list[dict[str, Any]],
 ) -> int:
     allowed_columns = {column.name for column in table_definition.columns}
+    ts_columns = {
+        column.name
+        for column in table_definition.columns
+        if column.sql_type.upper() in {"TIMESTAMP", "DATETIME", "TIMESTAMPTZ"}
+    }
     inserted = 0
     for row in rows:
-        payload = {
-            key: _normalize_value(value)
-            for key, value in row.items()
-            if key in allowed_columns
-        }
+        payload = {}
+        for key, value in row.items():
+            if key not in allowed_columns:
+                continue
+            if key in ts_columns:
+                payload[key] = _normalize_timestamp_value(value)
+            else:
+                payload[key] = _normalize_value(value)
         megabase_insert_record(megabase_db, table_definition.table_name, payload)
         inserted += 1
     return inserted
@@ -534,6 +608,19 @@ def _normalize_value(value: Any) -> Any:
     if isinstance(sanitized, (dict, list)):
         return json.dumps(sanitized, ensure_ascii=True)
     return sanitized
+
+
+def _normalize_timestamp_value(value: Any) -> Any:
+    """Convert a timestamp value to a timezone-aware datetime for Postgres."""
+    from parsers.normalization import parse_timestamp
+
+    if value is None or value == "":
+        return None
+    parsed = parse_timestamp(value)
+    if parsed is not None:
+        return parsed
+    # If parsing fails, return None rather than a broken string
+    return None
 
 
 def _sql_to_megabase_type(sql_type: str) -> str:
