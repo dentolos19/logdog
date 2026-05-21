@@ -10,13 +10,22 @@ type ChatMessageItemProps = {
   message: UIMessage;
   entryId?: string;
   groupName?: string;
+  tableNameMap?: Record<string, string>;
 };
 
-function redactEntryId(text: string, entryId?: string, groupName?: string): string {
-  if (!entryId || !groupName || entryId === groupName || entryId.length === 0) {
-    return text;
+function redactIds(text: string, entryId?: string, groupName?: string, tableNameMap?: Record<string, string>): string {
+  let result = text;
+  if (entryId && groupName && entryId !== groupName && entryId.length > 0) {
+    result = result.replaceAll(entryId, groupName);
   }
-  return text.replaceAll(entryId, groupName);
+  if (tableNameMap) {
+    for (const [rawName, displayName] of Object.entries(tableNameMap)) {
+      if (rawName !== displayName) {
+        result = result.replaceAll(rawName, displayName);
+      }
+    }
+  }
+  return result;
 }
 
 function parseTextFromMessage(message: UIMessage) {
@@ -61,12 +70,13 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-export function ChatMessageItem({ message, entryId, groupName }: ChatMessageItemProps) {
+export function ChatMessageItem({ message, entryId, groupName, tableNameMap }: ChatMessageItemProps) {
   const isUser = message.role === "user";
   const rawText = parseTextFromMessage(message);
-  // Redact the internal entryId UUID from assistant messages so users never
-  // see raw identifiers in rendered text or when copying.
-  const text = isUser ? rawText : redactEntryId(rawText, entryId, groupName);
+  // Redact internal identifiers (entryId UUID and raw table_name values) from
+  // assistant messages so users never see raw identifiers in rendered text or
+  // when copying.
+  const text = isUser ? rawText : redactIds(rawText, entryId, groupName, tableNameMap);
   const toolCallCount = message.parts.filter((part) => part.type === "tool-call").length;
 
   if (text.length === 0) {

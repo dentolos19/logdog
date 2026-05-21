@@ -252,8 +252,8 @@ function LogGroupPage() {
     }
   };
 
-  const tableNames = useMemo(() => {
-    const names = new Set<string>();
+  const tables = useMemo(() => {
+    const tableMap = new Map<string, string>();
     for (const process of processes) {
       const result = process.result;
       if (
@@ -262,17 +262,26 @@ function LogGroupPage() {
         Array.isArray((result as Record<string, unknown>).table_definitions)
       ) {
         for (const table of (result as Record<string, unknown>).table_definitions as Array<Record<string, unknown>>) {
-          const tableName = table.table_name;
-          if (typeof tableName === "string") {
-            names.add(tableName);
+          const id = typeof table.table_name === "string" ? table.table_name.trim() : "";
+          if (id.length === 0) {
+            continue;
+          }
+
+          // Prefer the first occurrence's display_name.
+          if (!tableMap.has(id)) {
+            const displayName =
+              typeof table.display_name === "string" && table.display_name.trim().length > 0
+                ? table.display_name.trim()
+                : id;
+            tableMap.set(id, displayName);
           }
         }
       }
     }
-    return [...names];
+    return [...tableMap.entries()].map(([id, name]) => ({ id, name }));
   }, [processes]);
 
-  const hasTables = tableNames.length > 0;
+  const hasTables = tables.length > 0;
 
   const onTabChange = useCallback(
     (nextTab: string) => {
@@ -465,7 +474,7 @@ function LogGroupPage() {
             </TabsContent>
 
             <TabsContent className={"flex min-h-[calc(100svh-10rem)] flex-col gap-3 p-4"} value={"chat"}>
-              <ChatbotTab entryId={id} groupName={group?.name ?? "this log group"} tableNames={tableNames} />
+              <ChatbotTab entryId={id} groupName={group?.name ?? "this log group"} tables={tables} />
             </TabsContent>
 
             <TabsContent className={"flex flex-col gap-6 p-4"} value={"report"}>

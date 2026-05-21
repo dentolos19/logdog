@@ -21,13 +21,30 @@ import { ChatMessageItem } from "#/routes/(platform)/logs/-components/chat-messa
 type ChatbotTabProps = {
   entryId: string;
   groupName: string;
-  tableNames: string[];
+  tables: Array<{ id: string; name: string }>;
 };
 
-const STARTER_MESSAGES = [
-  "What tables are available in this log group?",
-  "Show me a summary of all uploaded data.",
-  "Are there any anomalies or errors in the logs?",
+type StarterMessage = {
+  display: string;
+  prompt: string;
+};
+
+const STARTER_MESSAGES: StarterMessage[] = [
+  {
+    display: "Summarize all logs in this group",
+    prompt:
+      "Summarize all logs in this group. Use sensible defaults: count rows, preview data, check fields, and describe each table. Do not ask what to include.",
+  },
+  {
+    display: "Show me a summary of all uploaded data.",
+    prompt:
+      "Show me a summary of all uploaded data across every table. Use sensible defaults and do not ask follow-up questions.",
+  },
+  {
+    display: "Are there any anomalies or errors across all tables?",
+    prompt:
+      "Are there any anomalies or errors across all tables? Look for error counts, status failures, spikes, null-heavy columns, and unusual values. Do not ask clarifying questions.",
+  },
 ];
 
 function toPersistedMessages(messages: UIMessage[]) {
@@ -86,7 +103,8 @@ function ErrorBadge({ label, message }: { label: string; message: string }) {
 }
 
 type Suggestion = {
-  text: string;
+  display: string;
+  prompt: string;
 };
 
 function getNextMessageSuggestions(lastMessageIsAssistant: boolean, hasTables: boolean): Suggestion[] {
@@ -96,17 +114,28 @@ function getNextMessageSuggestions(lastMessageIsAssistant: boolean, hasTables: b
 
   if (hasTables) {
     return [
-      { text: "Show a high-level summary" },
-      { text: "Find the most important anomalies" },
-      { text: "Create a chart of key trends" },
-      { text: "Generate a report" },
+      {
+        display: "Show a high-level summary",
+        prompt:
+          "Show a high-level summary of all tables. Count rows, preview data, check fields, and describe each table concisely. Do not ask what to include.",
+      },
+      {
+        display: "Find the most important anomalies",
+        prompt:
+          "Find the most important anomalies across all tables. Look for error counts, status failures, spikes, null-heavy columns, and unusual values. Do not ask clarifying questions.",
+      },
+      {
+        display: "Create a chart of key trends",
+        prompt:
+          "Create a chart of key trends from the available data. Infer timestamp columns, group by time, and render a useful chart. Do not ask which table or metric.",
+      },
     ];
   }
 
   return [
-    { text: "What data has been uploaded?" },
-    { text: "How do I process logs first?" },
-    { text: "What should I upload next?" },
+    { display: "What data has been uploaded?", prompt: "What data has been uploaded?" },
+    { display: "How do I process logs first?", prompt: "How do I process logs first?" },
+    { display: "What should I upload next?", prompt: "What should I upload next?" },
   ];
 }
 
@@ -120,7 +149,16 @@ function messagesEqual(a: UIMessage[], b: UIMessage[]) {
   return true;
 }
 
-export function ChatbotTab({ entryId, groupName, tableNames }: ChatbotTabProps) {
+export function ChatbotTab({ entryId, groupName, tables }: ChatbotTabProps) {
+  const tableNameMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const table of tables) {
+      if (table.id !== table.name) {
+        map[table.id] = table.name;
+      }
+    }
+    return map;
+  }, [tables]);
   const [draftMessage, setDraftMessage] = useState("");
   const [hydrateError, setHydrateError] = useState<string | null>(null);
   const [persistError, setPersistError] = useState<string | null>(null);
@@ -281,8 +319,8 @@ export function ChatbotTab({ entryId, groupName, tableNames }: ChatbotTabProps) 
     [hasMessages, visibleMessages],
   );
   const suggestions = useMemo(
-    () => getNextMessageSuggestions(lastMessageIsAssistant, tableNames.length > 0),
-    [lastMessageIsAssistant, tableNames.length],
+    () => getNextMessageSuggestions(lastMessageIsAssistant, tables.length > 0),
+    [lastMessageIsAssistant, tables.length],
   );
 
   return (
@@ -319,8 +357,8 @@ export function ChatbotTab({ entryId, groupName, tableNames }: ChatbotTabProps) 
               <div className={"flex flex-col gap-1.5"}>
                 <h2 className={"font-semibold text-xl"}>Log Analysis Chatbot</h2>
                 <p className={"mx-auto max-w-sm text-muted-foreground text-sm"}>
-                  Ask questions about {groupName}. I can query tables, find anomalies, generate charts, and compile
-                  reports.
+                  Ask questions about {groupName}. I can query tables, summarize logs, find anomalies, and generate
+                  charts.
                 </p>
               </div>
               <div className={"flex w-full flex-col gap-2"}>
@@ -328,22 +366,45 @@ export function ChatbotTab({ entryId, groupName, tableNames }: ChatbotTabProps) 
                   <Button
                     className={"h-auto w-full justify-start gap-3 px-4 py-3 text-left text-sm"}
                     disabled={isLoading}
-                    key={message}
-                    onClick={() => void sendMessage(message)}
+                    key={message.display}
+                    onClick={() => void sendMessage(message.prompt)}
                     variant={"outline"}
                   >
                     <SparklesIcon className={"size-4 shrink-0 text-muted-foreground"} />
-                    <span className={"line-clamp-2"}>{message}</span>
+                    <span className={"line-clamp-2"}>{message.display}</span>
                   </Button>
                 ))}
               </div>
             </div>
           </div>
         ) : (
-          <div className={"mx-auto w-full max-w-3xl space-y-4 px-4 py-6"}>
+          <div className={"mx-auto w-full max-w-4xl space-y-4 px-4 py-6"}>
             {visibleMessages.map((message) => (
-              <ChatMessageItem entryId={entryId} groupName={groupName} key={message.id} message={message} />
+              <ChatMessageItem
+                entryId={entryId}
+                groupName={groupName}
+                key={message.id}
+                message={message}
+                tableNameMap={tableNameMap}
+              />
             ))}
+            {isLoading && !lastMessageIsAssistant && (
+              <div className={"flex gap-3"}>
+                <div
+                  className={
+                    "flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground"
+                  }
+                >
+                  <BotIcon className={"size-4"} />
+                </div>
+                <div className={"rounded-2xl rounded-bl-md border bg-card px-4 py-3 text-card-foreground"}>
+                  <div className={"flex items-center gap-2"}>
+                    <Spinner className={"size-4"} />
+                    <span className={"text-muted-foreground text-xs"}>Analyzing logs…</span>
+                  </div>
+                </div>
+              </div>
+            )}
             <div ref={messagesEndRef} />
           </div>
         )}
@@ -362,78 +423,80 @@ export function ChatbotTab({ entryId, groupName, tableNames }: ChatbotTabProps) 
         </div>
       )}
 
-      <div
-        className={
-          "shrink-0 border-t bg-background/80 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60" +
-          (hasMessages ? "" : "border-t-transparent")
-        }
-      >
-        <div className={"mx-auto max-w-3xl"}>
-          {hasMessages && (
-            <div className={"flex items-center justify-end gap-2 px-4 pt-3 pb-2"}>
-              <Button
-                className={"shrink-0 rounded-full"}
-                disabled={isLoading}
-                onClick={() => void handleClearChat()}
-                size={"sm"}
-                type={"button"}
-                variant={"ghost"}
-              >
-                <Trash2Icon className={"size-3 shrink-0"} />
-                <span className={"truncate"}>Clear Chat</span>
-              </Button>
-            </div>
-          )}
+      {!isLoading && (
+        <div
+          className={
+            "shrink-0 border-t bg-background/80 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60" +
+            (hasMessages ? "" : "border-t-transparent")
+          }
+        >
+          <div className={"mx-auto max-w-4xl"}>
+            {hasMessages && suggestions.length > 0 && !isLoading && (
+              <div className={"flex flex-wrap items-center gap-2 px-4 pt-3 pb-2"}>
+                {suggestions.map((suggestion) => (
+                  <Button
+                    className={"h-auto gap-2 px-3 py-1.5 text-xs"}
+                    key={suggestion.display}
+                    onClick={() => void sendMessage(suggestion.prompt)}
+                    size={"sm"}
+                    variant={"outline"}
+                  >
+                    <SparklesIcon className={"size-3 shrink-0 text-muted-foreground"} />
+                    {suggestion.display}
+                  </Button>
+                ))}
+              </div>
+            )}
 
-          {hasMessages && suggestions.length > 0 && !isLoading && (
-            <div className={"flex flex-wrap items-center gap-2 px-4 pb-2"}>
-              {suggestions.map((suggestion) => (
+            <form className={"flex items-center justify-center gap-2 px-4 pt-3 pb-2"} onSubmit={onSubmit}>
+              <InputGroup className={"bg-background shadow-sm"}>
+                <InputGroupTextarea
+                  className={"max-h-[200px] min-h-[44px] py-3"}
+                  disabled={isLoading}
+                  onChange={(event) => setDraftMessage(event.currentTarget.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
+                      void submitMessage();
+                    }
+                  }}
+                  placeholder={"Ask about anomalies, trends, or table insights..."}
+                  rows={1}
+                  value={draftMessage}
+                />
+                <InputGroupAddon align={"inline-end"}>
+                  <InputGroupButton
+                    className={"mr-1 size-8 rounded-full"}
+                    disabled={isLoading || !draftMessage.trim()}
+                    size={"icon-sm"}
+                    type={"submit"}
+                    variant={"default"}
+                  >
+                    <SendHorizontalIcon />
+                    <span className={"sr-only"}>Send</span>
+                  </InputGroupButton>
+                </InputGroupAddon>
+              </InputGroup>
+            </form>
+
+            {hasMessages && (
+              <div className={"flex items-center justify-end gap-2 px-4 pb-4 pt-1"}>
                 <Button
-                  className={"h-auto gap-2 px-3 py-1.5 text-xs"}
-                  key={suggestion.text}
-                  onClick={() => void sendMessage(suggestion.text)}
+                  className={"shrink-0 rounded-full"}
+                  disabled={isLoading}
+                  onClick={() => void handleClearChat()}
                   size={"sm"}
-                  variant={"outline"}
+                  type={"button"}
+                  variant={"ghost"}
                 >
-                  <SparklesIcon className={"size-3 shrink-0 text-muted-foreground"} />
-                  {suggestion.text}
+                  <Trash2Icon className={"size-3 shrink-0"} />
+                  <span className={"truncate"}>Clear Chat</span>
                 </Button>
-              ))}
-            </div>
-          )}
-
-          <form className={"flex items-center justify-center gap-2 px-4 pt-3 pb-4"} onSubmit={onSubmit}>
-            <InputGroup className={"bg-background shadow-sm"}>
-              <InputGroupTextarea
-                className={"max-h-[200px] min-h-[44px] py-3"}
-                disabled={isLoading}
-                onChange={(event) => setDraftMessage(event.currentTarget.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault();
-                    void submitMessage();
-                  }
-                }}
-                placeholder={"Ask about anomalies, trends, or table insights..."}
-                rows={1}
-                value={draftMessage}
-              />
-              <InputGroupAddon align={"inline-end"}>
-                <InputGroupButton
-                  className={"mr-1 size-8 rounded-full"}
-                  disabled={isLoading || !draftMessage.trim()}
-                  size={"icon-sm"}
-                  type={"submit"}
-                  variant={"default"}
-                >
-                  <SendHorizontalIcon />
-                  <span className={"sr-only"}>Send</span>
-                </InputGroupButton>
-              </InputGroupAddon>
-            </InputGroup>
-          </form>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

@@ -43,7 +43,7 @@ export function AppSidebar() {
 
   return (
     <Sidebar collapsible={"icon"}>
-      <SidebarHeader className={"h-12 shrink-0 items-center justify-center border-b px-4"}>
+      <SidebarHeader className={"h-12 shrink-0 items-center justify-center border-b p-0"}>
         {state === "collapsed" ? (
           <>
             <img alt="Logdog" className="h-6 w-auto dark:hidden" src="/icon.png" />

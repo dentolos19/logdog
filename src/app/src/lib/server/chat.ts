@@ -11,6 +11,7 @@ const DEFAULT_SQL_TYPE = "TEXT";
 
 type TableDefinition = {
   table_name?: string;
+  display_name?: string;
   columns?: Array<{
     name?: string;
     sql_type?: string;
@@ -30,6 +31,7 @@ type LogProcessResponse = {
 type TableAccumulator = {
   rowCount: number;
   columns: Map<string, string>;
+  displayName: string;
 };
 
 const MAX_PERSISTED_MESSAGES = 500;
@@ -81,26 +83,6 @@ const renderWidgetInputSchema = z.discriminatedUnion("type", [
     stats: z.array(widgetStatsItemSchema).min(1),
   }),
 ]);
-
-const reportSectionTableSchema = z.object({
-  title: z.string(),
-  columns: z.array(z.string()),
-  rows: z.array(z.array(z.unknown())),
-});
-
-const reportSectionSchema = z.object({
-  heading: z.string(),
-  content: z.string(),
-  tables: z.array(reportSectionTableSchema).default([]),
-});
-
-const generateReportInputSchema = z.object({
-  title: z.string().min(1).describe("Report title."),
-  sections: z
-    .array(reportSectionSchema)
-    .min(1)
-    .describe("Report sections with headings, content, and optional data tables."),
-});
 
 function getErrorMessage(error: unknown, fallbackMessage: string) {
   return error instanceof Error ? error.message : fallbackMessage;
@@ -170,14 +152,21 @@ async function fetchLogProcesses(entryId: string, origin: string, authorizationH
   return (await response.json()) as LogProcessResponse[];
 }
 
-function getOrCreateTableAccumulator(tableMetadata: Map<string, TableAccumulator>, tableName: string) {
+function getOrCreateTableAccumulator(
+  tableMetadata: Map<string, TableAccumulator>,
+  tableName: string,
+  displayName?: string,
+) {
   let accumulator = tableMetadata.get(tableName);
   if (accumulator === undefined) {
     accumulator = {
       rowCount: 0,
       columns: new Map<string, string>(),
+      displayName: displayName ?? "",
     };
     tableMetadata.set(tableName, accumulator);
+  } else if (displayName !== undefined && displayName.length > 0 && accumulator.displayName.length === 0) {
+    accumulator.displayName = displayName;
   }
 
   return accumulator;
@@ -213,10 +202,8 @@ function buildDiscoveredTables(processes: LogProcessResponse[]) {
         continue;
       }
 
-      const accumulator = getOrCreateTableAccumulator(tableMetadata, tableName);
-
-      const rows = records !== null && Array.isArray(records[tableName]) ? records[tableName] : [];
-      accumulator.rowCount += rows.length;
+      const defDisplayName = typeof definition.display_name === "string" ? definition.display_name.trim() : "";
+      const accumulator = getOrCreateTableAccumulator(tableMetadata, tableName, defDisplayName);
 
       if (Array.isArray(definition.columns)) {
         for (const column of definition.columns) {
@@ -252,6 +239,7 @@ function buildDiscoveredTables(processes: LogProcessResponse[]) {
   return [...tableMetadata.entries()]
     .map(([tableName, details]) => ({
       table_name: tableName,
+      display_name: details.displayName.length > 0 ? details.displayName : tableName,
       row_count: details.rowCount,
       columns: [...details.columns.entries()]
         .map(([columnName, sqlType]) => ({
@@ -321,45 +309,88 @@ function toTextModelMessages(messages: unknown[]) {
 }
 
 /**
- * Replaces occurrences of the raw entryId UUID in chat message text with the
- * display group name, so the model never sees internal IDs in prior history.
+ * Replaces occurrences of the raw entryId UUID and raw table_name values in chat
+ * message text with their display names, so the model never sees internal IDs
+ * or identifiers in prior history.
  */
 function sanitizeModelMessages(
   messages: Array<ModelMessage<string>>,
   entryId: string,
   groupName: string,
+  tableNameMap?: Map<string, string>,
 ): Array<ModelMessage<string>> {
   if (entryId.length === 0 || entryId === groupName) {
     return messages;
   }
-  return messages.map((msg) => ({
-    ...msg,
-    content: msg.content.replaceAll(entryId, `"${groupName}"`),
-  }));
+  return messages.map((msg) => {
+    let content = msg.content.replaceAll(entryId, `"${groupName}"`);
+    if (tableNameMap !== undefined) {
+      for (const [rawName, displayName] of tableNameMap) {
+        if (rawName !== displayName) {
+          content = content.replaceAll(rawName, `"${displayName}"`);
+        }
+      }
+    }
+    return { ...msg, content };
+  });
 }
 
 function buildSystemPrompt(logGroupName: string) {
   return [
     "You are Logdog's data analyst assistant for a specific log group.",
     `Current log group display name: "${logGroupName}".`,
-    "Refer to this log group by its display name. Do not mention internal IDs or UUIDs.",
+    "Refer to this log group by its display name. Do not mention internal UUIDs or raw identifiers.",
+    "",
+    "## Scope rules",
+    "Your default analytical scope is the entire log group. When asked broad questions such as summary, anomalies, trends,",
+    "analysis, charts, or anything that does not explicitly name specific tables, you MUST inspect EVERY available table.",
+    "Only narrow your analysis to specific tables if the user explicitly requests it.",
+    "",
+    "## Autonomy rules (CRITICAL)",
+    "Do NOT ask clarifying questions for broad analysis requests. Choose sensible defaults and proceed with exploratory queries.",
+    "After list_available_tables returns tables, continue querying immediately. Do not stop to ask the user what to inspect.",
+    "State your assumptions briefly and move forward.",
+    "The only acceptable reason to stop and ask is if every table returned zero rows or no useful columns exist.",
+    "",
+    "## Discovery protocol",
     "Before any analysis or SQL assumptions, call list_available_tables(include_columns=true) to discover available data.",
     "If no tables are available, stop querying and tell the user to upload/process logs first.",
-    "Use get_sql_command_templates to quickly choose valid exploration queries before writing custom SQL.",
-    "Use execute_sql_query to run SELECT queries against the parsed log tables for data exploration and analysis.",
+    "Use get_sql_command_templates to get reusable SQL patterns before writing custom SQL.",
+    "Use execute_sql_query to run SELECT queries against the parsed log tables.",
     "Always use double quotes around table and column identifiers in SQL.",
     "Avoid ROUND(); when you need integer/decimal averages, prefer CAST(AVG(...) AS INTEGER/REAL).",
     "If a query fails, immediately retry with a simpler inspection query (for example SELECT * ... LIMIT 5) before further analysis.",
-    "SQL exploration playbook:",
-    '1) Preview rows: SELECT * FROM "<table_name>" LIMIT 5;',
-    '2) Count rows: SELECT COUNT(*) AS row_count FROM "<table_name>";',
-    '3) Inspect schema: SELECT "column_name", "data_type" FROM information_schema.columns WHERE "table_name" = \'<table_name>\' ORDER BY "ordinal_position";',
-    '4) Grouped averages: SELECT "group_col", CAST(AVG("volume") AS INTEGER) AS avg_volume, CAST(AVG("value_col") AS REAL) AS avg_value FROM "<table_name>" GROUP BY "group_col" LIMIT 20;',
+    "",
+    "## Summary playbook",
+    "For a summary request, do ALL of the following for EACH table:",
+    '1) Count total rows: SELECT COUNT(*) AS row_count FROM "<table_name>";',
+    '2) Preview sample rows: SELECT * FROM "<table_name>" LIMIT 5;',
+    "3) If a timestamp/date column exists (check the column names from list_available_tables), get the time range.",
+    '4) For string/category columns, get top values: SELECT "<col>", COUNT(*) AS cnt FROM "<table_name>" GROUP BY "<col>" ORDER BY cnt DESC LIMIT 10;',
+    "5) Synthesize observations about each table's structure, content, and notable fields.",
+    "6) Present a concise summary per table and an overall picture across all tables.",
+    "",
+    "## Anomaly detection playbook",
+    "For anomaly/error detection, do ALL of the following:",
+    "1) Count total rows per table.",
+    '2) Look for columns with names like "error", "status", "level", "code", "type", "severity". Group by those columns to find distributions.',
+    '3) Check for null-heavy columns: SELECT COUNT(*) AS total, COUNT("<col>") AS populated FROM "<table_name>";',
+    "4) If a timestamp column exists, group by date to find spikes and drops.",
+    "5) Highlight status failures, error counts, null-heavy fields, rare categorical values, and unusual numeric values.",
+    "6) Use render_widget with type 'stats' or 'chart' to present key anomaly metrics.",
+    "",
+    "## Trend chart playbook",
+    "For a trend/chart request, do ALL of the following:",
+    "1) Inspect each table's schema (already available from list_available_tables) to find a timestamp or date column.",
+    "2) If a timestamp column exists, group by it with row count.",
+    "3) If no timestamp column exists, chart row counts by a categorical column or explain that no temporal data is available.",
+    "4) Use render_widget with type 'chart' (bar/line/pie as appropriate). Explain which table and metric you chose.",
+    "",
+    "## Widgets",
     "Use render_widget to present results visually: type 'data_table' for tabular data, 'chart' for bar/line/pie charts, 'stats' for key metrics.",
-    "Use generate_report to compile a full analysis report as a downloadable DOCX file when the user asks for a report or when you have gathered sufficient insights.",
-    "Report workflow: list tables -> get_sql_command_templates -> query data -> render widgets -> compile findings into generate_report.",
+    "",
+    "## Constraints",
     "Rely only on user-provided information and tool outputs.",
-    "If the available data is insufficient, explicitly say what is missing and suggest the next query or upload.",
     "Keep answers concise, actionable, and focused on insights from the log data.",
     "Do not invent columns, tables, or values that are not present in tool outputs.",
   ].join("\n");
@@ -375,7 +406,7 @@ function createLogChatServerTools(options: { entryId: string; origin: string; au
       message: z.string(),
       tables: z.array(
         z.object({
-          table_name: z.string(),
+          table_name: z.string().describe("The exact table identifier. Use this in all SQL queries."),
           row_count: z.number().int().nonnegative(),
           columns: z.array(
             z.object({
@@ -546,53 +577,7 @@ function createLogChatServerTools(options: { entryId: string; origin: string; au
     };
   });
 
-  const generateReport = toolDefinition({
-    name: "generate_report",
-    description:
-      "Generate a full analysis report as a downloadable DOCX file. Compile findings, data tables, and insights into a structured report document.",
-    inputSchema: generateReportInputSchema,
-    outputSchema: z.object({
-      status: z.enum(["ok", "error"]),
-      message: z.string(),
-      download_url: z.string().optional(),
-    }),
-  }).server(async ({ title, sections }) => {
-    try {
-      const url = new URL(`/api/logs/${encodeURIComponent(options.entryId)}/report`, normalizeOrigin(options.origin));
-      const response = await fetch(url, {
-        method: "POST",
-        headers: {
-          Authorization: options.authorizationHeader,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ title, sections }),
-      });
-
-      if (!response.ok) {
-        const payload = await response.text();
-        throw new Error(`Report generation failed (${response.status}): ${payload}`);
-      }
-
-      const blob = await response.arrayBuffer();
-      const bytes = new Uint8Array(blob);
-      const binary = bytes.reduce((acc, byte) => acc + String.fromCharCode(byte), "");
-      const base64 = btoa(binary);
-      const downloadUrl = `data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,${base64}`;
-
-      return {
-        status: "ok" as const,
-        message: `Report "${title}" generated successfully.`,
-        download_url: downloadUrl,
-      };
-    } catch (error) {
-      return {
-        status: "error" as const,
-        message: `Report generation failed: ${getErrorMessage(error, "Unknown error.")}`,
-      };
-    }
-  });
-
-  return [listAvailableTables, getSqlCommandTemplates, executeSqlQuery, renderWidget, generateReport];
+  return [listAvailableTables, getSqlCommandTemplates, executeSqlQuery, renderWidget];
 }
 
 export const streamLogChat = createServerFn({ method: "POST" })
@@ -624,9 +609,21 @@ export const streamLogChat = createServerFn({ method: "POST" })
     const groupMetadata = await fetchLogGroupMetadata(data.entryId, backendOrigin, authorizationHeader);
     const logGroupName = normalizeGroupName(groupMetadata.name);
 
+    // Fetch processes to build a table name map for sanitization, so the model
+    // never sees raw internal table_name values in prior chat history.
+    const processes = await fetchLogProcesses(data.entryId, backendOrigin, authorizationHeader);
+    const discoveredTables = buildDiscoveredTables(processes);
+    const tableNameMap = new Map<string, string>();
+    for (const table of discoveredTables) {
+      if (table.table_name !== table.display_name) {
+        tableNameMap.set(table.table_name, table.display_name);
+      }
+    }
+
     // Sanitize prior chat history: replace any occurrence of the internal
-    // entryId UUID with the display name so the model doesn't see stale IDs.
-    const sanitizedMessages = sanitizeModelMessages(modelMessages, data.entryId, logGroupName);
+    // entryId UUID or raw table_name values with display names so the model
+    // doesn't see stale identifiers.
+    const sanitizedMessages = sanitizeModelMessages(modelMessages, data.entryId, logGroupName, tableNameMap);
 
     const {
       openRouterApiKey: orApiKey,
