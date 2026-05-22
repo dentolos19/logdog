@@ -136,8 +136,7 @@ class TestClassificationHelpers:
         garbled = FileInput(filename="garbled.log", content="@@@###$$$%%%\n!!!!????!!!!\n" + "x" * 600)
         structured = FileInput(
             filename="structured.log",
-            content="2024-01-01T12:00:00 INFO user=alice action=login\n"
-            "2024-01-01T12:00:01 INFO user=bob action=logout",
+            content="2024-01-01T12:00:00 INFO user=alice action=login\n2024-01-01T12:00:01 INFO user=bob action=logout",
         )
 
         result_garbled = preprocessor.classify([garbled])
@@ -411,10 +410,12 @@ class TestOrchestratorAggregation:
     def test_confidence_formula_version_present(self):
         """The formula version should be a non-empty string."""
         from parsers.engine import CONFIDENCE_FORMULA_VERSION
+
         assert CONFIDENCE_FORMULA_VERSION == "parser-v1"
 
     def test_classification_formula_version_present(self):
         from parsers.preprocessor import CONFIDENCE_FORMULA_VERSION as CFV
+
         assert CFV == "classification-v1"
 
 
@@ -433,8 +434,7 @@ class TestEndToEnd:
         preprocessor = LogPreprocessorService(use_llm=False)
         file_input = FileInput(
             filename="test.log",
-            content="2024-01-01T12:00:00 INFO user=alice action=login\n"
-            "2024-01-01T12:00:01 INFO user=bob action=logout",
+            content="2024-01-01T12:00:00 INFO user=alice action=login\n2024-01-01T12:00:01 INFO user=bob action=logout",
         )
         result = preprocessor.classify([file_input])
         assert result.diagnostics is not None
@@ -480,6 +480,3 @@ class TestEndToEnd:
         assert "row_completeness" in components
         assert "type_conformity" in components
         assert "timestamp_parse_success" in components
-
-
-

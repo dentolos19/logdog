@@ -137,6 +137,7 @@ BINARY_OVERFLOW_COLUMN_NAME: str = BINARY_OVERFLOW_COLUMN.name
 
 class AiColumnPlan(BaseModel):
     """AI-suggested column for a parsed log table."""
+
     name: str = Field(description="Canonical column name")
     type: str = Field(default="TEXT", description="SQL type: TEXT, INTEGER, BIGINT, FLOAT, BOOLEAN, DATETIME")
     description: str = Field(default="", description="Semantic description of the field")
@@ -146,6 +147,7 @@ class AiColumnPlan(BaseModel):
 
 class AiSchemaPlan(BaseModel):
     """Full AI-suggested schema plan for a parsed log file."""
+
     table_name: str = Field(default="", description="Suggested table name (short, kebab-case)")
     display_name: str = Field(default="", description="Human-friendly table name")
     columns: list[AiColumnPlan] = Field(description="Suggested columns")
@@ -155,6 +157,7 @@ class AiSchemaPlan(BaseModel):
 
 class AiExtractionBatch(BaseModel):
     """Structured result from AI extraction of one chunk."""
+
     rows: list[dict[str, Any]] = Field(description="Extracted row objects")
     confidence: float = Field(default=0.0, ge=0.0, le=1.0, description="Per-batch confidence")
     warnings: list[str] = Field(default_factory=list, description="Warnings for this batch")
@@ -162,6 +165,7 @@ class AiExtractionBatch(BaseModel):
 
 class AiExtractionDiagnostics(BaseModel):
     """Diagnostics for AI-powered parser runs."""
+
     model: str = ""
     prompt_version: str = ""
     schema_cache_hit: bool = False

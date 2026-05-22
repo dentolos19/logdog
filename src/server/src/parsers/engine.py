@@ -151,6 +151,7 @@ def _looks_like_json_lines(lines: list[str]) -> bool:
         if stripped.startswith("{") or stripped.startswith("["):
             try:
                 import json
+
                 json.loads(stripped)
                 json_count += 1
             except (json.JSONDecodeError, ValueError):
@@ -176,12 +177,14 @@ def _split_blank_line_groups(content: str) -> list[dict[str, Any]]:
         line_num = idx + 1
         if not line.strip():
             if current:
-                groups.append({
-                    "lines": current,
-                    "start_line": current_start,
-                    "end_line": line_num - 1,
-                    "raw": "\n".join(current),
-                })
+                groups.append(
+                    {
+                        "lines": current,
+                        "start_line": current_start,
+                        "end_line": line_num - 1,
+                        "raw": "\n".join(current),
+                    }
+                )
                 current = []
             current_start = line_num + 1
         else:
@@ -190,12 +193,14 @@ def _split_blank_line_groups(content: str) -> list[dict[str, Any]]:
             current.append(line)
 
     if current:
-        groups.append({
-            "lines": current,
-            "start_line": current_start,
-            "end_line": len(all_lines),
-            "raw": "\n".join(current),
-        })
+        groups.append(
+            {
+                "lines": current,
+                "start_line": current_start,
+                "end_line": len(all_lines),
+                "raw": "\n".join(current),
+            }
+        )
 
     return groups
 
@@ -409,15 +414,17 @@ def normalize_records(
         for idx, group in enumerate(groups):
             raw = group["raw"]
             timestamp = _extract_leading_timestamp(raw)
-            records.append({
-                "source": filename,
-                "record_index": idx,
-                "raw": raw,
-                "message": raw[:500],
-                "timestamp": timestamp,
-                "source_line": group["start_line"],
-                "end_line": group["end_line"],
-            })
+            records.append(
+                {
+                    "source": filename,
+                    "record_index": idx,
+                    "raw": raw,
+                    "message": raw[:500],
+                    "timestamp": timestamp,
+                    "source_line": group["start_line"],
+                    "end_line": group["end_line"],
+                }
+            )
         return records
 
     # ── Fallback: per-physical-line (default for single-line logs) ──
@@ -425,12 +432,14 @@ def normalize_records(
     for idx, line in enumerate(content.splitlines()):
         stripped = line.strip()
         if stripped:
-            records.append({
-                "source": filename,
-                "record_index": idx,
-                "raw": line,
-                "message": stripped,
-            })
+            records.append(
+                {
+                    "source": filename,
+                    "record_index": idx,
+                    "raw": line,
+                    "message": stripped,
+                }
+            )
     return records
 
 
@@ -439,6 +448,7 @@ def _reconstruct_csv_row(dialect: csv.Dialect, row: dict[str, str]) -> str:
     fieldnames = list(row.keys())
     try:
         import io as _io
+
         buf = _io.StringIO()
         writer = csv.writer(buf, dialect=dialect)
         writer.writerow([row.get(f, "") for f in fieldnames])
@@ -657,12 +667,7 @@ def _xml_tag_to_snake(tag: str) -> str:
         if char.isupper():
             if prev_was_lower:
                 result += "_"
-            elif (
-                i > 0
-                and i < len(tag) - 1
-                and tag[i - 1].isupper()
-                and tag[i + 1].islower()
-            ):
+            elif i > 0 and i < len(tag) - 1 and tag[i - 1].isupper() and tag[i + 1].islower():
                 # Transition within an acronym (e.g., RFPower → rf_power).
                 # Previous was uppercase, next is lowercase → insert underscore.
                 # But skip if we already inserted one (handled by prev_was_lower).
@@ -749,24 +754,28 @@ def _build_columns(
 
     for col in BASELINE_COLUMNS:
         safe_name = unique_identifier(sanitize_identifier(col.name), seen_names)
-        result.append(ColumnDefinition(
-            name=safe_name,
-            sql_type=col.sql_type,
-            description=col.description,
-            nullable=col.nullable,
-            primary_key=col.primary_key,
-        ))
+        result.append(
+            ColumnDefinition(
+                name=safe_name,
+                sql_type=col.sql_type,
+                description=col.description,
+                nullable=col.nullable,
+                primary_key=col.primary_key,
+            )
+        )
 
     for col_name, values in columns.items():
         if col_name in BASELINE_COLUMN_NAMES:
             continue
         safe_name = unique_identifier(sanitize_identifier(col_name), seen_names)
         sql_type = infer_sql_type(list(values))
-        result.append(ColumnDefinition(
-            name=safe_name,
-            sql_type=sql_type,
-            nullable=True,
-        ))
+        result.append(
+            ColumnDefinition(
+                name=safe_name,
+                sql_type=sql_type,
+                nullable=True,
+            )
+        )
 
     return result
 
@@ -933,12 +942,8 @@ def _extract_xml_element_data(elem: ET.Element, row: dict[str, Any]) -> None:
 
 
 # Lambda lifecycle parses
-_LAMBDA_START_RE = re.compile(
-    r"START\s+RequestId:\s*(\S+)\s+Version:\s*(\S+)"
-)
-_LAMBDA_END_RE = re.compile(
-    r"END\s+RequestId:\s*(\S+)"
-)
+_LAMBDA_START_RE = re.compile(r"START\s+RequestId:\s*(\S+)\s+Version:\s*(\S+)")
+_LAMBDA_END_RE = re.compile(r"END\s+RequestId:\s*(\S+)")
 _LAMBDA_REPORT_RE = re.compile(
     r"REPORT\s+RequestId:\s*(\S+)\s+"
     r"Duration:\s*([\d.]+)\s*ms\s+"
@@ -946,9 +951,7 @@ _LAMBDA_REPORT_RE = re.compile(
     r"Memory\s+Size:\s*(\d+)\s+MB\s+"
     r"Max\s+Memory\s+Used:\s*(\d+)\s+MB"
 )
-_LAMBDA_XRAY_RE = re.compile(
-    r"XRAY\s+TraceId:\s*(\S+)\s+SegmentId:\s*(\S+)\s+Sampled:\s*(\S+)"
-)
+_LAMBDA_XRAY_RE = re.compile(r"XRAY\s+TraceId:\s*(\S+)\s+SegmentId:\s*(\S+)\s+Sampled:\s*(\S+)")
 
 
 def _parse_lambda_lifecycle(cell: str) -> dict[str, Any] | None:
@@ -981,7 +984,12 @@ def _parse_lambda_lifecycle(cell: str) -> dict[str, Any] | None:
         return fields
     m = _LAMBDA_XRAY_RE.match(cell)
     if m:
-        return {"xray_trace_id": m.group(1), "segment_id": m.group(2), "sampled": m.group(3).lower() == "true", "message": cell[:500]}
+        return {
+            "xray_trace_id": m.group(1),
+            "segment_id": m.group(2),
+            "sampled": m.group(3).lower() == "true",
+            "message": cell[:500],
+        }
     return None
 
 
@@ -1118,13 +1126,30 @@ def _merge_enriched_fields(
 
 SPARSITY_THRESHOLD = 0.6  # columns with >60% null are demoted to attributes
 
-COMMON_COLUMNS = frozenset({
-    "timestamp", "source", "event_type", "message",
-    "log_level", "request_id", "service", "function_name",
-    "function_request_id", "xray_trace_id", "version", "severity",
-    "cold_start", "function_memory_size", "function_arn", "event_code",
-    "machine", "warning", "action", "reticle_id",
-})
+COMMON_COLUMNS = frozenset(
+    {
+        "timestamp",
+        "source",
+        "event_type",
+        "message",
+        "log_level",
+        "request_id",
+        "service",
+        "function_name",
+        "function_request_id",
+        "xray_trace_id",
+        "version",
+        "severity",
+        "cold_start",
+        "function_memory_size",
+        "function_arn",
+        "event_code",
+        "machine",
+        "warning",
+        "action",
+        "reticle_id",
+    }
+)
 
 
 def _add_to_collect(value: Any, col_map: dict[str, set[Any]], key: str) -> None:
@@ -1190,12 +1215,14 @@ def _apply_sparsity_control(rows: list[dict[str, Any]]) -> list[ColumnDefinition
     # Ensure extra column exists (baseline already provides it, but be safe)
     col_names = {c.name for c in columns}
     if "extra" not in col_names:
-        columns.append(ColumnDefinition(
-            name="extra",
-            sql_type="TEXT",
-            description="JSON blob for sparse or event-specific fields.",
-            nullable=True,
-        ))
+        columns.append(
+            ColumnDefinition(
+                name="extra",
+                sql_type="TEXT",
+                description="JSON blob for sparse or event-specific fields.",
+                nullable=True,
+            )
+        )
 
     return columns
 
@@ -1382,10 +1409,7 @@ def _compute_raw_fallback_confidence(rows: list[dict[str, Any]]) -> float:
     enrichment_score = min(avg_enriched / 5.0, 1.0)
 
     confidence = (
-        0.35 * enrichment_rate
-        + 0.30 * enrichment_score
-        + 0.25 * ts_rate
-        + 0.10 * (1.0 if avg_enriched > 0 else 0.0)
+        0.35 * enrichment_rate + 0.30 * enrichment_score + 0.25 * ts_rate + 0.10 * (1.0 if avg_enriched > 0 else 0.0)
     )
 
     return _clamp_confidence(confidence)
@@ -1477,8 +1501,7 @@ class UniversalAIParser(ParserPipeline):
             columns_plan = schema_plan.columns
         else:
             warnings.append(
-                "AI schema discovery returned low confidence or was unavailable; "
-                "using dynamic schema from data."
+                "AI schema discovery returned low confidence or was unavailable; using dynamic schema from data."
                 if schema_plan
                 else "AI schema discovery unavailable; using dynamic schema from data."
             )
@@ -1516,7 +1539,7 @@ class UniversalAIParser(ParserPipeline):
             # Group records into batches for AI extraction
             BATCH_SIZE = 20
             for batch_start in range(0, len(all_records), BATCH_SIZE):
-                batch_records = all_records[batch_start:batch_start + BATCH_SIZE]
+                batch_records = all_records[batch_start : batch_start + BATCH_SIZE]
                 batch_count += 1
                 try:
                     batch = llm.extract_rows_from_records(
@@ -1542,9 +1565,7 @@ class UniversalAIParser(ParserPipeline):
                                 for rec in batch_records:
                                     if rec.get("record_index") == rec_idx:
                                         for k, v in rec.items():
-                                            if k not in row_data and k not in (
-                                                "raw", "source", "record_index"
-                                            ):
+                                            if k not in row_data and k not in ("raw", "source", "record_index"):
                                                 row_data[k] = v
                                         break
                             _enrich_row_fields(row_data)
@@ -1568,9 +1589,7 @@ class UniversalAIParser(ParserPipeline):
                             row_data["log_level"] = level
                         # Copy enriched payload fields
                         for k, v in rec.items():
-                            if k not in row_data and k not in (
-                                "raw", "source", "record_index", "message"
-                            ):
+                            if k not in row_data and k not in ("raw", "source", "record_index", "message"):
                                 row_data[k] = v
                         _enrich_row_fields(row_data)
                         all_rows.append(row_data)
@@ -1591,9 +1610,7 @@ class UniversalAIParser(ParserPipeline):
                 if level is not None:
                     row_data["log_level"] = level
                 for k, v in rec.items():
-                    if k not in row_data and k not in (
-                        "raw", "source", "record_index", "message"
-                    ):
+                    if k not in row_data and k not in ("raw", "source", "record_index", "message"):
                         row_data[k] = v
                 _enrich_row_fields(row_data)
                 all_rows.append(row_data)
@@ -1606,9 +1623,7 @@ class UniversalAIParser(ParserPipeline):
         # ── 7. Group rows by extra similarity ───────────────────────
         all_rows = group_rows_by_extra(all_rows)
 
-        llm_average_confidence = round(
-            sum(llm_confidences) / len(llm_confidences), 4
-        ) if llm_confidences else 0.0
+        llm_average_confidence = round(sum(llm_confidences) / len(llm_confidences), 4) if llm_confidences else 0.0
 
         diag.batch_count = batch_count
         diag.total_rows = len(all_rows)
@@ -1795,24 +1810,28 @@ class RawIngestFallbackParser(ParserPipeline):
         for idx, line in enumerate(lines):
             if not line.strip():
                 if current_lines:
-                    entries.append({
-                        "raw": "\n".join(current_lines),
-                        "start_line": line_offset + 1,
-                        "end_line": line_offset + len(current_lines),
-                        "source": filename,
-                    })
+                    entries.append(
+                        {
+                            "raw": "\n".join(current_lines),
+                            "start_line": line_offset + 1,
+                            "end_line": line_offset + len(current_lines),
+                            "source": filename,
+                        }
+                    )
                     current_lines = []
                 line_offset = idx + 1
             else:
                 current_lines.append(line)
 
         if current_lines:
-            entries.append({
-                "raw": "\n".join(current_lines),
-                "start_line": line_offset + 1,
-                "end_line": line_offset + len(current_lines),
-                "source": filename,
-            })
+            entries.append(
+                {
+                    "raw": "\n".join(current_lines),
+                    "start_line": line_offset + 1,
+                    "end_line": line_offset + len(current_lines),
+                    "source": filename,
+                }
+            )
 
         return entries
 

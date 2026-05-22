@@ -83,10 +83,7 @@ class LlmEngine:
         if model is None:
             return None
 
-        col_desc = "\n".join(
-            f"  - {c.name} ({c.type}): {c.description or '(no description)'}"
-            for c in columns
-        )
+        col_desc = "\n".join(f"  - {c.name} ({c.type}): {c.description or '(no description)'}" for c in columns)
 
         prompt = (
             "Extract structured records from this log text chunk. "
@@ -127,9 +124,7 @@ class LlmEngine:
         if model is None:
             return invalid_rows
 
-        col_desc = "\n".join(
-            f"  - {c.name} ({c.type}): {c.description or ''}" for c in columns
-        )
+        col_desc = "\n".join(f"  - {c.name} ({c.type}): {c.description or ''}" for c in columns)
 
         prompt = (
             "The following rows failed validation against the expected schema. "
@@ -218,10 +213,7 @@ class LlmEngine:
         if model is None:
             return None
 
-        col_desc = "\n".join(
-            f"  - {c.name} ({c.type}): {c.description or '(no description)'}"
-            for c in columns
-        )
+        col_desc = "\n".join(f"  - {c.name} ({c.type}): {c.description or '(no description)'}" for c in columns)
 
         records_json = json.dumps(records, indent=2, default=str, ensure_ascii=False)[:10000]
 

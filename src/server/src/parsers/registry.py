@@ -67,8 +67,7 @@ class _ParserRegistry:
         self.discover()
         if parser_key not in self._pipelines:
             raise KeyError(
-                f"No parser pipeline registered for key '{parser_key}'. "
-                f"Registered keys: {sorted(self._pipelines)}"
+                f"No parser pipeline registered for key '{parser_key}'. Registered keys: {sorted(self._pipelines)}"
             )
         return self._pipelines[parser_key]
 

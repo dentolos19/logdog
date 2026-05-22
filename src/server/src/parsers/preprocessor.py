@@ -19,12 +19,8 @@ from parsers.contracts import (
 logger = logging.getLogger(__name__)
 
 # Regex patterns for structural analysis
-_TIMESTAMP_CANDIDATE_RE = re.compile(
-    r"\d{4}[-/]\d{2}[-/]\d{2}[T ]\d{2}:\d{2}"
-)
-_KEY_VALUE_RE = re.compile(
-    r"\b[a-zA-Z_][a-zA-Z0-9_.]*=(?:\"[^\"]*\"|'[^']*'|[^\s,;]+)"
-)
+_TIMESTAMP_CANDIDATE_RE = re.compile(r"\d{4}[-/]\d{2}[-/]\d{2}[T ]\d{2}:\d{2}")
+_KEY_VALUE_RE = re.compile(r"\b[a-zA-Z_][a-zA-Z0-9_.]*=(?:\"[^\"]*\"|'[^']*'|[^\s,;]+)")
 _LOG_LEVEL_RE = re.compile(
     r"\b(?:TRACE|DEBUG|INFO|WARN(?:ING)?|ERROR|FATAL|CRITICAL|NOTICE)\b",
     re.IGNORECASE,
@@ -224,14 +220,7 @@ def _compute_file_format_confidence(lines: list[str]) -> tuple[float, dict[str, 
     # Weighted composite formula.
     # Structuredness signals get the most weight.
     # Malformed lines subtract but are bounded.
-    confidence = (
-        0.05 * ner
-        + 0.30 * slr
-        + 0.25 * max(jpr, dcr, kvr)
-        + 0.20 * tshr
-        + 0.10 * llr
-        + 0.10 * (1.0 - mlr)
-    )
+    confidence = 0.05 * ner + 0.30 * slr + 0.25 * max(jpr, dcr, kvr) + 0.20 * tshr + 0.10 * llr + 0.10 * (1.0 - mlr)
 
     return _clamp(confidence), components
 
@@ -318,13 +307,15 @@ class LogPreprocessorService:
                         line_count=line_count,
                     )
                 )
-                diagnostics["files"].append({
-                    "filename": file_input.filename,
-                    "detected_format": "binary",
-                    "format_confidence": 1.0,
-                    "line_count": line_count,
-                    "binary": True,
-                })
+                diagnostics["files"].append(
+                    {
+                        "filename": file_input.filename,
+                        "detected_format": "binary",
+                        "format_confidence": 1.0,
+                        "line_count": line_count,
+                        "binary": True,
+                    }
+                )
                 continue
 
             has_text = True
@@ -341,13 +332,15 @@ class LogPreprocessorService:
                         warnings=["File is empty."],
                     )
                 )
-                diagnostics["files"].append({
-                    "filename": file_input.filename,
-                    "detected_format": "ai_universal",
-                    "format_confidence": 0.0,
-                    "line_count": 0,
-                    "empty": True,
-                })
+                diagnostics["files"].append(
+                    {
+                        "filename": file_input.filename,
+                        "detected_format": "ai_universal",
+                        "format_confidence": 0.0,
+                        "line_count": 0,
+                        "empty": True,
+                    }
+                )
                 continue
 
             # Compute deterministic confidence from file signals
@@ -367,15 +360,17 @@ class LogPreprocessorService:
                     line_count=line_count,
                 )
             )
-            diagnostics["files"].append({
-                "filename": file_input.filename,
-                "detected_format": "ai_universal",
-                "format_confidence": confidence,
-                "line_count": line_count,
-                "non_empty_lines": non_empty_count,
-                "confidence_components": components,
-                "confidence_formula_version": CONFIDENCE_FORMULA_VERSION,
-            })
+            diagnostics["files"].append(
+                {
+                    "filename": file_input.filename,
+                    "detected_format": "ai_universal",
+                    "format_confidence": confidence,
+                    "line_count": line_count,
+                    "non_empty_lines": non_empty_count,
+                    "confidence_components": components,
+                    "confidence_formula_version": CONFIDENCE_FORMULA_VERSION,
+                }
+            )
 
         if has_binary and not has_text:
             dominant_format = "binary"

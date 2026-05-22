@@ -72,9 +72,7 @@ def test_all_samples():
             result = pipeline.ingest([file_input], classification)
 
             if not result.table_definitions and not result.records:
-                print(
-                    f"FAIL {filename:40s} parser={result.parser_key:20s} no tables"
-                )
+                print(f"FAIL {filename:40s} parser={result.parser_key:20s} no tables")
                 all_passed = False
                 continue
 

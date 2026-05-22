@@ -95,7 +95,7 @@ class TestSplitBlankLineGroups:
 
 class TestLooksLikeJsonLines:
     def test_jsonl_content(self):
-        lines = ['{"a": 1}', '{"b": 2}', 'not json']
+        lines = ['{"a": 1}', '{"b": 2}', "not json"]
         assert _looks_like_json_lines(lines)
 
     def test_non_json_content(self):
@@ -139,12 +139,7 @@ class TestLooksLikeMultilineRecords:
     def test_continuation_lines_not_event_starts(self):
         """Continuation lines that don't look like events still qualify."""
         content = (
-            "01/01/2025 00:00:00 Event start\n"
-            "some detail\n"
-            "more detail\n"
-            "\n"
-            "01/01/2025 00:00:01 Next event\n"
-            "detail line\n"
+            "01/01/2025 00:00:00 Event start\nsome detail\nmore detail\n\n01/01/2025 00:00:01 Next event\ndetail line\n"
         )
         groups = _split_blank_line_groups(content)
         assert _looks_like_multiline_records(groups, content=content)
@@ -161,9 +156,7 @@ class TestExtractLeadingTimestamp:
 
     def test_us_date_format(self):
         """US date format used in the dose log."""
-        result = _extract_leading_timestamp(
-            "01/01/2025 00:00:14.0478 Machine:MCH0001\n"
-        )
+        result = _extract_leading_timestamp("01/01/2025 00:00:14.0478 Machine:MCH0001\n")
         # Either normalized ISO or raw captured text
         assert "2025-01-01" in result or "01/01/2025" in result
         assert "00:00:14" in result or "14.0478" in result

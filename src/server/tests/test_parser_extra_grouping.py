@@ -190,8 +190,7 @@ class TestGroupRowsByExtra:
         for r in result:
             expected_msg = f"msg-{r['id']}"
             assert r["message"] == expected_msg, (
-                f"message for id={r['id']} was {r['message']!r}, "
-                f"expected {expected_msg!r}"
+                f"message for id={r['id']} was {r['message']!r}, expected {expected_msg!r}"
             )
 
     def test_missing_extra_at_end(self):
@@ -281,11 +280,7 @@ class TestGroupRowsByExtra:
 
     def test_no_row_count_change(self):
         """Row count must never change."""
-        rows = [
-            _row('{"a": "x"}', i) for i in range(10)
-        ] + [
-            _row(None, i) for i in range(10, 15)
-        ]
+        rows = [_row('{"a": "x"}', i) for i in range(10)] + [_row(None, i) for i in range(10, 15)]
         result = group_rows_by_extra(rows)
         assert len(result) == len(rows)
 

@@ -3,7 +3,7 @@
   "name": "logdog-development",
   "main": "src/server.ts",
   "account_id": "d910f54eba4cf3d1634aa41c3d9a93bc",
-  "compatibility_date": "2026-01-01",
+  "compatibility_date": "2026-05-01",
   "compatibility_flags": ["nodejs_compat"],
   "env": {
     "production": {
