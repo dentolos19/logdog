@@ -7,10 +7,12 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from parsers.binary import extract_printable_strings, is_probably_binary
 from parsers.contracts import (
-    INGESTION_SCHEMA_VERSION,
+    BINARY_PARSER_KEY,
     ClassificationResult,
     FileClassification,
+    INGESTION_SCHEMA_VERSION,
     StructuralClass,
 )
 
@@ -238,6 +240,12 @@ class FileInput(BaseModel):
     file_id: str | None = None
     filename: str
     content: str
+    raw_bytes: bytes | None = None
+    is_binary: bool = False
+    encoding: str | None = None
+    mime_type: str | None = None
+    byte_length: int | None = None
+    sha256: str | None = None
 
 
 class LogPreprocessorService:
@@ -265,11 +273,17 @@ class LogPreprocessorService:
         self.profile_name = (profile_name or "default").strip() or "default"
 
     def classify(self, files: list[FileInput]) -> ClassificationResult:
-        """Classify all files as universal AI-parsable format.
+        """Classify all files as universal AI-parsable or binary format.
+
+        Binary files (detected by extension, MIME type, or byte heuristics)
+        are classified as ``binary`` format and routed to the binary parser.
+        All other files are classified as ``ai_universal``.
 
         Confidence is computed from observable file quality signals.
         """
         file_classifications: list[FileClassification] = []
+        has_binary = False
+        has_text = False
         diagnostics: dict[str, Any] = {
             "mode": "generic",
             "parser": "universal_ai",
@@ -277,6 +291,43 @@ class LogPreprocessorService:
         }
 
         for file_input in files:
+            # Binary detection
+            raw_bytes = file_input.raw_bytes
+            if raw_bytes is not None:
+                is_binary = file_input.is_binary or is_probably_binary(
+                    raw_bytes, file_input.filename, file_input.mime_type
+                )
+            else:
+                is_binary = file_input.is_binary
+
+            if is_binary:
+                has_binary = True
+                if raw_bytes:
+                    strings = extract_printable_strings(raw_bytes)
+                    line_count = len(strings)
+                else:
+                    line_count = 0
+
+                file_classifications.append(
+                    FileClassification(
+                        file_id=file_input.file_id,
+                        filename=file_input.filename,
+                        detected_format="binary",
+                        structural_class=StructuralClass.BINARY,
+                        format_confidence=1.0,
+                        line_count=line_count,
+                    )
+                )
+                diagnostics["files"].append({
+                    "filename": file_input.filename,
+                    "detected_format": "binary",
+                    "format_confidence": 1.0,
+                    "line_count": line_count,
+                    "binary": True,
+                })
+                continue
+
+            has_text = True
             lines = file_input.content.splitlines()
             if not lines:
                 file_classifications.append(
@@ -326,9 +377,15 @@ class LogPreprocessorService:
                 "confidence_formula_version": CONFIDENCE_FORMULA_VERSION,
             })
 
-        dominant_format = "ai_universal"
-        structural_class_overall = StructuralClass.UNSTRUCTURED
-        selected_parser_key = "universal_ai"
+        if has_binary and not has_text:
+            dominant_format = "binary"
+            structural_class_overall = StructuralClass.BINARY
+            selected_parser_key = BINARY_PARSER_KEY
+        else:
+            dominant_format = "ai_universal"
+            structural_class_overall = StructuralClass.UNSTRUCTURED
+            selected_parser_key = "universal_ai"
+
         confidence = self._compute_confidence(file_classifications)
 
         return ClassificationResult(

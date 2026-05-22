@@ -8,8 +8,9 @@ from pathlib import Path
 from typing import Any
 
 # Ensure the server src is on the path
-sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
+from parsers.binary import is_probably_binary, extract_printable_text, safe_decode_text
 from parsers.orchestrator import orchestrate_files, register_pipelines
 from parsers.preprocessor import FileInput
 
@@ -73,10 +74,28 @@ def load_gold_records(gold_path: Path) -> list[dict[str, Any]]:
 
 
 def run_case(case: EvalCase, use_llm: bool = True) -> tuple[EvalMetrics, dict[str, Any]]:
-    raw_text = case.raw_path.read_text(encoding="utf-8", errors="ignore")
+    raw_bytes = case.raw_path.read_bytes()
+
+    if is_probably_binary(raw_bytes, case.raw_path.name):
+        file_input = FileInput(
+            filename=case.raw_path.name,
+            content=extract_printable_text(raw_bytes),
+            raw_bytes=raw_bytes,
+            is_binary=True,
+            byte_length=len(raw_bytes),
+        )
+    else:
+        file_input = FileInput(
+            filename=case.raw_path.name,
+            content=safe_decode_text(raw_bytes),
+            raw_bytes=None,
+            is_binary=False,
+            byte_length=len(raw_bytes),
+        )
+
     result = orchestrate_files(
         group_id="eval",
-        file_inputs=[FileInput(filename=case.raw_path.name, content=raw_text)],
+        file_inputs=[file_input],
         persist=False,
         use_llm=use_llm,
     )

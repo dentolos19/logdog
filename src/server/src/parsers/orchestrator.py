@@ -22,7 +22,19 @@ from lib.megabase import (
 )
 from lib.models import Asset, LogGroup, LogFile, LogProcess, LogTable
 from lib.storage import download_file
-from parsers.contracts import ClassificationResult, ParserPipelineResult
+from parsers.binary import (
+    binary_metadata,
+    extract_printable_text,
+    is_probably_binary,
+    preview_hex,
+    safe_decode_text,
+    sha256_bytes,
+)
+from parsers.contracts import (
+    BINARY_PARSER_KEY,
+    ClassificationResult,
+    ParserPipelineResult,
+)
 from parsers.normalization import sanitize_db_value
 from parsers.preprocessor import FileInput, LogPreprocessorService
 from parsers.registry import ParserRegistry
@@ -211,7 +223,8 @@ def run_parse_job(
             db=db, megabase_db=megabase_db, group_id=group_id, result=pipeline_result
         )
 
-        process.result = pipeline_result.model_dump_json()
+        safe_result = _make_json_safe_pipeline_result(pipeline_result)
+        process.result = json.dumps(safe_result, ensure_ascii=True, default=str)
         process.status = "completed"
         process.error = None
         db.commit()
@@ -262,14 +275,9 @@ def _resolve_file_inputs(
             continue
 
         decoded_members = _decode_payload(asset.name, raw_bytes)
-        for synthetic_name, content in decoded_members:
-            file_inputs.append(
-                FileInput(
-                    file_id=str(file_row.id),
-                    filename=synthetic_name,
-                    content=content,
-                )
-            )
+        for member_input in decoded_members:
+            member_input.file_id = str(file_row.id)
+            file_inputs.append(member_input)
 
     return file_inputs
 
@@ -287,6 +295,39 @@ def _decode_bytes(raw_bytes: bytes, filename: str) -> str:
             return raw_bytes.decode("latin-1")
         except UnicodeDecodeError:
             return raw_bytes.decode("utf-8", errors="ignore")
+
+
+def _decode_payload_to_file_input(filename: str, raw_bytes: bytes) -> FileInput:
+    """Decode *raw_bytes* into a ``FileInput``, preserving binary data.
+
+    For text-like content, produces a normal ``FileInput`` with decoded text.
+    For binary content, preserves ``raw_bytes``, extracts printable strings
+    as ``content``, and sets binary metadata.
+    """
+    meta = binary_metadata(raw_bytes, filename)
+    is_binary = meta["is_binary"]
+
+    if is_binary:
+        extracted_text = extract_printable_text(raw_bytes)
+        return FileInput(
+            filename=filename,
+            content=extracted_text,
+            raw_bytes=raw_bytes,
+            is_binary=True,
+            byte_length=meta["byte_length"],
+            sha256=meta["sha256"],
+        )
+
+    # Text content — decode normally
+    decoded = _decode_bytes(raw_bytes, filename)
+    return FileInput(
+        filename=filename,
+        content=decoded,
+        raw_bytes=None,
+        is_binary=False,
+        byte_length=len(raw_bytes),
+        sha256=sha256_bytes(raw_bytes),
+    )
 
 
 def _is_hex_dump(raw_bytes: bytes) -> bool:
@@ -327,15 +368,23 @@ def _decode_hex_dump(raw_bytes: bytes) -> str:
         return raw_bytes.decode("utf-8", errors="ignore")
 
 
-def _decode_payload(filename: str, raw_bytes: bytes) -> list[tuple[str, str]]:
+def _decode_payload(filename: str, raw_bytes: bytes) -> list[FileInput]:
+    """Decode *raw_bytes* into one or more ``FileInput`` objects.
+
+    Archives (ZIP, GZIP, tar) are expanded into per-member ``FileInput``
+    objects. Plain files produce a single ``FileInput``. Each member is
+    independently classified as text or binary.
+    """
     archive_members = _extract_archive_members(filename, raw_bytes)
     if archive_members:
-        expanded: list[tuple[str, str]] = []
+        expanded: list[FileInput] = []
         for member_name, member_bytes in archive_members:
             synthetic_name = f"{filename}:{member_name}"
-            expanded.append((synthetic_name, _decode_bytes(member_bytes, synthetic_name)))
+            expanded.append(
+                _decode_payload_to_file_input(synthetic_name, member_bytes)
+            )
         return expanded
-    return [(filename, _decode_bytes(raw_bytes, filename))]
+    return [_decode_payload_to_file_input(filename, raw_bytes)]
 
 
 def _extract_archive_members(filename: str, raw_bytes: bytes) -> list[tuple[str, bytes]]:
@@ -386,11 +435,35 @@ def _extract_archive_members(filename: str, raw_bytes: bytes) -> list[tuple[str,
 # ── Parse and merge with universal AI parser + raw fallback ──────────────
 
 
+def _make_json_safe_pipeline_result(result: ParserPipelineResult) -> dict[str, Any]:
+    """Convert a ``ParserPipelineResult`` to a JSON-safe dict.
+
+    Replaces any raw ``bytes`` in records with metadata summaries
+    (byte length, SHA-256, truncation flag) to avoid serialization
+    failures when storing ``process.result``.
+    """
+    data = result.model_dump()
+    for table_name, records in data.get("records", {}).items():
+        for record in records:
+            for key, value in list(record.items()):
+                if isinstance(value, bytes):
+                    record[key] = {
+                        "_binary": True,
+                        "byte_length": len(value),
+                        "sha256": sha256_bytes(value),
+                        "truncated": False,
+                    }
+    return data
+
+
 def _parse_and_merge(
     file_inputs: list[FileInput],
     classification: ClassificationResult,
 ) -> ParserPipelineResult:
-    """Parse all files using the universal AI parser, falling back to raw ingest.
+    """Parse all files using the appropriate parser for each file type.
+
+    - Binary files (``is_binary=True``) are routed to ``binary_file`` parser.
+    - Text files are parsed with ``universal_ai``, falling back to ``raw_ingest``.
 
     Confidence aggregation uses conservative row-weighted scoring:
       - Each parser's confidence is weighted by its row contribution.
@@ -411,61 +484,101 @@ def _parse_and_merge(
         "table_row_counts": {},
     }
 
-    # Try universal AI parser first
-    ai_result = None
-    try:
-        ai_pipeline = ParserRegistry.route("universal_ai")
-        ai_result = ai_pipeline.ingest(file_inputs, classification)
+    # ── Split binary vs. text files ──────────────────────────────────
+    binary_inputs: list[FileInput] = []
+    text_inputs: list[FileInput] = []
+    for fi in file_inputs:
+        if fi.is_binary:
+            binary_inputs.append(fi)
+        else:
+            text_inputs.append(fi)
 
-        merged_table_definitions.extend(ai_result.table_definitions)
-        merged_records.update(ai_result.records)
-        merged_warnings.extend(ai_result.warnings)
-        used_parser_keys.append(ai_result.parser_key)
-        merged_diagnostics["parsers"]["universal_ai"] = ai_result.diagnostics or {}
+    fallback_used = False  # tracks whether raw_ingest fallback was used
 
-        ai_row_count = sum(len(rows) for rows in ai_result.records.values())
-        parser_confidences.append(ai_result.confidence)
-        parser_row_counts.append(ai_row_count)
-    except Exception as error:  # noqa: BLE001
-        logger.exception("Universal AI parser failed")
-        merged_warnings.append(f"Universal AI parser failed: {error}")
-        merged_diagnostics["fallbacks"].append({
-            "from_parser": "universal_ai",
-            "to_parser": "raw_ingest",
-            "reason": str(error),
-        })
-
-    # If AI returned no rows or failed, fall back to raw ingest
-    ai_has_rows = ai_result is not None and any(ai_result.records.values())
-    if not ai_has_rows:
-        fallback_used = True
+    # ── Parse binary files with BinaryFileParser ─────────────────────
+    if binary_inputs:
         try:
-            fallback_pipeline = ParserRegistry.route("raw_ingest")
-            fallback_result = fallback_pipeline.ingest(file_inputs, classification)
+            binary_pipeline = ParserRegistry.route(BINARY_PARSER_KEY)
+            binary_result = binary_pipeline.ingest(binary_inputs, classification)
 
-            # If AI had partial results, merge fallback into them
-            if fallback_result.table_definitions:
-                merged_table_definitions = fallback_result.table_definitions
-            if fallback_result.records:
-                merged_records.update(fallback_result.records)
-            merged_warnings.extend(fallback_result.warnings)
-            used_parser_keys.append(fallback_result.parser_key)
-            merged_diagnostics["parsers"]["raw_ingest"] = fallback_result.diagnostics or {}
+            merged_table_definitions.extend(binary_result.table_definitions)
+            merged_records.update(binary_result.records)
+            merged_warnings.extend(binary_result.warnings)
+            used_parser_keys.append(binary_result.parser_key)
+            merged_diagnostics["parsers"][BINARY_PARSER_KEY] = binary_result.diagnostics or {}
+
+            binary_row_count = sum(len(rows) for rows in binary_result.records.values())
+            parser_confidences.append(binary_result.confidence)
+            parser_row_counts.append(binary_row_count)
+        except Exception as error:  # noqa: BLE001
+            logger.exception("Binary file parser failed")
+            merged_warnings.append(f"Binary file parser failed: {error}")
             merged_diagnostics["fallbacks"].append({
-                "from_parser": "universal_ai" if ai_result is not None else "(none)",
-                "to_parser": "raw_ingest",
-                "reason": "AI parser produced no rows" if ai_result else "AI parser failed",
+                "from_parser": BINARY_PARSER_KEY,
+                "to_parser": "(none)",
+                "reason": str(error),
             })
 
-            fallback_row_count = sum(len(rows) for rows in fallback_result.records.values())
-            parser_confidences.append(fallback_result.confidence)
-            parser_row_counts.append(fallback_row_count)
-        except Exception as fallback_error:  # noqa: BLE001
-            logger.exception("Raw ingest fallback also failed")
-            merged_warnings.append(f"Raw ingest fallback also failed: {fallback_error}")
-            fallback_used = False
+    # ── Parse text files with universal AI parser ────────────────────
+    if not text_inputs:
+        # All files were binary — skip AI/text parser entirely
+        pass
     else:
-        fallback_used = False
+        # Try universal AI parser first
+        ai_result = None
+        try:
+            ai_pipeline = ParserRegistry.route("universal_ai")
+            ai_result = ai_pipeline.ingest(text_inputs, classification)
+
+            merged_table_definitions.extend(ai_result.table_definitions)
+            merged_records.update(ai_result.records)
+            merged_warnings.extend(ai_result.warnings)
+            used_parser_keys.append(ai_result.parser_key)
+            merged_diagnostics["parsers"]["universal_ai"] = ai_result.diagnostics or {}
+
+            ai_row_count = sum(len(rows) for rows in ai_result.records.values())
+            parser_confidences.append(ai_result.confidence)
+            parser_row_counts.append(ai_row_count)
+        except Exception as error:  # noqa: BLE001
+            logger.exception("Universal AI parser failed")
+            merged_warnings.append(f"Universal AI parser failed: {error}")
+            merged_diagnostics["fallbacks"].append({
+                "from_parser": "universal_ai",
+                "to_parser": "raw_ingest",
+                "reason": str(error),
+            })
+
+        # If AI returned no rows or failed, fall back to raw ingest
+        ai_has_rows = ai_result is not None and any(ai_result.records.values())
+        if not ai_has_rows:
+            fallback_used = True
+            try:
+                fallback_pipeline = ParserRegistry.route("raw_ingest")
+                fallback_result = fallback_pipeline.ingest(text_inputs, classification)
+
+                # If AI had partial results, merge fallback into them
+                if fallback_result.table_definitions:
+                    merged_table_definitions = fallback_result.table_definitions
+                if fallback_result.records:
+                    merged_records.update(fallback_result.records)
+                merged_warnings.extend(fallback_result.warnings)
+                used_parser_keys.append(fallback_result.parser_key)
+                merged_diagnostics["parsers"]["raw_ingest"] = fallback_result.diagnostics or {}
+                merged_diagnostics["fallbacks"].append({
+                    "from_parser": "universal_ai" if ai_result is not None else "(none)",
+                    "to_parser": "raw_ingest",
+                    "reason": "AI parser produced no rows" if ai_result else "AI parser failed",
+                })
+
+                fallback_row_count = sum(len(rows) for rows in fallback_result.records.values())
+                parser_confidences.append(fallback_result.confidence)
+                parser_row_counts.append(fallback_row_count)
+            except Exception as fallback_error:  # noqa: BLE001
+                logger.exception("Raw ingest fallback also failed")
+                merged_warnings.append(f"Raw ingest fallback also failed: {fallback_error}")
+                fallback_used = False
+        else:
+            fallback_used = False
 
     # ── Conservative confidence aggregation ──────────────────────────
     total_rows = sum(parser_row_counts)

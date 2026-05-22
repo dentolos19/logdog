@@ -6,8 +6,34 @@ from pathlib import Path
 # Ensure the server src is on the path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
+from parsers.binary import is_probably_binary, safe_decode_text
 from parsers.preprocessor import FileInput, LogPreprocessorService
 from parsers.registry import ParserRegistry
+
+
+def _make_file_input(sample_path: Path, filename: str) -> FileInput:
+    """Create a ``FileInput`` from a sample file, handling binary files safely."""
+    raw_bytes = sample_path.read_bytes()
+
+    if is_probably_binary(raw_bytes, filename):
+        from parsers.binary import extract_printable_text
+
+        return FileInput(
+            filename=filename,
+            content=extract_printable_text(raw_bytes),
+            raw_bytes=raw_bytes,
+            is_binary=True,
+            byte_length=len(raw_bytes),
+        )
+
+    content = safe_decode_text(raw_bytes)
+    return FileInput(
+        filename=filename,
+        content=content,
+        raw_bytes=None,
+        is_binary=False,
+        byte_length=len(raw_bytes),
+    )
 
 
 def test_all_samples():
@@ -26,24 +52,23 @@ def test_all_samples():
         # Skip hidden files
         if sample_path.name.startswith("."):
             continue
-
-        filename = str(sample_path.relative_to(samples_dir))
-        try:
-            content = sample_path.read_text(encoding="utf-8", errors="ignore")
-        except Exception as e:
-            print(f"FAIL {filename}: could not read ({e})")
-            all_passed = False
+        # Skip gold files
+        if sample_path.suffix == ".gold.json":
             continue
 
+        filename = str(sample_path.relative_to(samples_dir))
+
         try:
-            # Classify the file (always returns ai_universal)
+            file_input = _make_file_input(sample_path, filename)
+
+            # Classify the file
             preprocessor = LogPreprocessorService(table_name="logs", use_llm=False)
-            file_input = FileInput(filename=filename, content=content)
             classification = preprocessor.classify([file_input])
 
-            # Route through registry
+            # Route through registry (the binary parser is auto-discovered)
             ParserRegistry.discover()
-            pipeline = ParserRegistry.route("universal_ai")
+            parser_key = classification.selected_parser_key
+            pipeline = ParserRegistry.route(parser_key)
             result = pipeline.ingest([file_input], classification)
 
             if not result.table_definitions and not result.records:

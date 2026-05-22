@@ -66,11 +66,15 @@ class ClassificationResult(BaseModel):
     diagnostics: dict[str, Any] = Field(default_factory=dict)
 
 
+BINARY_PARSER_KEY = "binary_file"
+
+
 class ParserSupportRequest(BaseModel):
     file_id: str | None = None
     filename: str
-    content: str
+    content: str = ""
     mime_type: str | None = None
+    is_binary: bool = False
 
 
 class ParserSupportResult(BaseModel):
@@ -118,6 +122,15 @@ BASELINE_COLUMNS: list[ColumnDefinition] = [
 
 BASELINE_COLUMN_NAMES: frozenset[str] = frozenset(column.name for column in BASELINE_COLUMNS)
 
+# Binary overflow column — used by BinaryFileParser to store raw unparsed bytes
+BINARY_OVERFLOW_COLUMN: ColumnDefinition = ColumnDefinition(
+    name="raw_binary_overflow",
+    sql_type="BYTEA",
+    nullable=True,
+    description="Raw unparsed binary bytes that could not be decoded as text.",
+)
+
+BINARY_OVERFLOW_COLUMN_NAME: str = BINARY_OVERFLOW_COLUMN.name
 
 # ── AI Parser Contracts ────────────────────────────────────────────────────
 

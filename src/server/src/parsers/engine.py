@@ -8,7 +8,16 @@ import re
 import xml.etree.ElementTree as ET
 from typing import Any
 
+from parsers.binary import (
+    detect_magic,
+    extract_printable_strings,
+    preview_hex,
+    sha256_bytes,
+)
 from parsers.contracts import (
+    BINARY_OVERFLOW_COLUMN,
+    BINARY_OVERFLOW_COLUMN_NAME,
+    BINARY_PARSER_KEY,
     BASELINE_COLUMNS,
     BASELINE_COLUMN_NAMES,
     AiExtractionDiagnostics,
@@ -18,6 +27,7 @@ from parsers.contracts import (
     ParserPipelineResult,
     ParserSupportRequest,
     ParserSupportResult,
+    StructuralClass,
     TableDefinition,
     build_ddl,
     make_display_name,
@@ -1805,3 +1815,196 @@ class RawIngestFallbackParser(ParserPipeline):
             })
 
         return entries
+
+
+# ── Binary File Parser ──────────────────────────────────────────────────
+
+
+class BinaryFileParser(ParserPipeline):
+    """Parser for raw binary files that cannot be decoded as text.
+
+    Emits one row per binary file with metadata columns and the raw unparsed
+    bytes stored in a ``raw_binary_overflow`` BYTEA column.
+
+    If string extraction is possible, the extracted printable text is
+    stored in ``extracted_text`` and ``message``. The ``raw`` baseline column
+    contains a hex preview for display purposes.
+    """
+
+    parser_key = BINARY_PARSER_KEY
+
+    # Max bytes to store in raw_binary_overflow per row
+    MAX_BINARY_OVERFLOW_BYTES = 10 * 1024 * 1024  # 10 MB
+
+    # Binary metadata columns (fixed schema)
+    BINARY_COLUMNS: list[ColumnDefinition] = [
+        BINARY_OVERFLOW_COLUMN,
+        ColumnDefinition(
+            name="source",
+            sql_type="TEXT",
+            nullable=False,
+            description="Source filename of the binary file.",
+        ),
+        ColumnDefinition(
+            name="byte_length",
+            sql_type="BIGINT",
+            nullable=True,
+            description="Total byte length of the binary file.",
+        ),
+        ColumnDefinition(
+            name="sha256",
+            sql_type="TEXT",
+            nullable=True,
+            description="SHA-256 hex digest of the raw bytes.",
+        ),
+        ColumnDefinition(
+            name="magic_hex",
+            sql_type="TEXT",
+            nullable=True,
+            description="Magic bytes in space-separated hex format.",
+        ),
+        ColumnDefinition(
+            name="magic_label",
+            sql_type="TEXT",
+            nullable=True,
+            description="Human-readable label for detected magic bytes.",
+        ),
+        ColumnDefinition(
+            name="preview_hex",
+            sql_type="TEXT",
+            nullable=True,
+            description="Hex preview of the first 256 bytes.",
+        ),
+        ColumnDefinition(
+            name="extracted_text",
+            sql_type="TEXT",
+            nullable=True,
+            description="Printable strings extracted from the binary stream.",
+        ),
+        ColumnDefinition(
+            name="extracted_string_count",
+            sql_type="INTEGER",
+            nullable=True,
+            description="Number of printable strings extracted.",
+        ),
+        ColumnDefinition(
+            name="raw_binary_truncated",
+            sql_type="BOOLEAN",
+            nullable=True,
+            description="True if raw_binary_overflow was truncated.",
+        ),
+        ColumnDefinition(
+            name="binary_parse_error",
+            sql_type="TEXT",
+            nullable=True,
+            description="Error message if binary parsing failed.",
+        ),
+    ]
+
+    def __init__(self) -> None:
+        self._binary_column_names = frozenset(c.name for c in self.BINARY_COLUMNS)
+
+    def parse(
+        self,
+        file_inputs: list[FileInput],
+        classification: ClassificationResult,
+    ) -> ParserPipelineResult:
+        table_name = make_megabase_table_name()
+        all_rows: list[dict[str, Any]] = []
+        warnings: list[str] = []
+
+        for file_input in file_inputs:
+            raw_bytes = file_input.raw_bytes
+            if not raw_bytes:
+                warnings.append(f"No raw bytes for '{file_input.filename}'.")
+                continue
+
+            magic_hex, magic_label = detect_magic(raw_bytes)
+            strings = extract_printable_strings(raw_bytes)
+            truncated = len(raw_bytes) > self.MAX_BINARY_OVERFLOW_BYTES
+            overflow_bytes = raw_bytes[: self.MAX_BINARY_OVERFLOW_BYTES]
+
+            row: dict[str, Any] = {
+                "source": file_input.filename,
+                "raw": preview_hex(raw_bytes, max_bytes=128),
+                "message": (strings[0][:500] if strings else ""),
+                "byte_length": len(raw_bytes),
+                "sha256": sha256_bytes(raw_bytes),
+                "magic_hex": magic_hex,
+                "magic_label": magic_label,
+                "preview_hex": preview_hex(raw_bytes),
+                "extracted_text": "\n".join(strings) if strings else None,
+                "extracted_string_count": len(strings),
+                "raw_binary_overflow": overflow_bytes,
+                "raw_binary_truncated": truncated,
+                "binary_parse_error": None,
+            }
+
+            all_rows.append(row)
+
+        if not all_rows:
+            return ParserPipelineResult(
+                table_definitions=[],
+                records={},
+                parser_key=self.parser_key,
+                confidence=0.0,
+                warnings=warnings,
+                diagnostics={"skip_table": True},
+            )
+
+        # Build columns: baseline + binary-specific
+        columns = list(BASELINE_COLUMNS)
+        seen_names: set[str] = set(BASELINE_COLUMN_NAMES)
+        for col_def in self.BINARY_COLUMNS:
+            if col_def.name not in seen_names:
+                columns.append(col_def)
+                seen_names.add(col_def.name)
+
+        # Collect dynamic columns from data
+        dynamic_cols: dict[str, set[Any]] = {}
+        for row in all_rows:
+            for key, value in row.items():
+                if key not in seen_names and value is not None:
+                    dynamic_cols.setdefault(key, set()).add(value)
+
+        for col_name, values in dynamic_cols.items():
+            from parsers.normalization import infer_sql_type
+
+            sql_type = infer_sql_type(list(values))
+            columns.append(
+                ColumnDefinition(
+                    name=col_name,
+                    sql_type=sql_type,
+                    nullable=True,
+                )
+            )
+            seen_names.add(col_name)
+
+        table_def = TableDefinition(
+            table_name=table_name,
+            display_name=make_display_name(self.parser_key, None, file_inputs[0].filename if file_inputs else "binary"),
+            columns=columns,
+            ddl=build_ddl(table_name, columns),
+        )
+
+        return ParserPipelineResult(
+            table_definitions=[table_def],
+            records={table_name: all_rows},
+            parser_key=self.parser_key,
+            confidence=1.0,
+            warnings=warnings,
+            diagnostics={
+                "row_counts": {table_name: len(all_rows)},
+                "binary_file_count": len(all_rows),
+            },
+        )
+
+    def supports(self, request: ParserSupportRequest) -> ParserSupportResult:
+        return ParserSupportResult(
+            parser_key=self.parser_key,
+            supported=request.is_binary,
+            score=1.0 if request.is_binary else 0.0,
+            detected_format="binary" if request.is_binary else None,
+            structural_class=StructuralClass.BINARY if request.is_binary else None,
+            reasons=["Binary file detected"] if request.is_binary else [],
+        )

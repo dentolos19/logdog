@@ -88,7 +88,8 @@ class _ParserRegistry:
             file_id=file_input.file_id,
             filename=file_input.filename,
             content=file_input.content,
-            mime_type=mime_type,
+            mime_type=mime_type or file_input.mime_type,
+            is_binary=file_input.is_binary,
         )
 
         results: list[ParserSupportResult] = []
@@ -178,9 +179,14 @@ class _ParserRegistry:
             self._pipelines.clear()
 
         try:
-            from parsers.engine import RawIngestFallbackParser, UniversalAIParser
+            from parsers.engine import (
+                BinaryFileParser,
+                RawIngestFallbackParser,
+                UniversalAIParser,
+            )
 
             self.register(UniversalAIParser())
+            self.register(BinaryFileParser())
             self.register(RawIngestFallbackParser())
         except Exception as error:  # noqa: BLE001
             logger.warning("Could not register parser pipelines: %s", error)
