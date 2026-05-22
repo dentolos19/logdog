@@ -297,6 +297,5 @@ def test_lambda_sample_promotes_common_fields():
 
     for col, count in populated.items():
         assert count > 0, (
-            f"Column {col!r} was never populated with a non-null value "
-            f"in any of the {len(rows)} parsed rows"
+            f"Column {col!r} was never populated with a non-null value in any of the {len(rows)} parsed rows"
         )

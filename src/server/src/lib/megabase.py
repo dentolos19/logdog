@@ -75,7 +75,7 @@ _engine = _get_engine()
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
 
 _registry_table = Table(
-    "megabase_tables",
+    "tables",
     metadata,
     Column("table_name", String, primary_key=True),
     Column("schema_json", Text, nullable=False),

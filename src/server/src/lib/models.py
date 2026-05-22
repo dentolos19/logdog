@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import declarative_base, relationship
 
@@ -60,10 +60,10 @@ class LogGroup(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     user = relationship("User", back_populates="log_groups")
-    files = relationship("LogFile", back_populates="group")
-    tables = relationship("LogTable", back_populates="group")
-    messages = relationship("LogMessage", back_populates="group")
-    processes = relationship("LogProcess", back_populates="group")
+    files = relationship("LogFile", back_populates="group", cascade="all, delete-orphan")
+    tables = relationship("LogTable", back_populates="group", cascade="all, delete-orphan")
+    messages = relationship("LogMessage", back_populates="group", cascade="all, delete-orphan")
+    processes = relationship("LogProcess", back_populates="group", cascade="all, delete-orphan")
     reports = relationship("LogReport", back_populates="group", cascade="all, delete-orphan")
 
 
@@ -79,13 +79,13 @@ class LogFile(Base):
     )
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     asset_id = Column(UUID(as_uuid=True), ForeignKey("assets.id"), nullable=False)
-    group_id = Column(UUID(as_uuid=True), ForeignKey("log_groups.id"), nullable=False)
+    group_id = Column(UUID(as_uuid=True), ForeignKey("log_groups.id", ondelete="CASCADE"), nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     user = relationship("User", back_populates="files")
     asset = relationship("Asset", back_populates="files")
     group = relationship("LogGroup", back_populates="files")
-    processes = relationship("LogProcess", back_populates="file")
+    processes = relationship("LogProcess", back_populates="file", cascade="all, delete-orphan")
 
 
 class LogTable(Base):
@@ -98,7 +98,7 @@ class LogTable(Base):
         nullable=False,
         default=uuid.uuid4,
     )
-    group_id = Column(UUID(as_uuid=True), ForeignKey("log_groups.id"), nullable=False)
+    group_id = Column(UUID(as_uuid=True), ForeignKey("log_groups.id", ondelete="CASCADE"), nullable=False)
     name = Column(String, nullable=False)
     table = Column(String, nullable=False)  # From the megabase
     schema = Column(String, nullable=False)
@@ -117,7 +117,7 @@ class LogMessage(Base):
         nullable=False,
         default=uuid.uuid4,
     )
-    group_id = Column(UUID(as_uuid=True), ForeignKey("log_groups.id"), nullable=False)
+    group_id = Column(UUID(as_uuid=True), ForeignKey("log_groups.id", ondelete="CASCADE"), nullable=False)
     role = Column(String, nullable=False)
     content = Column(String, nullable=False)
     payload = Column(String, nullable=True)
@@ -136,8 +136,8 @@ class LogProcess(Base):
         nullable=False,
         default=uuid.uuid4,
     )
-    group_id = Column(UUID(as_uuid=True), ForeignKey("log_groups.id"), nullable=False, index=True)
-    file_id = Column(UUID(as_uuid=True), ForeignKey("log_files.id"), nullable=True, index=True)
+    group_id = Column(UUID(as_uuid=True), ForeignKey("log_groups.id", ondelete="CASCADE"), nullable=False, index=True)
+    file_id = Column(UUID(as_uuid=True), ForeignKey("log_files.id", ondelete="SET NULL"), nullable=True, index=True)
     status = Column(String, nullable=False, default="queued")
     classification = Column(Text, nullable=True)
     result = Column(Text, nullable=True)
@@ -159,7 +159,7 @@ class LogReport(Base):
         nullable=False,
         default=uuid.uuid4,
     )
-    group_id = Column(UUID(as_uuid=True), ForeignKey("log_groups.id"), nullable=False, index=True)
+    group_id = Column(UUID(as_uuid=True), ForeignKey("log_groups.id", ondelete="CASCADE"), nullable=False, index=True)
     content = Column(JSONB, nullable=False, default=dict)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 

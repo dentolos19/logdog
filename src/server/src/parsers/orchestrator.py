@@ -25,9 +25,6 @@ from lib.storage import download_file
 from parsers.binary import (
     binary_metadata,
     extract_printable_text,
-    is_probably_binary,
-    preview_hex,
-    safe_decode_text,
     sha256_bytes,
 )
 from parsers.contracts import (

@@ -16,7 +16,6 @@ from parsers.binary import (
 )
 from parsers.contracts import (
     BINARY_OVERFLOW_COLUMN,
-    BINARY_OVERFLOW_COLUMN_NAME,
     BINARY_PARSER_KEY,
     BASELINE_COLUMNS,
     BASELINE_COLUMN_NAMES,

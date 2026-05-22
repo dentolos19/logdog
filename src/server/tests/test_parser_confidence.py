@@ -409,7 +409,6 @@ class TestOrchestratorAggregation:
 
     def test_confidence_formula_version_present(self):
         """The formula version should be a non-empty string."""
-        from parsers.engine import CONFIDENCE_FORMULA_VERSION
 
         assert CONFIDENCE_FORMULA_VERSION == "parser-v1"
 
@@ -450,8 +449,6 @@ class TestEndToEnd:
 
     def test_parser_diagnostics_include_components(self):
         """Parser diagnostics should include confidence_components when rows exist."""
-        from parsers.engine import UniversalAIParser
-        from parsers.contracts import ClassificationResult, StructuralClass, FileClassification
 
         # We can't easily test UniversalAIParser without mocking LLM,
         # but we can verify the diagnostics structure.

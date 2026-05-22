@@ -22,10 +22,7 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = [
-    "pytest>=9.0.3",
-    "ruff",
-]
+dev = ["pytest", "ruff"]
 
 [tool.ruff]
 line-length = 120

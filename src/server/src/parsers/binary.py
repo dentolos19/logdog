@@ -8,7 +8,6 @@ safe fallback decoding for mixed text, and printable-string extraction
 from __future__ import annotations
 
 import hashlib
-import re
 from typing import Any
 
 # Thresholds for binary detection

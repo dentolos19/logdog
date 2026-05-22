@@ -542,9 +542,14 @@ def delete_log_group(
 ):
     group = _require_owned_group(database=database, group_id=group_id, user_id=current_user.id)
 
+    # 1. Collect megabase table names and orphan asset IDs before cascade deletion
     log_tables = database.query(LogTable).filter(LogTable.group_id == group.id).all()
     table_names = [table.table for table in log_tables]
 
+    file_rows = database.query(LogFile).filter(LogFile.group_id == group.id).all()
+    orphan_asset_ids = {file_row.asset_id for file_row in file_rows}
+
+    # 2. Drop all megabase tables associated with this group
     if table_names:
         megabase_database = MegabaseSessionLocal()
         try:
@@ -557,24 +562,11 @@ def delete_log_group(
         finally:
             megabase_database.close()
 
-    file_rows = database.query(LogFile).filter(LogFile.group_id == group.id).all()
-    orphan_asset_ids = {file_row.asset_id for file_row in file_rows}
-
-    for file_row in file_rows:
-        database.delete(file_row)
-
-    for message in database.query(LogMessage).filter(LogMessage.group_id == group.id).all():
-        database.delete(message)
-
-    for process in database.query(LogProcess).filter(LogProcess.group_id == group.id).all():
-        database.delete(process)
-
-    for table in log_tables:
-        database.delete(table)
-
+    # 3. Delete the group — ORM cascades to all children (files, tables, messages, processes, reports)
     database.delete(group)
     database.commit()
 
+    # 4. Delete orphan S3 assets (no remaining LogFile references)
     if orphan_asset_ids:
         background_tasks.add_task(_delete_orphan_assets, list(orphan_asset_ids))
 
@@ -873,10 +865,15 @@ def delete_log_file_route(
     group = _require_owned_group(database=database, group_id=group_id, user_id=current_user.id)
     log_file, _ = _require_owned_file(database=database, group_id=str(group.id), file_id=file_id)
 
+    # 1. Drop megabase tables created by this file's processes
+    _cleanup_generated_tables_for_file(database=database, group_id=str(group.id), file_id=file_id)
+
+    # 2. Delete the file — cascades to associated processes
     asset_id = log_file.asset_id
     database.delete(log_file)
     database.commit()
 
+    # 3. Delete the underlying asset if no other files reference it
     remaining_links = database.query(LogFile).filter(LogFile.asset_id == asset_id).count()
     if remaining_links == 0:
         delete_file(asset_id=asset_id, db=database)
