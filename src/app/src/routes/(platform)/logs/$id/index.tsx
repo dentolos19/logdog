@@ -404,9 +404,9 @@ function LogGroupPage() {
         )}
       </PageHeader>
 
-      <main className={"flex flex-1 flex-col gap-6 overflow-y-auto min-w-0"} ref={mainRef}>
+      <main className={"flex min-w-0 flex-1 flex-col gap-6 overflow-y-auto"} ref={mainRef}>
         {group === null && fetchError === null && (
-          <div className={"flex flex-col gap-6"}>
+          <div className={"flex flex-col gap-6 p-4"}>
             <Skeleton className={"h-28 w-full rounded-lg"} />
             <Skeleton className={"h-48 w-full rounded-lg"} />
           </div>

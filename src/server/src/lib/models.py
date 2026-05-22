@@ -45,7 +45,7 @@ class Asset(Base):
 
 
 class LogGroup(Base):
-    __tablename__ = "groups"
+    __tablename__ = "log_groups"
 
     id = Column(
         UUID(as_uuid=True),
@@ -79,7 +79,7 @@ class LogFile(Base):
     )
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     asset_id = Column(UUID(as_uuid=True), ForeignKey("assets.id"), nullable=False)
-    group_id = Column(UUID(as_uuid=True), ForeignKey("groups.id"), nullable=False)
+    group_id = Column(UUID(as_uuid=True), ForeignKey("log_groups.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     user = relationship("User", back_populates="files")
@@ -98,7 +98,7 @@ class LogTable(Base):
         nullable=False,
         default=uuid.uuid4,
     )
-    group_id = Column(UUID(as_uuid=True), ForeignKey("groups.id"), nullable=False)
+    group_id = Column(UUID(as_uuid=True), ForeignKey("log_groups.id"), nullable=False)
     name = Column(String, nullable=False)
     table = Column(String, nullable=False)  # From the megabase
     schema = Column(String, nullable=False)
@@ -117,7 +117,7 @@ class LogMessage(Base):
         nullable=False,
         default=uuid.uuid4,
     )
-    group_id = Column(UUID(as_uuid=True), ForeignKey("groups.id"), nullable=False)
+    group_id = Column(UUID(as_uuid=True), ForeignKey("log_groups.id"), nullable=False)
     role = Column(String, nullable=False)
     content = Column(String, nullable=False)
     payload = Column(String, nullable=True)
@@ -136,7 +136,7 @@ class LogProcess(Base):
         nullable=False,
         default=uuid.uuid4,
     )
-    group_id = Column(UUID(as_uuid=True), ForeignKey("groups.id"), nullable=False, index=True)
+    group_id = Column(UUID(as_uuid=True), ForeignKey("log_groups.id"), nullable=False, index=True)
     file_id = Column(UUID(as_uuid=True), ForeignKey("log_files.id"), nullable=True, index=True)
     status = Column(String, nullable=False, default="queued")
     classification = Column(Text, nullable=True)
@@ -159,62 +159,8 @@ class LogReport(Base):
         nullable=False,
         default=uuid.uuid4,
     )
-    group_id = Column(UUID(as_uuid=True), ForeignKey("groups.id"), nullable=False, index=True)
+    group_id = Column(UUID(as_uuid=True), ForeignKey("log_groups.id"), nullable=False, index=True)
     content = Column(JSONB, nullable=False, default=dict)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     group = relationship("LogGroup", back_populates="reports")
-
-
-class SchemaCacheEntry(Base):
-    __tablename__ = "schema_cache"
-
-    id = Column(
-        UUID(as_uuid=True),
-        primary_key=True,
-        index=True,
-        nullable=False,
-        default=uuid.uuid4,
-    )
-    cache_key = Column(String(128), nullable=False, unique=True, index=True)
-    format_name = Column(String, nullable=False, index=True)
-    detected_format = Column(String, nullable=False, index=True)
-    structural_class = Column(String, nullable=False)
-    domain = Column(String, nullable=False, default="unknown", index=True)
-    profile_name = Column(String, nullable=True, index=True)
-    parser_key = Column(String, nullable=False, default="unified")
-    format_confidence = Column(Float, nullable=False, default=0.0)
-    sample_hash = Column(String(64), nullable=False, index=True)
-    fingerprint = Column(String(64), nullable=False, index=True)
-    columns = Column(Text, nullable=False)
-    extraction_strategy = Column(String, nullable=False, default="per_line")
-    success_count = Column(Integer, nullable=False, default=0)
-    failure_count = Column(Integer, nullable=False, default=0)
-    access_count = Column(Integer, nullable=False, default=0)
-    last_accessed = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
-
-
-class FewShotEntry(Base):
-    __tablename__ = "few_shots"
-
-    id = Column(
-        UUID(as_uuid=True),
-        primary_key=True,
-        index=True,
-        nullable=False,
-        default=uuid.uuid4,
-    )
-    signature = Column(String(64), nullable=False, unique=True, index=True)
-    format_name = Column(String, nullable=False, index=True)
-    domain = Column(String, nullable=False, default="unknown", index=True)
-    profile_name = Column(String, nullable=True, index=True)
-    fingerprint = Column(String(64), nullable=True, index=True)
-    confidence = Column(Float, nullable=False, default=1.0)
-    usage_count = Column(Integer, nullable=False, default=0)
-    sample_lines = Column(Text, nullable=False)
-    schema = Column(Text, nullable=False)
-    last_used = Column(DateTime(timezone=True), nullable=True)
-    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())

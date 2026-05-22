@@ -1161,6 +1161,50 @@ def _add_to_collect(value: Any, col_map: dict[str, set[Any]], key: str) -> None:
             col_map.setdefault(key, set()).add(value)
 
 
+def _promote_common_fields_from_extra(row: dict[str, Any]) -> None:
+    """Promote fields from ``extra`` that belong as first-class columns.
+
+    Scans the ``extra`` JSON blob for keys that are in *COMMON_COLUMNS*.
+    If the row does not already have a meaningful top-level value for that
+    key, the value is moved from ``extra`` to the row top level.  Promoted
+    keys are removed from ``extra`` to avoid duplication.
+
+    This ensures that deterministic sparsity control, not just the LLM's
+    judgment, decides which fields get their own columns.
+    """
+    extra_raw = row.get("extra")
+    if extra_raw is None:
+        return
+
+    # Parse the extra value — it may be a JSON string or already a dict
+    if isinstance(extra_raw, str):
+        try:
+            extra_dict = json.loads(extra_raw)
+        except (json.JSONDecodeError, TypeError):
+            return
+    elif isinstance(extra_raw, dict):
+        extra_dict = extra_raw
+    else:
+        return
+
+    if not isinstance(extra_dict, dict) or not extra_dict:
+        return
+
+    promoted = False
+    for key in list(extra_dict.keys()):
+        if key in COMMON_COLUMNS:
+            # Only promote if the row doesn't already carry a meaningful value
+            if key not in row or row[key] is None or row[key] == "" or row[key] == "null":
+                row[key] = extra_dict.pop(key)
+                promoted = True
+
+    if promoted:
+        if extra_dict:
+            row["extra"] = json.dumps(extra_dict, ensure_ascii=True, default=str, sort_keys=True)
+        else:
+            row["extra"] = "{}"
+
+
 def _apply_sparsity_control(rows: list[dict[str, Any]]) -> list[ColumnDefinition]:
     """Demote very sparse columns into the ``extra`` JSON column.
 
@@ -1172,6 +1216,10 @@ def _apply_sparsity_control(rows: list[dict[str, Any]]) -> list[ColumnDefinition
     """
     if not rows:
         return _build_columns({}, rows)
+
+    # ── Promote common fields from extra before density computation ────
+    for row in rows:
+        _promote_common_fields_from_extra(row)
 
     # Compute null density
     total = len(rows)
