@@ -1077,8 +1077,7 @@ def replace_chat_messages(
 ):
     group = _require_owned_group(database=database, group_id=group_id, user_id=current_user.id)
 
-    for message in database.query(LogMessage).filter(LogMessage.group_id == group.id).all():
-        database.delete(message)
+    database.query(LogMessage).filter(LogMessage.group_id == group.id).delete(synchronize_session="fetch")
 
     saved_messages = 0
     messages_to_save = payload.messages[:_MAX_PERSISTED_MESSAGES]
