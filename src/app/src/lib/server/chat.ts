@@ -1,4 +1,13 @@
-import { chat, type ModelMessage, toolDefinition, toServerSentEventsResponse } from "@tanstack/ai";
+import {
+  chat,
+  convertMessagesToModelMessages,
+  type MessagePart,
+  type ModelMessage,
+  maxIterations,
+  toolDefinition,
+  toServerSentEventsResponse,
+  type UIMessage,
+} from "@tanstack/ai";
 import { createOpenRouterText } from "@tanstack/ai-openrouter";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
@@ -252,86 +261,185 @@ function buildDiscoveredTables(processes: LogProcessResponse[]) {
     .slice(0, TABLE_RESULT_LIMIT);
 }
 
-function extractTextFromParts(parts: unknown[]) {
-  return parts
-    .map((part) => {
-      if (typeof part !== "object" || part === null) {
-        return "";
-      }
+type IncomingChatMessage = UIMessage | ModelMessage;
+type TextModelMessage = ModelMessage<string | null>;
 
-      const typedPart = part as { type?: unknown; content?: unknown };
-      if (typedPart.type !== "text" || typeof typedPart.content !== "string") {
-        return "";
-      }
-
-      return typedPart.content;
-    })
-    .filter((value) => value.length > 0)
-    .join("\n");
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
-function toTextModelMessages(messages: unknown[]) {
-  const modelMessages: Array<ModelMessage<string>> = [];
+function normalizeMessagePart(part: unknown): MessagePart | null {
+  if (!isRecord(part)) {
+    return null;
+  }
+
+  if (part.type === "text" && typeof part.content === "string") {
+    return { type: "text", content: part.content.slice(0, MAX_MESSAGE_CONTENT_LENGTH) };
+  }
+
+  if (
+    part.type === "tool-call" &&
+    typeof part.id === "string" &&
+    typeof part.name === "string" &&
+    typeof part.arguments === "string"
+  ) {
+    const state =
+      part.state === "awaiting-input" ||
+      part.state === "input-streaming" ||
+      part.state === "input-complete" ||
+      part.state === "approval-requested" ||
+      part.state === "approval-responded"
+        ? part.state
+        : "input-complete";
+
+    return {
+      type: "tool-call",
+      id: part.id,
+      name: part.name,
+      arguments: part.arguments,
+      state,
+      ...("output" in part ? { output: part.output } : {}),
+      ...(isRecord(part.approval) ? { approval: part.approval as never } : {}),
+    };
+  }
+
+  if (part.type === "tool-result" && typeof part.toolCallId === "string" && typeof part.content === "string") {
+    return {
+      type: "tool-result",
+      toolCallId: part.toolCallId,
+      content: part.content.slice(0, MAX_MESSAGE_CONTENT_LENGTH),
+      state: part.state === "error" ? "error" : "complete",
+      ...(typeof part.error === "string" ? { error: part.error } : {}),
+    };
+  }
+
+  return null;
+}
+
+function normalizeMessageParts(parts: unknown[]): MessagePart[] {
+  return parts.map(normalizeMessagePart).filter((part): part is MessagePart => part !== null);
+}
+
+function normalizeIncomingMessages(messages: unknown[]): IncomingChatMessage[] {
+  const normalizedMessages: IncomingChatMessage[] = [];
 
   for (const message of messages) {
-    if (typeof message !== "object" || message === null) {
+    if (!isRecord(message)) {
       continue;
     }
 
-    const typedMessage = message as {
-      role?: unknown;
-      content?: unknown;
-      parts?: unknown;
-    };
-    const role = typedMessage.role === "user" || typedMessage.role === "assistant" ? typedMessage.role : null;
+    const role = message.role === "user" || message.role === "assistant" ? message.role : null;
     if (role === null) {
       continue;
     }
 
-    const content =
-      typeof typedMessage.content === "string"
-        ? typedMessage.content
-        : Array.isArray(typedMessage.parts)
-          ? extractTextFromParts(typedMessage.parts)
-          : "";
-
-    if (content.trim().length === 0) {
+    if (Array.isArray(message.parts)) {
+      normalizedMessages.push({
+        id: typeof message.id === "string" ? message.id : crypto.randomUUID(),
+        role,
+        parts: normalizeMessageParts(message.parts),
+      });
       continue;
     }
 
-    modelMessages.push({
-      role,
-      content: content.slice(0, MAX_MESSAGE_CONTENT_LENGTH),
-    });
+    if (typeof message.content === "string") {
+      normalizedMessages.push({
+        role,
+        content: message.content.slice(0, MAX_MESSAGE_CONTENT_LENGTH),
+      });
+    }
   }
 
-  return modelMessages;
+  return normalizedMessages;
+}
+
+function truncateModelContent(content: ModelMessage["content"]): string | null {
+  if (typeof content === "string") {
+    return content.slice(0, MAX_MESSAGE_CONTENT_LENGTH);
+  }
+
+  if (Array.isArray(content)) {
+    const textContent = content
+      .filter((part) => part.type === "text")
+      .map((part) => part.content)
+      .join("\n")
+      .slice(0, MAX_MESSAGE_CONTENT_LENGTH);
+    return textContent.length > 0 ? textContent : null;
+  }
+
+  return null;
+}
+
+function hasModelMessageContent(message: TextModelMessage) {
+  const hasTextContent = typeof message.content === "string" && message.content.trim().length > 0;
+
+  return (
+    hasTextContent || (Array.isArray(message.toolCalls) && message.toolCalls.length > 0) || message.role === "tool"
+  );
+}
+
+function toModelMessages(messages: unknown[]) {
+  const incomingMessages = normalizeIncomingMessages(messages);
+
+  return convertMessagesToModelMessages(incomingMessages)
+    .map(
+      (message): TextModelMessage => ({
+        ...message,
+        content: truncateModelContent(message.content),
+      }),
+    )
+    .filter(hasModelMessageContent);
+}
+
+function hasUserTextMessage(messages: TextModelMessage[]) {
+  return messages.some((message) => {
+    if (message.role !== "user") {
+      return false;
+    }
+
+    return typeof message.content === "string" && message.content.trim().length > 0;
+  });
+}
+
+function redactText(text: string, entryId: string, groupName: string, tableNameMap?: Map<string, string>) {
+  let content = text.replaceAll(entryId, `"${groupName}"`);
+  if (tableNameMap !== undefined) {
+    for (const [rawName, displayName] of tableNameMap) {
+      if (rawName !== displayName) {
+        content = content.replaceAll(rawName, `"${displayName}"`);
+      }
+    }
+  }
+  return content;
 }
 
 /**
- * Replaces occurrences of the raw entryId UUID and raw table_name values in chat
- * message text with their display names, so the model never sees internal IDs
- * or identifiers in prior history.
+ * Redacts raw identifiers from conversational text while leaving tool calls and
+ * tool results intact. Tool payloads are needed as follow-up context; stripping
+ * them causes the client to auto-continue the same tool call forever.
  */
 function sanitizeModelMessages(
-  messages: Array<ModelMessage<string>>,
+  messages: TextModelMessage[],
   entryId: string,
   groupName: string,
   tableNameMap?: Map<string, string>,
-): Array<ModelMessage<string>> {
+): TextModelMessage[] {
   if (entryId.length === 0 || entryId === groupName) {
     return messages;
   }
   return messages.map((msg) => {
-    let content = msg.content.replaceAll(entryId, `"${groupName}"`);
-    if (tableNameMap !== undefined) {
-      for (const [rawName, displayName] of tableNameMap) {
-        if (rawName !== displayName) {
-          content = content.replaceAll(rawName, `"${displayName}"`);
-        }
-      }
+    // Keep tool result payloads and tool-call arguments intact. They are the
+    // model's evidence trail for follow-up questions and may contain exact
+    // table identifiers required for subsequent SQL calls.
+    if (msg.role === "tool") {
+      return msg;
     }
-    return { ...msg, content };
+
+    if (typeof msg.content === "string") {
+      return { ...msg, content: redactText(msg.content, entryId, groupName, tableNameMap) };
+    }
+
+    return msg;
   });
 }
 
@@ -591,8 +699,8 @@ function createLogChatServerTools(options: { entryId: string; origin: string; au
 export const streamLogChat = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => streamLogChatInputSchema.parse(data))
   .handler(async ({ data, request }) => {
-    const modelMessages = toTextModelMessages(data.messages);
-    if (modelMessages.length === 0) {
+    const modelMessages = toModelMessages(data.messages);
+    if (!hasUserTextMessage(modelMessages)) {
       throw new Error("No text messages were provided.");
     }
 
@@ -617,8 +725,9 @@ export const streamLogChat = createServerFn({ method: "POST" })
     const groupMetadata = await fetchLogGroupMetadata(data.entryId, backendOrigin, authorizationHeader);
     const logGroupName = normalizeGroupName(groupMetadata.name);
 
-    // Fetch processes to build a table name map for sanitization, so the model
-    // never sees raw internal table_name values in prior chat history.
+    // Fetch processes to build a table name map for conversational text
+    // redaction. Tool outputs are not redacted because the model needs exact
+    // identifiers from prior tool calls to answer follow-up questions.
     const processes = await fetchLogProcesses(data.entryId, backendOrigin, authorizationHeader);
     const discoveredTables = buildDiscoveredTables(processes);
     const tableNameMap = new Map<string, string>();
@@ -628,9 +737,7 @@ export const streamLogChat = createServerFn({ method: "POST" })
       }
     }
 
-    // Sanitize prior chat history: replace any occurrence of the internal
-    // entryId UUID or raw table_name values with display names so the model
-    // doesn't see stale identifiers.
+    // Sanitize visible chat history but preserve tool-call/tool-result history.
     const sanitizedMessages = sanitizeModelMessages(modelMessages, data.entryId, logGroupName, tableNameMap);
 
     const {
@@ -647,6 +754,7 @@ export const streamLogChat = createServerFn({ method: "POST" })
       }),
       messages: sanitizedMessages,
       systemPrompts: [buildSystemPrompt(logGroupName)],
+      agentLoopStrategy: maxIterations(8),
       tools,
     });
 

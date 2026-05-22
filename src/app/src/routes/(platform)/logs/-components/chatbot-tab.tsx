@@ -63,14 +63,25 @@ function toPersistedMessages(messages: UIMessage[]) {
     }));
 }
 
-function restoreUIMessages(messages: Array<{ role: string; parts?: Array<Record<string, unknown>>; id?: string }>) {
+function restoreUIMessages(
+  messages: Array<{ role: string; content?: string; parts?: Array<Record<string, unknown>>; id?: string }>,
+) {
   return messages
     .filter((msg) => msg.role === "user" || msg.role === "assistant")
-    .map((msg) => ({
-      id: msg.id ?? crypto.randomUUID(),
-      role: msg.role as "user" | "assistant",
-      parts: (msg.parts ?? []) as UIMessage["parts"],
-    })) as UIMessage[];
+    .map((msg) => {
+      const restoredParts =
+        Array.isArray(msg.parts) && msg.parts.length > 0
+          ? (msg.parts as UIMessage["parts"])
+          : typeof msg.content === "string" && msg.content.length > 0
+            ? ([{ type: "text", content: msg.content }] as UIMessage["parts"])
+            : ([] as UIMessage["parts"]);
+
+      return {
+        id: msg.id ?? crypto.randomUUID(),
+        role: msg.role as "user" | "assistant",
+        parts: restoredParts,
+      };
+    }) as UIMessage[];
 }
 
 function hasVisibleContent(message: UIMessage) {
