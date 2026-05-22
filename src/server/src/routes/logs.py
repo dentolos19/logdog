@@ -27,9 +27,10 @@ from lib.database import SessionLocal as AppSessionLocal
 from lib.megabase import SessionLocal as MegabaseSessionLocal
 from lib.megabase import drop_table as megabase_drop_table
 from lib.megabase import init_megabase
+from lib.megabase import describe_table as megabase_describe_table
 from lib.megabase import query_records as megabase_query_records
 from lib.ai import get_generative_model
-from lib.models import Asset, LogGroup, LogFile, LogMessage, LogProcess, LogReport, LogTable, User
+from lib.models import Asset, LogGroup, LogFile, LogMessage, LogProcess, LogReport, LogTable, LogTableSummary, User
 from lib.storage import delete_file, download_file, upload_file
 from parsers.extra_grouping import group_rows_by_extra
 from parsers.orchestrator import create_process, enqueue_process, mark_process_failed
@@ -135,6 +136,14 @@ class LogInsightReport(BaseModel):
     log_sequence_narrative: str
     recommendations: list[str] = Field(default_factory=list)
     anomalies: list[str] = Field(default_factory=list)
+
+
+class TableSummaryResponse(BaseModel):
+    summary: str
+    key_observations: list[str] = Field(default_factory=list)
+    severity: str
+    next_actions: list[str] = Field(default_factory=list)
+    errors_or_anomalies: list[str] = Field(default_factory=list)
 
 
 class QueryRequest(BaseModel):
@@ -1283,6 +1292,126 @@ def get_insights(
         return None
 
     return LogInsightReport(**log_report.content)
+
+
+SUMMARY_ROWS_LIMIT = 200
+SUMMARY_CACHE_KEY = "v1"
+
+
+def _fetch_table_rows_for_summary(group_id: str, table_name: str) -> str:
+    """Fetch schema + sample rows from a specific megabase table for summarization."""
+    database = MegabaseSessionLocal()
+    try:
+        init_megabase(database)
+
+        # Fetch schema
+        try:
+            schema = megabase_describe_table(database, table_name)
+        except ValueError:
+            return f"Table '{table_name}' not found in the megabase."
+
+        columns = schema.get("columns", [])
+        column_names = [col.get("name", "?") for col in columns]
+        column_info = "\n".join(
+            f"  - {col.get('name', '?')} ({col.get('type', '?')})"
+            + (" [PK]" if col.get("primary_key") else "")
+            + (" [NOT NULL]" if col.get("nullable") is False else "")
+            for col in columns
+        )
+
+        lines: list[str] = [
+            f"Table: {table_name}",
+            f"Columns ({len(column_names)}):",
+            column_info,
+            "",
+        ]
+
+        # Sample rows
+        try:
+            result = database.execute(sa_text(f'SELECT * FROM "{table_name}" LIMIT {SUMMARY_ROWS_LIMIT}'))
+            raw_columns = [str(col) for col in result.keys()]
+            rows = result.fetchall()
+            lines.append(f"Sample rows ({len(rows)} of up to {SUMMARY_ROWS_LIMIT}):")
+            for row in rows[:20]:
+                row_dict = dict(zip(raw_columns, row))
+                serialized = {k: (str(v) if not isinstance(v, (str, int, float, bool, type(None))) else v) for k, v in row_dict.items()}
+                lines.append(json.dumps(serialized, ensure_ascii=True, default=str))
+        except Exception as e:
+            lines.append(f"Could not read rows: {e}")
+
+        return "\n".join(lines)
+    finally:
+        database.close()
+
+
+@router.get("/{group_id}/tables/{table_name}/summarize", response_model=TableSummaryResponse | None)
+def get_table_summary(
+    group_id: str,
+    table_name: str,
+    current_user: User = Depends(get_current_user),
+    database: Session = Depends(get_database),
+):
+    group = _require_owned_group(database=database, group_id=group_id, user_id=current_user.id)
+    cached = (
+        database.query(LogTableSummary)
+        .filter(
+            LogTableSummary.group_id == group.id,
+            LogTableSummary.table_name == table_name,
+        )
+        .order_by(LogTableSummary.created_at.desc())
+        .first()
+    )
+    if cached is None:
+        return None
+    return TableSummaryResponse(**cached.content)
+
+
+@router.post("/{group_id}/tables/{table_name}/summarize", response_model=TableSummaryResponse)
+def summarize_table(
+    group_id: str,
+    table_name: str,
+    current_user: User = Depends(get_current_user),
+    database: Session = Depends(get_database),
+):
+    group = _require_owned_group(database=database, group_id=group_id, user_id=current_user.id)
+
+    context = _fetch_table_rows_for_summary(str(group.id), table_name)
+
+    system_prompt = (
+        "You are an expert log analyst. Analyze the provided log table data and generate a concise, "
+        "actionable summary. Return valid JSON matching the required schema. Be concise and factual."
+    )
+
+    prompt = (
+        f"{context}\n\n"
+        "Generate a JSON summary of this log table with these fields:\n"
+        '- "summary": a 1-2 sentence overview of what this log is about\n'
+        '- "key_observations": a list of key patterns, notable events, or interesting data points (3-6 items)\n'
+        '- "severity": one of "low", "medium", "high", "critical" describing the overall severity\n'
+        '- "next_actions": a list of actionable next steps or recommended actions (2-4 items)\n'
+        '- "errors_or_anomalies": a list of errors, anomalies, or unusual patterns detected (0-3 items)\n'
+        "Be concise. Focus on what the data actually shows."
+    )
+
+    model = get_generative_model()
+    report = model.generate_structured(prompt, TableSummaryResponse, system_prompt=system_prompt)
+
+    # Remove old cached summary for this table, then save the new one
+    database.query(LogTableSummary).filter(
+        LogTableSummary.group_id == group.id,
+        LogTableSummary.table_name == table_name,
+    ).delete(synchronize_session="fetch")
+    database.flush()
+
+    db_summary = LogTableSummary(
+        group_id=group.id,
+        table_name=table_name,
+        content=report.model_dump(),
+    )
+    database.add(db_summary)
+    database.commit()
+
+    return report
 
 
 def _get_group_table_names(database: Session, group_id: str) -> set[str]:

@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import json
+import os
 
+from collections import Counter
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from lib.database import get_database
-from lib.models import LogGroup, LogFile, LogProcess, User
+from lib.models import Asset, LogGroup, LogFile, LogProcess, User
 from routes.auth import get_current_user
 
 router = APIRouter(prefix="/stats", tags=["stats"])
@@ -31,6 +33,7 @@ class DashboardStatsResponse(BaseModel):
     total_files: int
     total_rows: int
     processes: ProcessStatusCount
+    avg_parser_confidence: float | None = None
     format_distribution: list[FormatCount]
 
 
@@ -58,31 +61,6 @@ def _count_rows_from_process_result(result: str | None):
     return total_rows
 
 
-def _extract_parser_key(result: str | None) -> str | None:
-    if not result:
-        return None
-
-    try:
-        parsed = json.loads(result)
-    except (json.JSONDecodeError, TypeError):
-        return None
-
-    if not isinstance(parsed, dict):
-        return None
-
-    parser_key = parsed.get("parser_key")
-    if isinstance(parser_key, str) and parser_key:
-        return parser_key
-
-    classification = parsed.get("classification")
-    if isinstance(classification, dict):
-        selected = classification.get("selected_parser_key")
-        if isinstance(selected, str) and selected:
-            return selected
-
-    return None
-
-
 @router.get("", response_model=DashboardStatsResponse)
 def get_dashboard_stats(
     current_user: User = Depends(get_current_user),
@@ -96,6 +74,8 @@ def get_dashboard_stats(
     completed = 0
     failed = 0
     total_rows = 0
+    confidence_sum = 0.0
+    confidence_count = 0
 
     process_rows = (
         database.query(LogProcess.status, LogProcess.result)
@@ -104,7 +84,6 @@ def get_dashboard_stats(
         .all()
     )
 
-    format_counts: dict[str, int] = {}
     for status, result in process_rows:
         if status == "queued":
             queued += 1
@@ -113,15 +92,36 @@ def get_dashboard_stats(
         elif status == "completed":
             completed += 1
             total_rows += _count_rows_from_process_result(result)
-            parser_key = _extract_parser_key(result)
-            if parser_key:
-                format_counts[parser_key] = format_counts.get(parser_key, 0) + 1
+            if result:
+                try:
+                    parsed = json.loads(result)
+                    if isinstance(parsed, dict):
+                        confidence = parsed.get("confidence")
+                        if isinstance(confidence, (int, float)):
+                            confidence_sum += max(0.0, min(float(confidence), 1.0))
+                            confidence_count += 1
+                except (json.JSONDecodeError, TypeError):
+                    pass
         elif status == "failed":
             failed += 1
 
+    avg_parser_confidence = round(confidence_sum / confidence_count, 2) if confidence_count > 0 else None
+
+    file_format_counts: Counter[str] = Counter()
+    file_assets = (
+        database.query(Asset.name)
+        .join(LogFile, LogFile.asset_id == Asset.id)
+        .join(LogGroup, LogFile.group_id == LogGroup.id)
+        .filter(LogGroup.user_id == current_user.id)
+        .all()
+    )
+    for (name,) in file_assets:
+        ext = os.path.splitext(name)[1].lower() or "unknown"
+        file_format_counts[ext] += 1
+
     format_distribution = [
         FormatCount(format=fmt, count=cnt)
-        for fmt, cnt in sorted(format_counts.items(), key=lambda x: x[1], reverse=True)
+        for fmt, cnt in file_format_counts.most_common()
     ]
 
     return DashboardStatsResponse(
@@ -134,5 +134,6 @@ def get_dashboard_stats(
             completed=completed,
             failed=failed,
         ),
+        avg_parser_confidence=avg_parser_confidence,
         format_distribution=format_distribution,
     )

@@ -96,6 +96,7 @@ export type DashboardStats = {
     completed: number;
     failed: number;
   };
+  avg_parser_confidence: number | null;
   format_distribution: FormatDistributionItem[];
 };
 
@@ -107,6 +108,14 @@ export type LogInsightReport = {
   log_sequence_narrative: string;
   recommendations: string[];
   anomalies: string[];
+};
+
+export type TableSummaryResponse = {
+  summary: string;
+  key_observations: string[];
+  severity: string;
+  next_actions: string[];
+  errors_or_anomalies: string[];
 };
 
 export type ChatMessage = {
@@ -335,6 +344,25 @@ export async function generateLogReport(entryId: string) {
     body: JSON.stringify({}),
   });
   return parseJsonResponse<LogInsightReport>(response);
+}
+
+export async function getTableSummary(entryId: string, tableName: string) {
+  const response = await $fetch(`/logs/${entryId}/tables/${encodeURIComponent(tableName)}/summarize`);
+  if (response.status === 404) {
+    return null;
+  }
+  return parseJsonResponse<TableSummaryResponse>(response);
+}
+
+export async function generateTableSummary(entryId: string, tableName: string) {
+  const response = await $fetch(`/logs/${entryId}/tables/${encodeURIComponent(tableName)}/summarize`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({}),
+  });
+  return parseJsonResponse<TableSummaryResponse>(response);
 }
 
 export async function getLogChatMessages(entryId: string) {

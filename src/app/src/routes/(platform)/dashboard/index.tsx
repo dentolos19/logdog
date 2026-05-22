@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { ActivityIcon, BarChart3Icon, FileIcon, FolderOpenIcon, PieChartIcon, RowsIcon } from "lucide-react";
+import { BarChart3Icon, FileIcon, FolderOpenIcon, GaugeIcon, PieChartIcon, RowsIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { Bar, BarChart, Cell, Pie, PieChart } from "recharts";
+import { Bar, BarChart, Cell, Pie, PieChart, XAxis } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "#/components/ui/card";
 import {
   ChartContainer,
@@ -18,21 +18,10 @@ import { StatCard } from "#/routes/(platform)/dashboard/-components/stat-card";
 const CHART_COLORS = ["#F9F618", "#F4F4F4", "#9A9A9A", "#404040", "#D9D9D9", "#6B6B6B", "#C8C8C8", "#141414"];
 
 const processStatusChartConfig = {
-  queued: { label: "Queued", color: CHART_COLORS[0] },
-  processing: { label: "Processing", color: CHART_COLORS[1] },
-  completed: { label: "Completed", color: CHART_COLORS[2] },
-  failed: { label: "Failed", color: CHART_COLORS[3] },
-} satisfies import("#/components/ui/chart").ChartConfig;
-
-const formatDistributionChartConfig = {
-  json_lines: { label: "JSON Lines", color: CHART_COLORS[0] },
-  csv: { label: "CSV", color: CHART_COLORS[1] },
-  syslog: { label: "Syslog", color: CHART_COLORS[2] },
-  apache_access: { label: "Apache Access", color: CHART_COLORS[3] },
-  nginx_access: { label: "Nginx Access", color: CHART_COLORS[4] },
-  logfmt: { label: "Logfmt", color: CHART_COLORS[5] },
-  key_value: { label: "Key Value", color: CHART_COLORS[6] },
-  unified: { label: "Unified", color: CHART_COLORS[7] },
+  queued: { label: "Queued", color: "#3B82F6" },
+  processing: { label: "Processing", color: "#F59E0B" },
+  completed: { label: "Completed", color: "#22C55E" },
+  failed: { label: "Failed", color: "#EF4444" },
 } satisfies import("#/components/ui/chart").ChartConfig;
 
 export const Route = createFileRoute("/(platform)/dashboard/")({
@@ -59,10 +48,6 @@ function DashboardPage() {
     void fetchStats();
   }, []);
 
-  const processingCount = useMemo(() => {
-    return (stats?.processes.queued ?? 0) + (stats?.processes.processing ?? 0);
-  }, [stats]);
-
   const processStatusData = useMemo(() => {
     if (!stats) return [];
     return [
@@ -73,13 +58,22 @@ function DashboardPage() {
     ];
   }, [stats]);
 
-  const formatDistributionData = useMemo(() => {
+  const fileFormatData = useMemo(() => {
     if (!stats) return [];
     return stats.format_distribution.map((item) => ({
       format: item.format,
       value: item.count,
     }));
   }, [stats]);
+
+  const fileFormatChartConfig = useMemo(() => {
+    const config: Record<string, { label: string; color: string }> = {};
+    fileFormatData.forEach((item, index) => {
+      const label = item.format.replace(/^\./, "").toUpperCase() || "UNKNOWN";
+      config[item.format] = { label, color: CHART_COLORS[index % CHART_COLORS.length] };
+    });
+    return config;
+  }, [fileFormatData]);
 
   return (
     <>
@@ -108,11 +102,15 @@ function DashboardPage() {
             value={stats?.total_rows ?? 0}
           />
           <StatCard
-            description={`${stats?.processes.completed ?? 0} completed, ${stats?.processes.failed ?? 0} failed`}
-            icon={ActivityIcon}
+            description={"Across all completed processes"}
+            icon={GaugeIcon}
             loading={loading}
-            title={"Processing"}
-            value={processingCount}
+            title={"Avg Parser Confidence"}
+            value={
+              stats?.avg_parser_confidence != null
+                ? `${Math.round(stats.avg_parser_confidence * 100)}%`
+                : "—"
+            }
           />
         </div>
 
@@ -132,11 +130,11 @@ function DashboardPage() {
               ) : (
                 <ChartContainer className={"h-[200px] w-full"} config={processStatusChartConfig}>
                   <BarChart data={processStatusData}>
+                    <XAxis dataKey="status" tickLine={false} axisLine={false} />
                     <ChartTooltip content={<ChartTooltipContent nameKey="status" />} />
-                    <ChartLegend content={<ChartLegendContent nameKey="status" />} />
                     <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                      {processStatusData.map((entry, index) => (
-                        <Cell fill={CHART_COLORS[index % CHART_COLORS.length]} key={`cell-${entry.status}`} />
+                      {processStatusData.map((entry) => (
+                        <Cell fill={`var(--color-${entry.status})`} key={`cell-${entry.status}`} />
                       ))}
                     </Bar>
                   </BarChart>
@@ -149,27 +147,27 @@ function DashboardPage() {
             <CardHeader className={"pb-2"}>
               <CardTitle className={"flex items-center gap-2 font-medium text-sm"}>
                 <PieChartIcon className={"size-4 text-muted-foreground"} />
-                Format Distribution
+                File Format Distribution
               </CardTitle>
             </CardHeader>
             <CardContent>
               {loading ? (
                 <Skeleton className={"h-[200px] w-full"} />
-              ) : formatDistributionData.length === 0 ? (
-                <p className={"text-muted-foreground py-8 text-center text-sm"}>No format data yet.</p>
+              ) : fileFormatData.length === 0 ? (
+                <p className={"text-muted-foreground py-8 text-center text-sm"}>No file format data yet.</p>
               ) : (
-                <ChartContainer className={"h-[200px] w-full"} config={formatDistributionChartConfig}>
+                <ChartContainer className={"h-[200px] w-full"} config={fileFormatChartConfig}>
                   <PieChart>
                     <Pie
                       cx="50%"
                       cy="50%"
-                      data={formatDistributionData}
+                      data={fileFormatData}
                       dataKey="value"
                       nameKey="format"
                       outerRadius={80}
                       paddingAngle={2}
                     >
-                      {formatDistributionData.map((entry, index) => (
+                      {fileFormatData.map((entry, index) => (
                         <Cell fill={CHART_COLORS[index % CHART_COLORS.length]} key={`cell-${entry.format}`} />
                       ))}
                     </Pie>

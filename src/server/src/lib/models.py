@@ -65,6 +65,7 @@ class LogGroup(Base):
     messages = relationship("LogMessage", back_populates="group", cascade="all, delete-orphan")
     processes = relationship("LogProcess", back_populates="group", cascade="all, delete-orphan")
     reports = relationship("LogReport", back_populates="group", cascade="all, delete-orphan")
+    table_summaries = relationship("LogTableSummary", back_populates="group", cascade="all, delete-orphan")
 
 
 class LogFile(Base):
@@ -164,3 +165,21 @@ class LogReport(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     group = relationship("LogGroup", back_populates="reports")
+
+
+class LogTableSummary(Base):
+    __tablename__ = "log_table_summaries"
+
+    id = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        index=True,
+        nullable=False,
+        default=uuid.uuid4,
+    )
+    group_id = Column(UUID(as_uuid=True), ForeignKey("log_groups.id", ondelete="CASCADE"), nullable=False, index=True)
+    table_name = Column(String, nullable=False)
+    content = Column(JSONB, nullable=False, default=dict)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    group = relationship("LogGroup", back_populates="table_summaries")

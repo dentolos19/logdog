@@ -1,12 +1,25 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import type { ColumnDef, PaginationState, SortingState, VisibilityState } from "@tanstack/react-table";
 import { format } from "date-fns";
-import { ChevronDownIcon, DownloadIcon, FileSpreadsheetIcon, FileTextIcon, InfoIcon, TableIcon } from "lucide-react";
+import {
+  AlertTriangleIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
+  DownloadIcon,
+  FileSpreadsheetIcon,
+  FileTextIcon,
+  InfoIcon,
+  LightbulbIcon,
+  RefreshCwIcon,
+  SparklesIcon,
+  TableIcon,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "#/components/ui/alert";
 import { Badge } from "#/components/ui/badge";
 import { Button } from "#/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "#/components/ui/collapsible";
 import { DataTable, DataTableColumnHeader, DataTableViewOptions } from "#/components/ui/data-table";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "#/components/ui/dialog";
 import {
@@ -24,12 +37,15 @@ import {
   downloadLogFile,
   downloadTableCsv,
   downloadTableXlsx,
+  generateTableSummary,
   getLogGroup,
+  getTableSummary,
   type LogFile,
   type LogGroup,
   type LogProcess,
   listLogFiles,
   listLogProcesses,
+  type TableSummaryResponse,
 } from "#/lib/server";
 import { PageHeader } from "#/routes/(platform)/-components/page-header";
 import {
@@ -250,7 +266,7 @@ function LogTablePage() {
               </Alert>
             )}
             <Button
-              onClick={() => void Promise.all([fetchEntry(), fetchFiles(), fetchProcesses()])}
+              onClick={() => void Promise.all([fetchGroup(), fetchFiles(), fetchProcesses()])}
               size={"sm"}
               variant={"outline"}
             >
@@ -313,6 +329,8 @@ function LogTablePage() {
               </div>
             </section>
 
+            <AITableSummary entryId={id} tableName={table.id} />
+
             <TableRowsDataTable entryId={id} table={table} />
 
             {isDetailsOpen && <TableDetailsDialog onClose={() => setIsDetailsOpen(false)} table={table} />}
@@ -321,6 +339,210 @@ function LogTablePage() {
       </main>
     </div>
   );
+}
+
+function AITableSummary({ entryId, tableName }: { entryId: string; tableName: string }) {
+  const [summary, setSummary] = useState<TableSummaryResponse | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isOpen, setIsOpen] = useState(false);
+
+  const fetchCachedSummary = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const cached = await getTableSummary(entryId, tableName);
+      if (cached !== null) {
+        setSummary(cached);
+        setIsOpen(true);
+        setIsLoading(false);
+        return true;
+      }
+      return false;
+    } catch {
+      setError(null); // Don't surface GET errors, just try generating
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [entryId, tableName]);
+
+  const generate = useCallback(async () => {
+    setIsGenerating(true);
+    setError(null);
+    try {
+      const result = await generateTableSummary(entryId, tableName);
+      setSummary(result);
+      setIsOpen(true);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to generate summary.";
+      setError(message);
+    } finally {
+      setIsGenerating(false);
+    }
+  }, [entryId, tableName]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      const found = await fetchCachedSummary();
+      if (!found && !cancelled) {
+        await generate();
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchCachedSummary, generate]);
+
+  const handleRegenerate = useCallback(() => {
+    void generate();
+  }, [generate]);
+
+  const severityColor = getSummarySeverityColor(summary?.severity ?? "");
+
+  // Loading state
+  if (isLoading || (isGenerating && summary === null)) {
+    return (
+      <div className={"flex flex-col gap-2 rounded-md border p-4"}>
+        <div className={"flex items-center gap-2"}>
+          <SparklesIcon className={"size-4 text-muted-foreground"} />
+          <span className={"font-medium text-sm"}>AI Summary</span>
+          <Spinner className={"ml-auto size-4"} />
+        </div>
+        <div className={"flex flex-col gap-2 pl-6"}>
+          <Skeleton className={"h-4 w-full"} />
+          <Skeleton className={"h-4 w-3/4"} />
+          <Skeleton className={"h-4 w-1/2"} />
+        </div>
+      </div>
+    );
+  }
+
+  // Error state (only shown if we have no summary at all)
+  if (error !== null && summary === null) {
+    return (
+      <div className={"flex flex-col gap-2 rounded-md border p-4"}>
+        <div className={"flex items-center gap-2"}>
+          <SparklesIcon className={"size-4 text-muted-foreground"} />
+          <span className={"font-medium text-sm"}>AI Summary</span>
+        </div>
+        <p className={"text-destructive text-xs"}>{error}</p>
+        <Button disabled={isGenerating} onClick={handleRegenerate} size={"sm"} variant={"outline"}>
+          {isGenerating ? <Spinner className={"size-3"} /> : <RefreshCwIcon />}
+          Retry
+        </Button>
+      </div>
+    );
+  }
+
+  if (summary === null) {
+    return null;
+  }
+
+  // Collapsed state — show just the header and severity
+  return (
+    <Collapsible className={"mt-2 rounded-md border"} onOpenChange={setIsOpen} open={isOpen}>
+      <div className={"flex items-center gap-2 px-4 py-3"}>
+        <CollapsibleTrigger asChild>
+          <button
+            className={
+              "flex flex-1 cursor-pointer items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            }
+            type={"button"}
+          >
+            <SparklesIcon className={"size-4 text-muted-foreground"} />
+            <span className={"font-medium text-sm"}>AI Summary</span>
+            <Badge className={severityColor.className} variant={severityColor.variant}>
+              {summary.severity.toUpperCase()}
+            </Badge>
+            {isOpen ? <ChevronUpIcon className={"ml-auto size-4"} /> : <ChevronDownIcon className={"ml-auto size-4"} />}
+          </button>
+        </CollapsibleTrigger>
+
+        <Button
+          disabled={isGenerating}
+          onClick={handleRegenerate}
+          size={"icon-sm"}
+          title={"Regenerate summary"}
+          type={"button"}
+          variant={"ghost"}
+        >
+          {isGenerating ? <Spinner className={"size-3"} /> : <RefreshCwIcon />}
+        </Button>
+      </div>
+
+      <CollapsibleContent>
+        <div className={"flex flex-col gap-4 px-4 pt-1 pb-4"}>
+          {/* Summary overview */}
+          <div className={"rounded-md bg-muted/40 px-3 py-2"}>
+            <p className={"text-sm leading-relaxed"}>{summary.summary}</p>
+          </div>
+
+          {/* Key observations */}
+          {summary.key_observations.length > 0 && (
+            <div className={"flex flex-col gap-1.5"}>
+              <h4 className={"flex items-center gap-1 font-medium text-muted-foreground text-xs"}>
+                <SparklesIcon className={"size-3"} />
+                Key Observations
+              </h4>
+              <ul className={"flex list-disc flex-col gap-1 pl-5 text-sm"}>
+                {summary.key_observations.map((obs, index) => (
+                  <li key={index}>{obs}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Errors / Anomalies */}
+          {summary.errors_or_anomalies.length > 0 && (
+            <div className={"flex flex-col gap-1.5"}>
+              <h4 className={"flex items-center gap-1 font-medium text-muted-foreground text-xs"}>
+                <AlertTriangleIcon className={"size-3"} />
+                Errors &amp; Anomalies
+              </h4>
+              <ul className={"flex list-disc flex-col gap-1 pl-5 text-destructive text-sm"}>
+                {summary.errors_or_anomalies.map((item, index) => (
+                  <li key={index}>{item}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Next actions */}
+          {summary.next_actions.length > 0 && (
+            <div className={"flex flex-col gap-1.5"}>
+              <h4 className={"flex items-center gap-1 font-medium text-muted-foreground text-xs"}>
+                <LightbulbIcon className={"size-3"} />
+                Next Actions
+              </h4>
+              <ul className={"flex list-disc flex-col gap-1 pl-5 text-sm"}>
+                {summary.next_actions.map((action, index) => (
+                  <li key={index}>{action}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+function getSummarySeverityColor(severity: string) {
+  const normalized = severity.trim().toLowerCase();
+  if (normalized === "critical") {
+    return { className: "bg-red-600 text-white hover:bg-red-700", variant: "default" as const };
+  }
+  if (normalized === "high") {
+    return { className: "bg-orange-500 text-white hover:bg-orange-600", variant: "default" as const };
+  }
+  if (normalized === "medium") {
+    return { className: "bg-yellow-500 text-black hover:bg-yellow-600", variant: "default" as const };
+  }
+  return { className: "", variant: "secondary" as const };
 }
 
 function TableRowsDataTable({ table, entryId }: { table: TableSummary; entryId: string }) {
