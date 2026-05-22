@@ -106,11 +106,7 @@ function DashboardPage() {
             icon={GaugeIcon}
             loading={loading}
             title={"Avg Parser Confidence"}
-            value={
-              stats?.avg_parser_confidence != null
-                ? `${Math.round(stats.avg_parser_confidence * 100)}%`
-                : "—"
-            }
+            value={stats?.avg_parser_confidence != null ? `${Math.round(stats.avg_parser_confidence * 100)}%` : "—"}
           />
         </div>
 
@@ -130,7 +126,7 @@ function DashboardPage() {
               ) : (
                 <ChartContainer className={"h-[200px] w-full"} config={processStatusChartConfig}>
                   <BarChart data={processStatusData}>
-                    <XAxis dataKey="status" tickLine={false} axisLine={false} />
+                    <XAxis axisLine={false} dataKey="status" tickLine={false} />
                     <ChartTooltip content={<ChartTooltipContent nameKey="status" />} />
                     <Bar dataKey="value" radius={[4, 4, 0, 0]}>
                       {processStatusData.map((entry) => (

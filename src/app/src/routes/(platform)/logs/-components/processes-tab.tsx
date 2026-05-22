@@ -28,6 +28,7 @@ type ProcessInsights = {
   fileClassifications: Record<string, unknown>[];
   tableSummaries: Array<{
     name: string;
+    displayName: string;
     rowCount: number;
     columnCount: number;
     columns: Record<string, unknown>[];
@@ -305,9 +306,6 @@ function ProcessDetailsDialog({ process, onClose }: { process: LogProcess; onClo
                   <div className={"flex flex-wrap items-center gap-1.5"}>
                     {insights.dominantFormat !== null && <Badge variant={"secondary"}>{insights.dominantFormat}</Badge>}
                     {insights.structuralClass !== null && <Badge variant={"outline"}>{insights.structuralClass}</Badge>}
-                    {insights.selectedParserKey !== null && (
-                      <Badge variant={"outline"}>preferred parser: {insights.selectedParserKey}</Badge>
-                    )}
                   </div>
 
                   {insights.classificationConfidence !== null && (
@@ -358,7 +356,6 @@ function ProcessDetailsDialog({ process, onClose }: { process: LogProcess; onClo
                   <span className={"font-medium text-muted-foreground text-xs"}>Output Summary</span>
 
                   <div className={"flex flex-wrap items-center gap-1.5"}>
-                    {insights.parserKey !== null && <Badge variant={"outline"}>parser: {insights.parserKey}</Badge>}
                     <Badge variant={"secondary"}>{insights.tableCount} table(s)</Badge>
                     <Badge variant={"secondary"}>{insights.totalRowCount.toLocaleString()} row(s)</Badge>
                   </div>
@@ -488,8 +485,11 @@ function getProcessInsights(process: LogProcess): ProcessInsights {
     const columns = asArrayOfRecords(tableDefinition.columns);
     const rowCount = recordsByTable !== null ? asArray(recordsByTable[tableName]).length : 0;
 
+    const displayName = asString(tableDefinition.display_name, tableName);
+
     return {
       name: tableName,
+      displayName,
       rowCount,
       columnCount: columns.length,
       columns,

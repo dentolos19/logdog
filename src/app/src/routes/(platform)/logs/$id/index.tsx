@@ -404,7 +404,7 @@ function LogGroupPage() {
         )}
       </PageHeader>
 
-      <main className={"flex min-w-0 flex-1 flex-col gap-6 overflow-y-auto"} ref={mainRef}>
+      <main className={"flex min-h-0 min-w-0 flex-1 flex-col gap-6 overflow-hidden"} ref={mainRef}>
         {group === null && fetchError === null && (
           <div className={"flex flex-col gap-6 p-4"}>
             <Skeleton className={"h-28 w-full rounded-lg"} />
@@ -422,7 +422,7 @@ function LogGroupPage() {
         )}
 
         {group !== null && (
-          <Tabs className={"gap-0"} onValueChange={onTabChange} value={activeTab}>
+          <Tabs className={"h-full gap-0"} onValueChange={onTabChange} value={activeTab}>
             <TabsList className={"w-full rounded-none border-b bg-sidebar"}>
               <TabsTrigger value={"data"}>Data</TabsTrigger>
               <TabsTrigger value={"processes"}>Processes</TabsTrigger>
@@ -430,7 +430,7 @@ function LogGroupPage() {
               {hasTables && <TabsTrigger value={"report"}>Report</TabsTrigger>}
             </TabsList>
 
-            <TabsContent className={"flex flex-col gap-6 p-4"} value={"data"}>
+            <TabsContent className={"flex flex-col gap-6 overflow-y-auto p-4"} value={"data"}>
               <UploadSection
                 logGroupId={id}
                 onNavigateToProcesses={() => onTabChange("processes")}
@@ -459,7 +459,7 @@ function LogGroupPage() {
               </section>
             </TabsContent>
 
-            <TabsContent className={"flex flex-col gap-3 p-4"} value={"processes"}>
+            <TabsContent className={"flex flex-col gap-3 overflow-y-auto p-4"} value={"processes"}>
               <div className={"flex items-center gap-2"}>
                 <h2 className={"font-semibold text-sm"}>Processes</h2>
               </div>
@@ -473,12 +473,12 @@ function LogGroupPage() {
               />
             </TabsContent>
 
-            <TabsContent className={"flex min-h-[calc(100svh-10rem)] flex-col gap-3 p-4"} value={"chat"}>
+            <TabsContent className={"flex flex-col overflow-hidden"} value={"chat"}>
               <ChatbotTab entryId={id} groupName={group?.name ?? "this log group"} tables={tables} />
             </TabsContent>
 
-            <TabsContent className={"flex flex-col gap-6 p-4"} value={"report"}>
-              <ReportTab logGroupId={id} />
+            <TabsContent className={"flex flex-col gap-6 overflow-y-auto p-6"} value={"report"}>
+              <ReportTab logGroupId={id} tableNames={tables} />
             </TabsContent>
           </Tabs>
         )}

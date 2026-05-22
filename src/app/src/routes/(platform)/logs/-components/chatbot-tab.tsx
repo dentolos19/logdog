@@ -1,13 +1,15 @@
 import type { UIMessage } from "@tanstack/ai-react";
+
 import { fetchServerSentEvents, useChat } from "@tanstack/ai-react";
 import {
   AlertCircleIcon,
+  ArrowDownIcon,
   BotIcon,
   ChevronDownIcon,
   ChevronUpIcon,
+  EraserIcon,
   SendHorizontalIcon,
   SparklesIcon,
-  Trash2Icon,
 } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "#/components/ui/button";
@@ -15,7 +17,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "#/component
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "#/components/ui/input-group";
 import { Spinner } from "#/components/ui/spinner";
 import { getLogChatMessages, replaceLogChatMessages } from "#/lib/server";
-import { streamLogChat } from "#/lib/server/chat";
+import { generateChatSuggestions, streamLogChat } from "#/lib/server/chat";
 import { ChatMessageItem } from "#/routes/(platform)/logs/-components/chat-message";
 
 type ChatbotTabProps = {
@@ -107,38 +109,6 @@ type Suggestion = {
   prompt: string;
 };
 
-function getNextMessageSuggestions(lastMessageIsAssistant: boolean, hasTables: boolean): Suggestion[] {
-  if (!lastMessageIsAssistant) {
-    return [];
-  }
-
-  if (hasTables) {
-    return [
-      {
-        display: "Show a high-level summary",
-        prompt:
-          "Show a high-level summary of all tables. Count rows, preview data, check fields, and describe each table concisely. Do not ask what to include.",
-      },
-      {
-        display: "Find the most important anomalies",
-        prompt:
-          "Find the most important anomalies across all tables. Look for error counts, status failures, spikes, null-heavy columns, and unusual values. Do not ask clarifying questions.",
-      },
-      {
-        display: "Create a chart of key trends",
-        prompt:
-          "Create a chart of key trends from the available data. Infer timestamp columns, group by time, and render a useful chart. Do not ask which table or metric.",
-      },
-    ];
-  }
-
-  return [
-    { display: "What data has been uploaded?", prompt: "What data has been uploaded?" },
-    { display: "How do I process logs first?", prompt: "How do I process logs first?" },
-    { display: "What should I upload next?", prompt: "What should I upload next?" },
-  ];
-}
-
 function messagesEqual(a: UIMessage[], b: UIMessage[]) {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) {
@@ -147,6 +117,40 @@ function messagesEqual(a: UIMessage[], b: UIMessage[]) {
     if (a[i].parts.length !== b[i].parts.length) return false;
   }
   return true;
+}
+
+function ThinkingIndicator() {
+  return (
+    <div className={"flex items-start gap-3"}>
+      <div
+        className={
+          "flex size-8 shrink-0 items-center justify-center rounded-full" +
+          "bg-gradient-to-br from-primary/10 to-primary/5 text-primary ring-1 ring-primary/10"
+        }
+      >
+        <BotIcon className={"size-4"} />
+      </div>
+      <div className={"rounded-2xl rounded-bl-sm border bg-card px-4 py-3 shadow-sm"}>
+        <div className={"flex items-center gap-2.5"}>
+          <div className={"flex items-center gap-1"}>
+            <span
+              className={"size-1.5 animate-bounce rounded-full bg-muted-foreground/40"}
+              style={{ animationDelay: "0ms" }}
+            />
+            <span
+              className={"size-1.5 animate-bounce rounded-full bg-muted-foreground/40"}
+              style={{ animationDelay: "150ms" }}
+            />
+            <span
+              className={"size-1.5 animate-bounce rounded-full bg-muted-foreground/40"}
+              style={{ animationDelay: "300ms" }}
+            />
+          </div>
+          <span className={"text-muted-foreground text-xs"}>Thinking...</span>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export function ChatbotTab({ entryId, groupName, tables }: ChatbotTabProps) {
@@ -164,11 +168,15 @@ export function ChatbotTab({ entryId, groupName, tables }: ChatbotTabProps) {
   const [persistError, setPersistError] = useState<string | null>(null);
   const [isHydrating, setIsHydrating] = useState(true);
   const [isAtBottom, setIsAtBottom] = useState(true);
+  const [aiSuggestions, setAiSuggestions] = useState<Suggestion[]>([]);
+  const [isGeneratingSuggestions, setIsGeneratingSuggestions] = useState(false);
+  const lastAssistantMessageIdRef = useRef<string | null>(null);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const hydratedMessagesRef = useRef<UIMessage[]>([]);
   const hasHydratedRef = useRef(false);
+  const inputTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   const { messages, sendMessage, setMessages, stop, isLoading, status, error } = useChat({
     id: `log-group-${entryId}`,
@@ -206,7 +214,7 @@ export function ChatbotTab({ entryId, groupName, tables }: ChatbotTabProps) {
     }
 
     const { scrollTop, scrollHeight, clientHeight } = container;
-    const atBottom = scrollHeight - scrollTop - clientHeight < 50;
+    const atBottom = scrollHeight - scrollTop - clientHeight < 60;
     setIsAtBottom(atBottom);
   }, []);
 
@@ -292,6 +300,7 @@ export function ChatbotTab({ entryId, groupName, tables }: ChatbotTabProps) {
     }
 
     setDraftMessage("");
+    setAiSuggestions([]);
     await sendMessage(trimmed);
   };
 
@@ -304,6 +313,7 @@ export function ChatbotTab({ entryId, groupName, tables }: ChatbotTabProps) {
     stop();
     setDraftMessage("");
     setMessages([]);
+    setAiSuggestions([]);
     hydratedMessagesRef.current = [];
     try {
       await replaceLogChatMessages(entryId, { messages: [] });
@@ -318,13 +328,78 @@ export function ChatbotTab({ entryId, groupName, tables }: ChatbotTabProps) {
     () => hasMessages && visibleMessages[visibleMessages.length - 1].role === "assistant",
     [hasMessages, visibleMessages],
   );
-  const suggestions = useMemo(
-    () => getNextMessageSuggestions(lastMessageIsAssistant, tables.length > 0),
-    [lastMessageIsAssistant, tables.length],
-  );
+
+  // Generate AI suggestions after each complete assistant response
+  useEffect(() => {
+    if (!lastMessageIsAssistant || isLoading || isHydrating) {
+      return;
+    }
+
+    const lastAssistantMessage = visibleMessages[visibleMessages.length - 1];
+    if (!lastAssistantMessage || lastAssistantMessage.id === lastAssistantMessageIdRef.current) {
+      return;
+    }
+
+    lastAssistantMessageIdRef.current = lastAssistantMessage.id;
+
+    const recentForSuggestions = visibleMessages.slice(-4).map((msg) => {
+      const text = msg.parts
+        .filter((p) => p.type === "text" && typeof p.content === "string")
+        .map((p) => (p as { content: string }).content)
+        .join("\n");
+      return { role: msg.role as "user" | "assistant", content: text.slice(0, 2000) };
+    });
+
+    if (recentForSuggestions.length === 0) {
+      return;
+    }
+
+    setIsGeneratingSuggestions(true);
+
+    void generateChatSuggestions({
+      data: {
+        entryId,
+        recentMessages: recentForSuggestions,
+        hasTables: tables.length > 0,
+      },
+    })
+      .then((suggestions) => {
+        setAiSuggestions(
+          suggestions.map((display) => ({
+            display,
+            prompt: display,
+          })),
+        );
+      })
+      .catch(() => {
+        const fallback: Suggestion[] =
+          tables.length > 0
+            ? [
+                { display: "Explore key trends", prompt: "Explore key trends across all tables" },
+                { display: "Find top anomalies", prompt: "Find the most important anomalies across all tables" },
+                { display: "Show a quick summary", prompt: "Show a quick summary of all tables" },
+              ]
+            : [
+                { display: "How do I upload logs?", prompt: "How do I upload logs?" },
+                { display: "What data works?", prompt: "What kind of log data does Logdog support?" },
+                { display: "Show me the basics", prompt: "Show me the basics of getting started" },
+              ];
+        setAiSuggestions(fallback);
+      })
+      .finally(() => {
+        setIsGeneratingSuggestions(false);
+      });
+  }, [lastMessageIsAssistant, isLoading, isHydrating, entryId, visibleMessages, tables.length]);
+
+  // Focus input after streaming completes
+  useEffect(() => {
+    if (!isLoading && hasMessages && inputTextareaRef.current) {
+      inputTextareaRef.current.focus();
+    }
+  }, [isLoading, hasMessages]);
 
   return (
-    <div className={"flex min-h-0 flex-1 flex-col"}>
+    <div className={"relative flex min-h-0 flex-1 flex-col"}>
       {(hydrateError !== null || persistError !== null || error !== undefined) && (
         <div className={"flex flex-wrap gap-2 px-4 pt-2 pb-1"}>
           {hydrateError !== null && <ErrorBadge label={"Load failed"} message={hydrateError} />}
@@ -337,7 +412,9 @@ export function ChatbotTab({ entryId, groupName, tables }: ChatbotTabProps) {
 
       <div
         className={
-          "flex min-h-0 flex-1 overflow-y-auto" + (hasMessages ? "" : "bg-gradient-to-b from-muted/30 to-background")
+          "flex min-h-0 flex-1 flex-col overflow-y-auto" +
+          "scrollbar-thin scrollbar-thumb-muted-foreground/10 scrollbar-track-transparent hover:scrollbar-thumb-muted-foreground/20" +
+          (hasMessages ? "" : "bg-gradient-to-b from-muted/20 to-background")
         }
         onScroll={handleScroll}
         ref={scrollContainerRef}
@@ -347,31 +424,57 @@ export function ChatbotTab({ entryId, groupName, tables }: ChatbotTabProps) {
             <Spinner />
           </div>
         ) : !hasMessages ? (
-          <div className={"flex flex-1 flex-col items-center justify-center px-6"}>
-            <div className={"flex max-w-lg flex-col items-center gap-8 text-center"}>
+          <div className={"mx-auto mt-16 flex w-full max-w-lg flex-1 flex-col items-center justify-center px-6"}>
+            <div className={"flex flex-col items-center gap-6 text-center"}>
               <div
-                className={"flex size-16 items-center justify-center rounded-3xl bg-primary/10 ring-1 ring-primary/20"}
+                className={
+                  "flex size-16 items-center justify-center rounded-2xl" +
+                  "bg-gradient-to-br from-primary/10 via-primary/5 to-primary/0 ring-1 ring-primary/10" +
+                  "shadow-primary/5 shadow-sm"
+                }
               >
                 <BotIcon className={"size-8 text-primary"} />
               </div>
-              <div className={"flex flex-col gap-1.5"}>
-                <h2 className={"font-semibold text-xl"}>Log Analysis Chatbot</h2>
-                <p className={"mx-auto max-w-sm text-muted-foreground text-sm"}>
-                  Ask questions about {groupName}. I can query tables, summarize logs, find anomalies, and generate
-                  charts.
+              <div className={"flex flex-col gap-2"}>
+                <h2 className={"font-semibold text-xl tracking-tight"}>Log Analysis Chatbot</h2>
+                <p className={"mx-auto max-w-sm text-balance text-muted-foreground text-sm leading-relaxed"}>
+                  Ask questions about <span className={"font-medium text-foreground"}>{groupName}</span>. I can query
+                  tables, summarize logs, find anomalies, and generate charts.
                 </p>
               </div>
-              <div className={"flex w-full flex-col gap-2"}>
-                {STARTER_MESSAGES.map((message) => (
+              <div className={"mb-16 flex w-full flex-col gap-2.5"}>
+                <div className={"flex items-center gap-2 px-1"}>
+                  <span className={"h-px flex-1 bg-border/50"} />
+                  <span className={"font-medium text-[10px] text-muted-foreground/50 uppercase tracking-widest"}>
+                    Get started
+                  </span>
+                  <span className={"h-px flex-1 bg-border/50"} />
+                </div>
+                {STARTER_MESSAGES.map((message, i) => (
                   <Button
-                    className={"h-auto w-full justify-start gap-3 px-4 py-3 text-left text-sm"}
+                    className={
+                      "group/start h-auto w-full justify-start gap-3 border-border/50 px-4 py-3 text-left text-sm" +
+                      "shadow-xs transition-all duration-200 hover:border-border hover:shadow-sm" +
+                      "hover:-translate-y-0.5 active:translate-y-0"
+                    }
                     disabled={isLoading}
                     key={message.display}
-                    onClick={() => void sendMessage(message.prompt)}
+                    onClick={() => {
+                      void sendMessage(message.prompt);
+                    }}
+                    style={{ animationDelay: `${i * 80}ms` } as React.CSSProperties}
                     variant={"outline"}
                   >
-                    <SparklesIcon className={"size-4 shrink-0 text-muted-foreground"} />
-                    <span className={"line-clamp-2"}>{message.display}</span>
+                    <span
+                      className={
+                        "flex size-7 shrink-0 items-center justify-center rounded-lg" +
+                        "bg-muted/50 text-muted-foreground/60 transition-colors duration-200" +
+                        "group-hover/start:bg-primary/10 group-hover/start:text-primary"
+                      }
+                    >
+                      <SparklesIcon className={"size-3.5"} />
+                    </span>
+                    <span className={"line-clamp-2 font-normal"}>{message.display}</span>
                   </Button>
                 ))}
               </div>
@@ -380,29 +483,22 @@ export function ChatbotTab({ entryId, groupName, tables }: ChatbotTabProps) {
         ) : (
           <div className={"mx-auto w-full max-w-4xl space-y-4 px-4 py-6"}>
             {visibleMessages.map((message) => (
-              <ChatMessageItem
-                entryId={entryId}
-                groupName={groupName}
+              <div
+                className={"fade-in slide-in-from-bottom-1 animate-in duration-300"}
                 key={message.id}
-                message={message}
-                tableNameMap={tableNameMap}
-              />
+                style={{ animationDelay: "0ms", animationFillMode: "both" } as React.CSSProperties}
+              >
+                <ChatMessageItem
+                  entryId={entryId}
+                  groupName={groupName}
+                  message={message}
+                  tableNameMap={tableNameMap}
+                />
+              </div>
             ))}
             {isLoading && !lastMessageIsAssistant && (
-              <div className={"flex gap-3"}>
-                <div
-                  className={
-                    "flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground"
-                  }
-                >
-                  <BotIcon className={"size-4"} />
-                </div>
-                <div className={"rounded-2xl rounded-bl-md border bg-card px-4 py-3 text-card-foreground"}>
-                  <div className={"flex items-center gap-2"}>
-                    <Spinner className={"size-4"} />
-                    <span className={"text-muted-foreground text-xs"}>Analyzing logs…</span>
-                  </div>
-                </div>
+              <div className={"fade-in slide-in-from-bottom-1 animate-in duration-300"}>
+                <ThinkingIndicator />
               </div>
             )}
             <div ref={messagesEndRef} />
@@ -410,48 +506,77 @@ export function ChatbotTab({ entryId, groupName, tables }: ChatbotTabProps) {
         )}
       </div>
 
+      {/* Scroll to bottom button */}
       {!isAtBottom && hasMessages && (
-        <div className={"absolute right-4 bottom-24 z-10"}>
+        <div className={"fade-in slide-in-from-bottom-2 absolute right-6 bottom-28 z-10 animate-in duration-200"}>
           <Button
-            className={"rounded-full shadow-lg ring-1 ring-border"}
+            className={
+              "h-9 w-9 rounded-full shadow-lg ring-1 ring-border/50" +
+              "transition-all duration-200 hover:scale-105 hover:shadow-xl active:scale-95"
+            }
             onClick={scrollToBottom}
-            size={"sm"}
+            size={"icon-sm"}
             variant={"secondary"}
           >
-            Scroll to bottom
+            <ArrowDownIcon className={"size-4"} />
+            <span className={"sr-only"}>Scroll to bottom</span>
           </Button>
         </div>
       )}
 
+      {/* Input bar */}
       {!isLoading && (
         <div
           className={
             "shrink-0 border-t bg-background/80 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60" +
+            "z-10 shadow-[0_-1px_0_0] shadow-border/50" +
             (hasMessages ? "" : "border-t-transparent")
           }
         >
           <div className={"mx-auto max-w-4xl"}>
-            {hasMessages && suggestions.length > 0 && !isLoading && (
+            {/* AI Suggestions */}
+            {hasMessages && !isLoading && (
               <div className={"flex flex-wrap items-center gap-2 px-4 pt-3 pb-2"}>
-                {suggestions.map((suggestion) => (
+                {isGeneratingSuggestions && aiSuggestions.length === 0 && (
+                  <span className={"flex items-center gap-1.5 text-muted-foreground/60 text-xs"}>
+                    <Spinner className={"size-3"} />
+                    Generating suggestions&hellip;
+                  </span>
+                )}
+                {aiSuggestions.map((suggestion) => (
                   <Button
-                    className={"h-auto gap-2 px-3 py-1.5 text-xs"}
+                    className={
+                      "group/pill h-auto gap-1.5 rounded-full border-border/50 px-3 py-1.5 text-xs" +
+                      "shadow-xs transition-all duration-200 hover:border-border hover:shadow-sm" +
+                      "hover:bg-accent active:scale-95"
+                    }
                     key={suggestion.display}
                     onClick={() => void sendMessage(suggestion.prompt)}
                     size={"sm"}
                     variant={"outline"}
                   >
-                    <SparklesIcon className={"size-3 shrink-0 text-muted-foreground"} />
+                    <SparklesIcon
+                      className={
+                        "size-3 shrink-0 text-muted-foreground/50 transition-colors duration-200" +
+                        "group-hover/pill:text-primary"
+                      }
+                    />
                     {suggestion.display}
                   </Button>
                 ))}
               </div>
             )}
 
+            {/* Input form */}
             <form className={"flex items-center justify-center gap-2 px-4 pt-3 pb-2"} onSubmit={onSubmit}>
-              <InputGroup className={"bg-background shadow-sm"}>
+              <InputGroup
+                className={
+                  "bg-background shadow-sm transition-all duration-200" +
+                  "focus-within:border-primary/30 focus-within:shadow-md focus-within:ring-0"
+                }
+              >
                 <InputGroupTextarea
-                  className={"max-h-[200px] min-h-[44px] py-3"}
+                  className={"max-h-[200px] min-h-[44px] py-3 text-sm"}
                   disabled={isLoading}
                   onChange={(event) => setDraftMessage(event.currentTarget.value)}
                   onKeyDown={(event) => {
@@ -461,36 +586,44 @@ export function ChatbotTab({ entryId, groupName, tables }: ChatbotTabProps) {
                     }
                   }}
                   placeholder={"Ask about anomalies, trends, or table insights..."}
+                  ref={inputTextareaRef}
                   rows={1}
                   value={draftMessage}
                 />
                 <InputGroupAddon align={"inline-end"}>
                   <InputGroupButton
-                    className={"mr-1 size-8 rounded-full"}
+                    className={
+                      "mr-1 size-8 rounded-full transition-all duration-200" +
+                      (draftMessage.trim() ? "shadow-sm hover:shadow-md active:scale-95" : "opacity-50")
+                    }
                     disabled={isLoading || !draftMessage.trim()}
                     size={"icon-sm"}
                     type={"submit"}
                     variant={"default"}
                   >
-                    <SendHorizontalIcon />
+                    <SendHorizontalIcon className={"size-4"} />
                     <span className={"sr-only"}>Send</span>
                   </InputGroupButton>
                 </InputGroupAddon>
               </InputGroup>
             </form>
 
+            {/* Clear chat */}
             {hasMessages && (
-              <div className={"flex items-center justify-end gap-2 px-4 pb-4 pt-1"}>
+              <div className={"flex items-center justify-end gap-2 px-4 pt-1 pb-4"}>
                 <Button
-                  className={"shrink-0 rounded-full"}
+                  className={
+                    "h-auto gap-1.5 rounded-full px-3 py-1 text-muted-foreground/60 text-xs" +
+                    "transition-all duration-200 hover:bg-muted/50 hover:text-muted-foreground active:scale-95"
+                  }
                   disabled={isLoading}
                   onClick={() => void handleClearChat()}
                   size={"sm"}
                   type={"button"}
                   variant={"ghost"}
                 >
-                  <Trash2Icon className={"size-3 shrink-0"} />
-                  <span className={"truncate"}>Clear Chat</span>
+                  <EraserIcon className={"size-3 shrink-0"} />
+                  <span className={"truncate"}>Clear chat</span>
                 </Button>
               </div>
             )}

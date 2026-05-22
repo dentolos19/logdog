@@ -211,6 +211,10 @@ def make_display_name(parser_key: str, file_id: str | None, filename: str) -> st
     if ":" in base_name:
         base_name = base_name.split(":")[-1]
 
+    # When only one parser exists (AI Universal), don't label the display name
+    if parser_key == "ai_universal":
+        return base_name.replace("_", " ").title()
+
     name_parts = [part for part in [base_name, parser_key] if part]
     combined = " ".join(name_parts)
     return combined.replace("_", " ").title()

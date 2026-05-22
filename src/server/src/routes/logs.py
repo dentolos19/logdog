@@ -4,6 +4,7 @@ import csv
 import io
 import json
 import logging
+import os
 import re
 import time
 import uuid
@@ -1238,6 +1239,87 @@ def _fetch_group_rows_for_report(group_id: str, database: Session) -> str:
     return "\n".join(lines)
 
 
+class GroupStatsResponse(BaseModel):
+    process_count: int
+    process_status_counts: dict[str, int]
+    file_count: int
+    file_format_counts: dict[str, int]
+    table_count: int
+    table_row_counts: dict[str, int]
+    total_rows: int
+    parser_confidence: float | None = None
+
+
+@router.get("/{group_id}/stats", response_model=GroupStatsResponse)
+def get_group_stats(
+    group_id: str,
+    current_user: User = Depends(get_current_user),
+    database: Session = Depends(get_database),
+):
+    group = _require_owned_group(database=database, group_id=group_id, user_id=current_user.id)
+
+    # Process counts
+    group_processes = database.query(LogProcess).filter(LogProcess.group_id == group.id).all()
+    process_count = len(group_processes)
+    process_status_counts: dict[str, int] = {}
+    confidence_sum = 0.0
+    confidence_count = 0
+    for proc in group_processes:
+        process_status_counts[proc.status] = process_status_counts.get(proc.status, 0) + 1
+        if proc.status == "completed" and proc.result:
+            try:
+                parsed = json.loads(proc.result)
+                if isinstance(parsed, dict):
+                    conf = parsed.get("confidence")
+                    if isinstance(conf, (int, float)):
+                        confidence_sum += max(0.0, min(float(conf), 1.0))
+                        confidence_count += 1
+            except (json.JSONDecodeError, TypeError):
+                pass
+    parser_confidence = round(confidence_sum / confidence_count, 2) if confidence_count > 0 else None
+
+    # File counts by format
+    files = database.query(LogFile).filter(LogFile.group_id == group.id).all()
+    file_count = len(files)
+    file_format_counts: dict[str, int] = {}
+    for log_file in files:
+        asset = database.query(Asset).filter(Asset.id == log_file.asset_id).first()
+        if asset is not None:
+            ext = os.path.splitext(asset.name)[1].lower() or "unknown"
+            file_format_counts[ext] = file_format_counts.get(ext, 0) + 1
+
+    # Table row counts
+    tables = database.query(LogTable).filter(LogTable.group_id == group.id).all()
+    table_count = len(tables)
+    table_row_counts: dict[str, int] = {}
+    total_rows = 0
+    if tables:
+        megabase_database = MegabaseSessionLocal()
+        try:
+            init_megabase(megabase_database)
+            for table in tables:
+                try:
+                    result = megabase_database.execute(sa_text(f'SELECT COUNT(*) FROM "{table.table}"'))
+                    row_count = result.scalar() or 0
+                    table_row_counts[table.table] = row_count
+                    total_rows += row_count
+                except Exception:
+                    table_row_counts[table.table] = 0
+        finally:
+            megabase_database.close()
+
+    return GroupStatsResponse(
+        process_count=process_count,
+        process_status_counts=process_status_counts,
+        file_count=file_count,
+        file_format_counts=file_format_counts,
+        table_count=table_count,
+        table_row_counts=table_row_counts,
+        total_rows=total_rows,
+        parser_confidence=parser_confidence,
+    )
+
+
 @router.post("/{group_id}/insights", response_model=LogInsightReport)
 def generate_insights(
     group_id: str,
@@ -1637,6 +1719,11 @@ def generate_workbook_report(
                             row_values.append("")
                         elif isinstance(value, (dict, list)):
                             row_values.append(json.dumps(value, ensure_ascii=True))
+                        elif isinstance(value, datetime):
+                            # Excel does not support timezone-aware datetimes
+                            row_values.append(value.replace(tzinfo=None))
+                        elif isinstance(value, str) and value.startswith("0000-00-00"):
+                            row_values.append("")
                         else:
                             row_values.append(value)
                     worksheet.append(row_values)

@@ -100,6 +100,17 @@ export type DashboardStats = {
   format_distribution: FormatDistributionItem[];
 };
 
+export type GroupStats = {
+  process_count: number;
+  process_status_counts: Record<string, number>;
+  file_count: number;
+  file_format_counts: Record<string, number>;
+  table_count: number;
+  table_row_counts: Record<string, number>;
+  total_rows: number;
+  parser_confidence: number | null;
+};
+
 export type LogInsightReport = {
   summary: string;
   severity: string;
@@ -333,6 +344,11 @@ export async function downloadWorkbookReport(entryId: string) {
     throw new Error(`Request failed (${response.status}): ${payload}`);
   }
   return response.blob();
+}
+
+export async function getGroupStats(entryId: string) {
+  const response = await $fetch(`/logs/${entryId}/stats`);
+  return parseJsonResponse<GroupStats>(response);
 }
 
 export async function generateLogReport(entryId: string) {

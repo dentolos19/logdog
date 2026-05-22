@@ -393,6 +393,14 @@ function buildSystemPrompt(logGroupName: string) {
     "Rely only on user-provided information and tool outputs.",
     "Keep answers concise, actionable, and focused on insights from the log data.",
     "Do not invent columns, tables, or values that are not present in tool outputs.",
+    "",
+    "## User-friendly language",
+    "Write responses in plain, conversational English. Avoid technical jargon, database terminology (like table names, column names, SQL types), internal identifiers, UUIDs, and long alphanumeric strings.",
+    "Use short sentences and simple words. Pretend you are explaining findings to someone who is not a database expert.",
+    "Do not include raw SQL queries or code snippets in your text responses unless the user explicitly asks for them.",
+    "When referring to tables, use the display name (e.g. 'nginx access logs' instead of 'nginx_access_log_2024').",
+    "When showing numbers, format them in a readable way (e.g. '1,234' instead of '1234').",
+    "Never mention table_name, column_name, sql_type, or other internal schema details in your conversational replies.",
   ].join("\n");
 }
 
@@ -643,6 +651,100 @@ export const streamLogChat = createServerFn({ method: "POST" })
     });
 
     return toServerSentEventsResponse(chatStream);
+  });
+
+const generateChatSuggestionsInputSchema = z.object({
+  entryId: z.string().min(1),
+  recentMessages: z.array(
+    z.object({
+      role: z.enum(["user", "assistant"]),
+      content: z.string().max(2000),
+    }),
+  ),
+  hasTables: z.boolean(),
+});
+
+export const generateChatSuggestions = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) => generateChatSuggestionsInputSchema.parse(data))
+  .handler(async ({ data, request }) => {
+    const requestUrl = new URL(request.url);
+    const backendOrigin = `${requestUrl.protocol}//${requestUrl.host}`;
+
+    const cookies = request.headers.get("cookie") ?? "";
+    const accessToken = parseCookieValue(cookies, ACCESS_TOKEN_COOKIE);
+    const authorizationHeader = accessToken ? `Bearer ${accessToken}` : "";
+
+    const groupMetadata = await fetchLogGroupMetadata(data.entryId, backendOrigin, authorizationHeader);
+    const logGroupName = normalizeGroupName(groupMetadata.name);
+
+    const {
+      openRouterApiKey: orApiKey,
+      openRouterModel: orModel,
+      openRouterTitle: orTitle,
+      openRouterReferer: orReferer,
+    } = getEnv();
+
+    const suggestionSystemPrompt = [
+      "You are a helpful assistant that suggests follow-up questions for a log analysis chatbot.",
+      `The current log group is "${logGroupName}".`,
+      data.hasTables
+        ? "The user has uploaded log data that is ready for analysis."
+        : "The user has not uploaded any processed log data yet.",
+      "",
+      "Based on the conversation so far, suggest 3 short follow-up questions the user might want to ask next.",
+      "Each suggestion MUST be under 50 characters, user-friendly, and directly relevant to the conversation.",
+      "Use plain language - no jargon, no technical terms.",
+      "",
+      "Return ONLY a JSON array of 3 strings, no other text or explanation.",
+      'Example: ["Show me error trends", "Find unusual activity", "Summarize recent logs"]',
+    ].join("\n");
+
+    try {
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${orApiKey}`,
+          "Content-Type": "application/json",
+          ...(orTitle ? { "X-Title": orTitle } : {}),
+          ...(orReferer ? { "HTTP-Referer": orReferer } : {}),
+        },
+        body: JSON.stringify({
+          model: orModel,
+          messages: [{ role: "system", content: suggestionSystemPrompt }, ...data.recentMessages],
+          max_tokens: 150,
+          temperature: 0.3,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`OpenRouter API returned ${response.status}`);
+      }
+
+      const body = (await response.json()) as {
+        choices?: Array<{ message?: { content?: string } }>;
+      };
+      const text = body.choices?.[0]?.message?.content ?? "";
+
+      // Try to parse JSON array from the response
+      const jsonMatch = text.match(/\[[\s\S]*\]/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        if (Array.isArray(parsed)) {
+          return parsed
+            .map((s) => (typeof s === "string" ? s.trim() : ""))
+            .filter((s) => s.length > 0)
+            .slice(0, 4);
+        }
+      }
+    } catch {
+      // Fall through to fallback suggestions
+    }
+
+    // Fallback suggestions
+    if (data.hasTables) {
+      return ["Explore key trends", "Find top anomalies", "Show a quick summary"];
+    }
+    return ["How do I upload logs?", "What kind of data works?", "Show me the basics"];
   });
 
 function parseCookieValue(cookieHeader: string, name: string): string | null {

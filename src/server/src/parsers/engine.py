@@ -1500,10 +1500,19 @@ class UniversalAIParser(ParserPipeline):
 
         # ── 1. Normalize records (CSV-aware) ────────────────────────
         all_records: list[dict[str, Any]] = []
+        global_record_index = 0
         for fi in file_inputs:
             records = normalize_records(fi.content, filename=fi.filename)
             for rec in records:
+                # ``normalize_records`` indexes records relative to each file.
+                # When multiple archive members are parsed together those
+                # per-file indexes collide (0.csv:0, 1.csv:0, ...), which can
+                # cause AI-extracted rows to be matched back to the first file
+                # with the same index.  Use a parser-wide index so source
+                # attribution stays correct across ZIP/tar members.
                 rec["source"] = fi.filename
+                rec["record_index"] = global_record_index
+                global_record_index += 1
             all_records.extend(records)
 
         if not all_records:

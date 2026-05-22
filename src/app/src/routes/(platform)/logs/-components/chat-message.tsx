@@ -42,7 +42,10 @@ function parseTextFromMessage(message: UIMessage) {
 
 function MarkdownMessage({ content, isUser }: { content: string; isUser: boolean }) {
   return (
-    <Streamdown className={`text-sm ${isUser ? "streamdown-user" : "streamdown-assistant"}`} plugins={{ mermaid }}>
+    <Streamdown
+      className={`text-sm leading-relaxed ${isUser ? "streamdown-user" : "streamdown-assistant"}`}
+      plugins={{ mermaid }}
+    >
       {content}
     </Streamdown>
   );
@@ -60,7 +63,13 @@ function CopyButton({ text }: { text: string }) {
 
   return (
     <Button
-      className={"size-7 opacity-0 group-hover:opacity-100"}
+      className={
+        "absolute top-2 right-2 size-7 rounded-full opacity-0 shadow-xs transition-all duration-200 " +
+        "group-hover:opacity-100 group-hover:shadow-sm hover:scale-105 active:scale-95 " +
+        (copied
+          ? "bg-green-500/10 text-green-600 opacity-100"
+          : "bg-background/80 text-muted-foreground backdrop-blur-sm")
+      }
       onClick={handleCopy}
       size={"icon-sm"}
       variant={"ghost"}
@@ -70,12 +79,35 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
+function BotAvatar() {
+  return (
+    <div
+      className={
+        "flex size-8 shrink-0 items-center justify-center rounded-full " +
+        "bg-gradient-to-br from-primary/10 to-primary/5 ring-1 ring-primary/10 text-primary"
+      }
+    >
+      <BotIcon className={"size-4"} />
+    </div>
+  );
+}
+
+function UserAvatar() {
+  return (
+    <div
+      className={
+        "flex size-8 shrink-0 items-center justify-center rounded-full " +
+        "bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-sm"
+      }
+    >
+      <UserIcon className={"size-4"} />
+    </div>
+  );
+}
+
 export function ChatMessageItem({ message, entryId, groupName, tableNameMap }: ChatMessageItemProps) {
   const isUser = message.role === "user";
   const rawText = parseTextFromMessage(message);
-  // Redact internal identifiers (entryId UUID and raw table_name values) from
-  // assistant messages so users never see raw identifiers in rendered text or
-  // when copying.
   const text = isUser ? rawText : redactIds(rawText, entryId, groupName, tableNameMap);
   const toolCallCount = message.parts.filter((part) => part.type === "tool-call").length;
 
@@ -84,40 +116,38 @@ export function ChatMessageItem({ message, entryId, groupName, tableNameMap }: C
   }
 
   return (
-    <div className={`group flex gap-3 ${isUser ? "flex-row-reverse" : "flex-row"}`}>
-      <div
-        className={
-          "flex size-8 shrink-0 items-center justify-center rounded-full " +
-          (isUser ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")
-        }
-      >
-        {isUser ? <UserIcon className={"size-4"} /> : <BotIcon className={"size-4"} />}
-      </div>
+    <div
+      className={`group flex items-start gap-3 ${isUser ? "flex-row-reverse" : "flex-row"}`}
+      style={{ animation: "none" }}
+    >
+      {isUser ? <UserAvatar /> : <BotAvatar />}
 
-      <div className={`flex max-w-[85%] flex-col ${isUser ? "items-end" : "items-start"}`}>
+      <div className={`flex max-w-[80%] flex-col ${isUser ? "items-end" : "items-start"}`}>
         <div
           className={
-            "relative rounded-2xl px-4 py-3 " +
+            "relative rounded-2xl px-4 py-3 shadow-xs " +
             (isUser
-              ? "bg-primary text-primary-foreground rounded-br-md"
-              : "border bg-card text-card-foreground rounded-bl-md")
+              ? "bg-primary text-primary-foreground rounded-br-sm shadow-primary/10"
+              : "border bg-card text-card-foreground rounded-bl-sm shadow-sm")
           }
         >
-          <div className={"text-sm"}>
+          <div className={"pr-6 text-sm"}>
             <MarkdownMessage content={text} isUser={isUser} />
           </div>
 
-          {!isUser && (
-            <div className={"absolute top-2 right-2"}>
-              <CopyButton text={text} />
-            </div>
-          )}
+          {!isUser && <CopyButton text={text} />}
         </div>
 
         {!isUser && toolCallCount > 0 && (
-          <Badge className={"mt-1.5"} variant={"outline"}>
-            <WrenchIcon className={"size-3"} />
-            {toolCallCount}
+          <Badge
+            className={
+              "mt-1.5 gap-1 rounded-full border-muted-foreground/10 bg-muted/50 px-2 py-0.5 text-[10px] " +
+              "font-normal text-muted-foreground/70"
+            }
+            variant={"outline"}
+          >
+            <WrenchIcon className={"size-2.5"} />
+            {toolCallCount} {toolCallCount === 1 ? "tool call" : "tool calls"}
           </Badge>
         )}
       </div>

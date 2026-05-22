@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import gzip
 import io
 import json
@@ -9,6 +10,7 @@ import tarfile
 import uuid
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
+from datetime import date, datetime, time
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -346,18 +348,126 @@ def _decode_hex_dump(raw_bytes: bytes) -> str:
 def _decode_payload(filename: str, raw_bytes: bytes) -> list[FileInput]:
     """Decode *raw_bytes* into one or more ``FileInput`` objects.
 
+    Spreadsheet workbooks are converted into per-sheet CSV-like text inputs.
     Archives (ZIP, GZIP, tar) are expanded into per-member ``FileInput``
     objects. Plain files produce a single ``FileInput``. Each member is
     independently classified as text or binary.
     """
+    workbook_inputs = _decode_xlsx_payload(filename, raw_bytes)
+    if workbook_inputs:
+        return workbook_inputs
+
     archive_members = _extract_archive_members(filename, raw_bytes)
     if archive_members:
         expanded: list[FileInput] = []
         for member_name, member_bytes in archive_members:
             synthetic_name = f"{filename}:{member_name}"
-            expanded.append(_decode_payload_to_file_input(synthetic_name, member_bytes))
+            expanded.extend(_decode_payload(synthetic_name, member_bytes))
         return expanded
     return [_decode_payload_to_file_input(filename, raw_bytes)]
+
+
+def _decode_xlsx_payload(filename: str, raw_bytes: bytes) -> list[FileInput]:
+    """Convert an Excel workbook into one text ``FileInput`` per sheet.
+
+    XLSX files are ZIP containers internally, so this must run before generic
+    archive expansion.  Each non-empty worksheet is serialized to CSV text and
+    then parsed by the normal CSV-aware parser path.
+    """
+
+    if not _looks_like_xlsx(filename, raw_bytes):
+        return []
+
+    try:
+        from openpyxl import load_workbook
+    except Exception as error:  # noqa: BLE001
+        logger.warning("openpyxl is unavailable; cannot decode workbook %s: %s", filename, error)
+        return []
+
+    try:
+        workbook = load_workbook(io.BytesIO(raw_bytes), read_only=True, data_only=True)
+    except Exception as error:  # noqa: BLE001
+        logger.warning("Could not decode workbook %s: %s", filename, error)
+        return []
+
+    try:
+        inputs: list[FileInput] = []
+        for worksheet in workbook.worksheets:
+            rows = list(worksheet.iter_rows(values_only=True))
+            trimmed_rows = _trim_empty_xlsx_rows(rows)
+            if not trimmed_rows:
+                continue
+
+            csv_content = _xlsx_rows_to_csv(trimmed_rows)
+            sheet_filename = f"{filename}:{worksheet.title}.csv"
+            encoded = csv_content.encode("utf-8")
+            inputs.append(
+                FileInput(
+                    filename=sheet_filename,
+                    content=csv_content,
+                    raw_bytes=None,
+                    is_binary=False,
+                    encoding="utf-8",
+                    mime_type="text/csv",
+                    byte_length=len(encoded),
+                    sha256=sha256_bytes(encoded),
+                )
+            )
+        return inputs
+    finally:
+        workbook.close()
+
+
+def _looks_like_xlsx(filename: str, raw_bytes: bytes) -> bool:
+    lowered = filename.lower()
+    if lowered.endswith((".xlsx", ".xlsm", ".xltx", ".xltm")):
+        return True
+    if not raw_bytes.startswith(b"PK\x03\x04"):
+        return False
+    try:
+        with zipfile.ZipFile(io.BytesIO(raw_bytes)) as zf:
+            names = set(zf.namelist())
+    except zipfile.BadZipFile:
+        return False
+    return "[Content_Types].xml" in names and any(name.startswith("xl/") for name in names)
+
+
+def _trim_empty_xlsx_rows(rows: list[tuple[Any, ...]]) -> list[list[Any]]:
+    non_empty_rows = [list(row) for row in rows if any(_xlsx_cell_has_value(value) for value in row)]
+    if not non_empty_rows:
+        return []
+
+    max_non_empty_col = 0
+    for row in non_empty_rows:
+        for index, value in enumerate(row):
+            if _xlsx_cell_has_value(value):
+                max_non_empty_col = max(max_non_empty_col, index + 1)
+
+    return [row[:max_non_empty_col] for row in non_empty_rows]
+
+
+def _xlsx_cell_has_value(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str) and not value.strip():
+        return False
+    return True
+
+
+def _xlsx_rows_to_csv(rows: list[list[Any]]) -> str:
+    output = io.StringIO()
+    writer = csv.writer(output)
+    for row in rows:
+        writer.writerow([_serialize_xlsx_cell(value) for value in row])
+    return output.getvalue()
+
+
+def _serialize_xlsx_cell(value: Any) -> Any:
+    if isinstance(value, datetime):
+        return value.isoformat(sep=" ")
+    if isinstance(value, (date, time)):
+        return value.isoformat()
+    return value
 
 
 def _extract_archive_members(filename: str, raw_bytes: bytes) -> list[tuple[str, bytes]]:
@@ -452,8 +562,47 @@ def _parse_and_merge(
     merged_diagnostics: dict[str, Any] = {
         "parsers": {},
         "fallbacks": [],
+        "parser_runs": [],
         "table_row_counts": {},
     }
+
+    def merge_parser_result(
+        result: ParserPipelineResult,
+        *,
+        source_filename: str,
+        fallback: bool = False,
+    ) -> int:
+        """Merge a single parser run into the aggregate result.
+
+        ZIP and tar archives expand to multiple ``FileInput`` objects.  Parser
+        runs are merged by table name so each member can produce its own table
+        without overwriting tables from previous members.
+        """
+
+        merged_table_definitions.extend(result.table_definitions)
+        for table_name, rows in result.records.items():
+            merged_records.setdefault(table_name, []).extend(rows)
+        merged_warnings.extend(result.warnings)
+        used_parser_keys.append(result.parser_key)
+
+        row_count = sum(len(rows) for rows in result.records.values())
+        parser_confidences.append(result.confidence)
+        parser_row_counts.append(row_count)
+
+        parser_run = {
+            "parser_key": result.parser_key,
+            "source": source_filename,
+            "tables": list(result.records.keys()),
+            "row_count": row_count,
+            "fallback": fallback,
+            "diagnostics": result.diagnostics or {},
+        }
+        merged_diagnostics["parser_runs"].append(parser_run)
+        parser_bucket = merged_diagnostics["parsers"].setdefault(result.parser_key, {"runs": []})
+        if isinstance(parser_bucket, dict) and isinstance(parser_bucket.get("runs"), list):
+            parser_bucket["runs"].append(parser_run)
+
+        return row_count
 
     # ── Split binary vs. text files ──────────────────────────────────
     binary_inputs: list[FileInput] = []
@@ -465,22 +614,17 @@ def _parse_and_merge(
             text_inputs.append(fi)
 
     fallback_used = False  # tracks whether raw_ingest fallback was used
+    raw_ingest_row_count = 0
 
     # ── Parse binary files with BinaryFileParser ─────────────────────
     if binary_inputs:
         try:
             binary_pipeline = ParserRegistry.route(BINARY_PARSER_KEY)
             binary_result = binary_pipeline.ingest(binary_inputs, classification)
-
-            merged_table_definitions.extend(binary_result.table_definitions)
-            merged_records.update(binary_result.records)
-            merged_warnings.extend(binary_result.warnings)
-            used_parser_keys.append(binary_result.parser_key)
-            merged_diagnostics["parsers"][BINARY_PARSER_KEY] = binary_result.diagnostics or {}
-
-            binary_row_count = sum(len(rows) for rows in binary_result.records.values())
-            parser_confidences.append(binary_result.confidence)
-            parser_row_counts.append(binary_row_count)
+            merge_parser_result(
+                binary_result,
+                source_filename=", ".join(file_input.filename for file_input in binary_inputs),
+            )
         except Exception as error:  # noqa: BLE001
             logger.exception("Binary file parser failed")
             merged_warnings.append(f"Binary file parser failed: {error}")
@@ -493,69 +637,57 @@ def _parse_and_merge(
             )
 
     # ── Parse text files with universal AI parser ────────────────────
-    if not text_inputs:
-        # All files were binary — skip AI/text parser entirely
-        pass
-    else:
-        # Try universal AI parser first
-        ai_result = None
-        try:
-            ai_pipeline = ParserRegistry.route("universal_ai")
-            ai_result = ai_pipeline.ingest(text_inputs, classification)
+    # Process each decoded member independently.  Passing every ZIP member to
+    # one AI parser run lets the schema/extraction sample be dominated by the
+    # first member and can collapse all rows into a single table named after
+    # 0.csv.  Per-file runs preserve every archive member and allow mixed
+    # schemas to naturally produce multiple tables.
+    if text_inputs:
+        ai_pipeline = ParserRegistry.route("universal_ai")
+        fallback_pipeline = None
 
-            merged_table_definitions.extend(ai_result.table_definitions)
-            merged_records.update(ai_result.records)
-            merged_warnings.extend(ai_result.warnings)
-            used_parser_keys.append(ai_result.parser_key)
-            merged_diagnostics["parsers"]["universal_ai"] = ai_result.diagnostics or {}
+        for text_input in text_inputs:
+            ai_result = None
+            ai_error: Exception | None = None
 
-            ai_row_count = sum(len(rows) for rows in ai_result.records.values())
-            parser_confidences.append(ai_result.confidence)
-            parser_row_counts.append(ai_row_count)
-        except Exception as error:  # noqa: BLE001
-            logger.exception("Universal AI parser failed")
-            merged_warnings.append(f"Universal AI parser failed: {error}")
+            try:
+                ai_result = ai_pipeline.ingest([text_input], classification)
+            except Exception as error:  # noqa: BLE001
+                ai_error = error
+                logger.exception("Universal AI parser failed for %s", text_input.filename)
+                merged_warnings.append(f"Universal AI parser failed for {text_input.filename}: {error}")
+
+            ai_has_rows = ai_result is not None and any(ai_result.records.values())
+            if ai_has_rows:
+                merge_parser_result(ai_result, source_filename=text_input.filename)
+                continue
+
+            if ai_result is not None:
+                merged_warnings.extend(ai_result.warnings)
+
+            fallback_used = True
+            fallback_reason = "AI parser produced no rows" if ai_result is not None else "AI parser failed"
             merged_diagnostics["fallbacks"].append(
                 {
-                    "from_parser": "universal_ai",
+                    "source": text_input.filename,
+                    "from_parser": "universal_ai" if ai_result is not None else "(none)",
                     "to_parser": "raw_ingest",
-                    "reason": str(error),
+                    "reason": str(ai_error) if ai_error is not None else fallback_reason,
                 }
             )
 
-        # If AI returned no rows or failed, fall back to raw ingest
-        ai_has_rows = ai_result is not None and any(ai_result.records.values())
-        if not ai_has_rows:
-            fallback_used = True
             try:
-                fallback_pipeline = ParserRegistry.route("raw_ingest")
-                fallback_result = fallback_pipeline.ingest(text_inputs, classification)
-
-                # If AI had partial results, merge fallback into them
-                if fallback_result.table_definitions:
-                    merged_table_definitions = fallback_result.table_definitions
-                if fallback_result.records:
-                    merged_records.update(fallback_result.records)
-                merged_warnings.extend(fallback_result.warnings)
-                used_parser_keys.append(fallback_result.parser_key)
-                merged_diagnostics["parsers"]["raw_ingest"] = fallback_result.diagnostics or {}
-                merged_diagnostics["fallbacks"].append(
-                    {
-                        "from_parser": "universal_ai" if ai_result is not None else "(none)",
-                        "to_parser": "raw_ingest",
-                        "reason": "AI parser produced no rows" if ai_result else "AI parser failed",
-                    }
+                if fallback_pipeline is None:
+                    fallback_pipeline = ParserRegistry.route("raw_ingest")
+                fallback_result = fallback_pipeline.ingest([text_input], classification)
+                raw_ingest_row_count += merge_parser_result(
+                    fallback_result,
+                    source_filename=text_input.filename,
+                    fallback=True,
                 )
-
-                fallback_row_count = sum(len(rows) for rows in fallback_result.records.values())
-                parser_confidences.append(fallback_result.confidence)
-                parser_row_counts.append(fallback_row_count)
             except Exception as fallback_error:  # noqa: BLE001
-                logger.exception("Raw ingest fallback also failed")
-                merged_warnings.append(f"Raw ingest fallback also failed: {fallback_error}")
-                fallback_used = False
-        else:
-            fallback_used = False
+                logger.exception("Raw ingest fallback also failed for %s", text_input.filename)
+                merged_warnings.append(f"Raw ingest fallback also failed for {text_input.filename}: {fallback_error}")
 
     # ── Conservative confidence aggregation ──────────────────────────
     total_rows = sum(parser_row_counts)
@@ -575,15 +707,10 @@ def _parse_and_merge(
         fallback_penalty = 0.0
         applied_cap = None
 
-        if fallback_used and len(parser_row_counts) > 1:
-            # The fallback parser is always the last one in the list
-            raw_ingest_row_ratio = parser_row_counts[-1] / total_rows if total_rows > 0 else 0.0
-            # Fallback penalty scales with how much of the data came from raw_ingest
+        if fallback_used:
+            raw_ingest_row_ratio = raw_ingest_row_count / total_rows if total_rows > 0 else 0.0
+            # Fallback penalty scales with how much of the data came from raw_ingest.
             fallback_penalty = 0.15 + 0.25 * raw_ingest_row_ratio
-        elif fallback_used and len(parser_row_counts) == 1:
-            # Only fallback parser ran (no AI result at all)
-            raw_ingest_row_ratio = 1.0
-            fallback_penalty = 0.15 + 0.25 * 1.0
 
         final_confidence = weighted_confidence - fallback_penalty
 
