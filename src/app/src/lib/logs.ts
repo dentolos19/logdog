@@ -1,4 +1,4 @@
-import { $fetch } from "#/lib/server/utils";
+import { $fetch } from "#/lib/utils";
 
 export type LogGroup = {
   id: string;
@@ -257,7 +257,7 @@ export async function downloadLogFile(groupId: string, fileId: string) {
 }
 
 export async function downloadTableCsv(groupId: string, tableName: string) {
-  const response = await $fetch(`/logs/${groupId}/tables/${tableName}/download/csv`);
+  const response = await $fetch(`/logs/${groupId}/tables/${encodeURIComponent(tableName)}/download/csv`);
   if (!response.ok) {
     const payload = await response.text();
     throw new Error(`Request failed (${response.status}): ${payload}`);
@@ -267,7 +267,7 @@ export async function downloadTableCsv(groupId: string, tableName: string) {
 }
 
 export async function downloadTableXlsx(groupId: string, tableName: string) {
-  const response = await $fetch(`/logs/${groupId}/tables/${tableName}/download/xlsx`);
+  const response = await $fetch(`/logs/${groupId}/tables/${encodeURIComponent(tableName)}/download/xlsx`);
   if (!response.ok) {
     const payload = await response.text();
     throw new Error(`Request failed (${response.status}): ${payload}`);
@@ -277,7 +277,7 @@ export async function downloadTableXlsx(groupId: string, tableName: string) {
 }
 
 export async function downloadFilteredTable(groupId: string, tableName: string, payload: FilteredExportPayload) {
-  const response = await $fetch(`/logs/${groupId}/tables/${tableName}/download/filtered`, {
+  const response = await $fetch(`/logs/${groupId}/tables/${encodeURIComponent(tableName)}/download/filtered`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

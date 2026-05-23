@@ -1,5 +1,5 @@
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useState } from "react";
-import { clearAuthTokens, getMe, login, logout, refreshTokens, register } from "#/lib/server";
+import { clearAuthTokens, getMe, login, logout, refreshTokens, register } from "#/lib/auth";
 
 type AuthUser = {
   id: string;

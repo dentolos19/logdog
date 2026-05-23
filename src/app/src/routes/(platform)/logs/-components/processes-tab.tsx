@@ -10,7 +10,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "#/
 import { Progress } from "#/components/ui/progress";
 import { ScrollArea } from "#/components/ui/scroll-area";
 import { Spinner } from "#/components/ui/spinner";
-import type { LogProcess } from "#/lib/server";
+import type { LogProcess } from "#/lib/logs";
 
 type ProcessesTabProps = {
   processes: LogProcess[];

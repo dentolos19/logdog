@@ -698,7 +698,7 @@ function createLogChatServerTools(options: { entryId: string; origin: string; au
 
 export const streamLogChat = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => streamLogChatInputSchema.parse(data))
-  .handler(async ({ data, request }) => {
+  .handler(async ({ data }) => {
     const modelMessages = toModelMessages(data.messages);
     if (!hasUserTextMessage(modelMessages)) {
       throw new Error("No text messages were provided.");
@@ -707,6 +707,7 @@ export const streamLogChat = createServerFn({ method: "POST" })
     // Derive backend origin and auth token server-side from the incoming
     // request instead of accepting them from the client. This prevents SSRF
     // and token-forwarding attacks.
+    const request = getRequest();
     const requestUrl = new URL(request.url);
     const backendOrigin = `${requestUrl.protocol}//${requestUrl.host}`;
 
@@ -748,10 +749,10 @@ export const streamLogChat = createServerFn({ method: "POST" })
     } = getEnv();
 
     const chatStream = chat({
-      adapter: createOpenRouterText(orModel, orApiKey, {
+      adapter: createOpenRouterText(orModel as Parameters<typeof createOpenRouterText>[0], orApiKey, {
         xTitle: orTitle,
         httpReferer: orReferer,
-      }),
+      } as Parameters<typeof createOpenRouterText>[2]),
       messages: sanitizedMessages,
       systemPrompts: [buildSystemPrompt(logGroupName)],
       agentLoopStrategy: maxIterations(8),
@@ -774,7 +775,8 @@ const generateChatSuggestionsInputSchema = z.object({
 
 export const generateChatSuggestions = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => generateChatSuggestionsInputSchema.parse(data))
-  .handler(async ({ data, request }) => {
+  .handler(async ({ data }) => {
+    const request = getRequest();
     const requestUrl = new URL(request.url);
     const backendOrigin = `${requestUrl.protocol}//${requestUrl.host}`;
 

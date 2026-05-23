@@ -8,7 +8,7 @@ import { Button } from "#/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "#/components/ui/dialog";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "#/components/ui/empty";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "#/components/ui/table";
-import { downloadLogFile, type LogFile, type LogProcess } from "#/lib/server";
+import { downloadLogFile, type LogFile, type LogProcess } from "#/lib/logs";
 import {
   formatFileSize,
   inferTablesFromProcesses,
@@ -178,15 +178,13 @@ function TableGroupRows({
       {group.tables.map((table, index) => (
         <TableRow
           className={`transition-all duration-500 ${
-            isHighlighted ? "bg-primary/10 ring-1 ring-primary/40" : ""
+            isHighlighted || highlightedTableIds.has(table.id) ? "bg-primary/10 ring-1 ring-primary/40" : ""
           } ${group.hasMultipleTables && index === 0 ? "border-t-2" : ""}`}
           key={table.id}
           ref={(element) => {
-            if (element !== null) {
-              setTableElement(table.id, element);
-              if (index === 0) {
-                setGroupElement(group.id, element);
-              }
+            setTableElement(table.id, element);
+            if (index === 0) {
+              setGroupElement(group.id, element);
             }
           }}
         >

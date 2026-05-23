@@ -46,7 +46,7 @@ import {
   listLogFiles,
   listLogProcesses,
   type TableSummaryResponse,
-} from "#/lib/server";
+} from "#/lib/logs";
 import { PageHeader } from "#/routes/(platform)/-components/page-header";
 import {
   formatFileSize,
@@ -209,7 +209,12 @@ function LogTablePage() {
           <div className={"flex items-center gap-2"}>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button disabled={downloadingFormat !== null} size={"icon-sm"} variant={"ghost"}>
+                <Button
+                  aria-label={"Download table"}
+                  disabled={downloadingFormat !== null}
+                  size={"icon-sm"}
+                  variant={"ghost"}
+                >
                   {downloadingFormat !== null ? <Spinner /> : <DownloadIcon />}
                 </Button>
               </DropdownMenuTrigger>
@@ -230,7 +235,12 @@ function LogTablePage() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            <Button onClick={() => setIsDetailsOpen(true)} size={"icon-sm"} variant={"ghost"}>
+            <Button
+              aria-label={"Show table details"}
+              onClick={() => setIsDetailsOpen(true)}
+              size={"icon-sm"}
+              variant={"ghost"}
+            >
               <InfoIcon />
             </Button>
           </div>
@@ -406,7 +416,7 @@ function AITableSummary({ entryId, tableName }: { entryId: string; tableName: st
   // Loading state
   if (isLoading || (isGenerating && summary === null)) {
     return (
-      <div className={"flex flex-col gap-2 rounded-md border p-4"}>
+      <div className={"mt-2 flex flex-col gap-2 rounded-md border p-4"}>
         <div className={"flex items-center gap-2"}>
           <SparklesIcon className={"size-4 text-muted-foreground"} />
           <span className={"font-medium text-sm"}>AI Summary</span>
@@ -424,7 +434,7 @@ function AITableSummary({ entryId, tableName }: { entryId: string; tableName: st
   // Error state (only shown if we have no summary at all)
   if (error !== null && summary === null) {
     return (
-      <div className={"flex flex-col gap-2 rounded-md border p-4"}>
+      <div className={"mt-2 flex flex-col gap-2 rounded-md border p-4"}>
         <div className={"flex items-center gap-2"}>
           <SparklesIcon className={"size-4 text-muted-foreground"} />
           <span className={"font-medium text-sm"}>AI Summary</span>

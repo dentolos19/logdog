@@ -63,6 +63,7 @@ function CopyButton({ text }: { text: string }) {
 
   return (
     <Button
+      aria-label={copied ? "Copied message" : "Copy message"}
       className={
         "absolute top-2 right-2 size-7 rounded-full opacity-0 shadow-xs transition-all duration-200 " +
         "group-hover:opacity-100 group-hover:shadow-sm hover:scale-105 active:scale-95 " +

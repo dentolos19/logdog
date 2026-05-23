@@ -10,6 +10,7 @@ import time
 import uuid
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import quote
 
 import sqlparse
 from docx import Document
@@ -193,6 +194,12 @@ FORBIDDEN_SQL_KEYWORDS = re.compile(
 
 # Maximum LIMIT that may be injected into any SQL query for safety.
 _HARD_SQL_LIMIT = 10000
+_SQL_RESULT_LIMIT = 500
+
+_MAX_UPLOAD_FILES = int(os.environ.get("LOGDOG_MAX_UPLOAD_FILES", "20"))
+_MAX_UPLOAD_BYTES = int(os.environ.get("LOGDOG_MAX_UPLOAD_BYTES", str(25 * 1024 * 1024)))
+_MAX_WORKBOOK_EXPORT_ROWS_PER_TABLE = int(os.environ.get("LOGDOG_MAX_WORKBOOK_EXPORT_ROWS_PER_TABLE", "10000"))
+_MAX_PROCESS_RESPONSE_RECORDS_PER_TABLE = int(os.environ.get("LOGDOG_MAX_PROCESS_RESPONSE_RECORDS_PER_TABLE", "1000"))
 
 # Chat message limits.
 _MAX_PERSISTED_MESSAGES = 500
@@ -202,6 +209,9 @@ _MAX_MESSAGE_CONTENT_LENGTH = 100000
 def _extract_table_names(parsed: sqlparse.sql.Statement) -> set[str]:
     """Extract table names referenced in a parsed SQL statement."""
     tables: set[str] = set()
+
+    def is_ignorable(token: sqlparse.sql.Token) -> bool:
+        return bool(token.is_whitespace or token.ttype in sqlparse.tokens.Comment)
 
     def extract_from_token(token: sqlparse.sql.Token) -> None:
         if isinstance(token, sqlparse.sql.Identifier):
@@ -218,10 +228,16 @@ def _extract_table_names(parsed: sqlparse.sql.Statement) -> set[str]:
         elif isinstance(token, sqlparse.sql.Where):
             # Stop traversal at WHERE clause - table names can't appear there
             return
+        elif isinstance(token, sqlparse.sql.Parenthesis):
+            inner = token.value.strip()[1:-1].strip()
+            for statement in sqlparse.parse(inner):
+                tables.update(_extract_table_names(statement))
 
-    if parsed.get_type() == "SELECT":
+    if hasattr(parsed, "get_type") and parsed.get_type() == "SELECT":
         from_seen = False
         for token in parsed.tokens:
+            if is_ignorable(token):
+                continue
             if token.ttype is sqlparse.tokens.Keyword and token.value.upper() in {
                 "FROM",
                 "JOIN",
@@ -258,10 +274,13 @@ def _validate_table_allowlist(sql_text: str, allowed_tables: set[str]) -> str | 
     Returns an error message string if validation fails, or None on success.
     """
     parsed = sqlparse.parse(sql_text)
+    if len(parsed) != 1:
+        return "Only a single SELECT statement is allowed."
+
     for statement in parsed:
         refs = _extract_table_names(statement)
         if not refs:
-            continue
+            return "Query must reference at least one table in this log group."
         disallowed = refs - allowed_tables
         if disallowed:
             return f"Query references disallowed tables: {', '.join(sorted(disallowed))}."
@@ -279,15 +298,36 @@ def _inject_sql_limit(sql_text: str, max_rows: int = _HARD_SQL_LIMIT) -> str:
     if stmt.get_type() != "SELECT":
         return sql_text
 
-    # Check if LIMIT is already present
-    has_limit = any(token.ttype is sqlparse.tokens.Keyword and token.value.upper() == "LIMIT" for token in stmt.tokens)
-    if has_limit:
-        return sql_text
+    limit_match = re.search(r"\blimit\s+(\d+)\b", sql_text, flags=re.IGNORECASE)
+    if limit_match:
+        requested = int(limit_match.group(1))
+        capped = min(requested, max_rows)
+        return f"{sql_text[: limit_match.start(1)]}{capped}{sql_text[limit_match.end(1) :]}"
 
     return f"{sql_text.rstrip(';').rstrip()} LIMIT {max_rows};"
 
 
-QUERY_RESULT_LIMIT = 500
+QUERY_RESULT_LIMIT = _SQL_RESULT_LIMIT
+
+
+def _quote_identifier(identifier: str) -> str:
+    if not identifier or "\x00" in identifier:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid table name.")
+    return '"' + identifier.replace('"', '""') + '"'
+
+
+def _require_owned_table(database: Session, group_id: uuid.UUID, table_name: str) -> LogTable:
+    table_record = database.query(LogTable).filter(LogTable.group_id == group_id, LogTable.table == table_name).first()
+    if table_record is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Table not found.")
+    return table_record
+
+
+def _content_disposition_attachment(filename: str) -> str:
+    fallback = re.sub(r'[\\/\r\n"]+', "_", filename).strip() or "download"
+    fallback = fallback[:120]
+    encoded = quote(filename, safe="")
+    return f"attachment; filename=\"{fallback}\"; filename*=UTF-8''{encoded}"
 
 
 def _uuid_or_raw(value: str):
@@ -309,7 +349,37 @@ def _parse_json(value: str | None):
     if isinstance(parsed, dict):
         return parsed
 
-    return {"value": parsed}
+    return {"raw": parsed}
+
+
+def _trim_process_result_for_response(result: dict[str, Any] | None) -> dict[str, Any] | None:
+    if result is None:
+        return None
+
+    records = result.get("records")
+    if not isinstance(records, dict):
+        return result
+
+    trimmed_result = dict(result)
+    trimmed_records: dict[str, Any] = {}
+    truncated: dict[str, dict[str, int]] = {}
+    for table_name, rows in records.items():
+        if isinstance(rows, list) and len(rows) > _MAX_PROCESS_RESPONSE_RECORDS_PER_TABLE:
+            trimmed_records[str(table_name)] = rows[:_MAX_PROCESS_RESPONSE_RECORDS_PER_TABLE]
+            truncated[str(table_name)] = {
+                "returned": _MAX_PROCESS_RESPONSE_RECORDS_PER_TABLE,
+                "total": len(rows),
+            }
+        else:
+            trimmed_records[str(table_name)] = rows
+
+    if truncated:
+        raw_diagnostics = trimmed_result.get("diagnostics")
+        diagnostics = dict(raw_diagnostics) if isinstance(raw_diagnostics, dict) else {}
+        diagnostics["truncated_response_records"] = truncated
+        trimmed_result["diagnostics"] = diagnostics
+    trimmed_result["records"] = trimmed_records
+    return trimmed_result
 
 
 def _parse_message_payload(payload: str | None, role: str, content: str):
@@ -352,13 +422,15 @@ def _log_file_response(log_file: LogFile, asset: Asset):
 
 
 def _log_process_response(process: LogProcess):
+    parsed_result = _parse_json(process.result)
+    result = _trim_process_result_for_response(parsed_result if isinstance(parsed_result, dict) else None)
     return LogProcessResponse(
         id=str(process.id),
         group_id=str(process.group_id),
         file_id=str(process.file_id) if process.file_id is not None else None,
         status=process.status,
         classification=_parse_json(process.classification),
-        result=_parse_json(process.result),
+        result=result,
         error=process.error,
         created_at=process.created_at,
         updated_at=process.updated_at,
@@ -628,20 +700,18 @@ def download_log_file(
     if payload is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File content not found.")
 
-    headers = {"Content-Disposition": f'attachment; filename="{asset.name}"'}
+    headers = {"Content-Disposition": _content_disposition_attachment(asset.name)}
     return Response(content=payload, media_type=asset.type or "application/octet-stream", headers=headers)
 
 
 def _get_table_records(group_id: str, table_name: str, current_user: User, database: Session) -> list[dict]:
     group = _require_owned_group(database=database, group_id=group_id, user_id=current_user.id)
-    table_record = database.query(LogTable).filter(LogTable.group_id == group.id, LogTable.table == table_name).first()
-    if table_record is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Table not found.")
+    _require_owned_table(database=database, group_id=group.id, table_name=table_name)
 
     megabase_database = MegabaseSessionLocal()
     try:
         init_megabase(megabase_database)
-        records = megabase_query_records(megabase_database, table_name, limit=100000)
+        records = megabase_query_records(megabase_database, table_name, limit=_HARD_SQL_LIMIT)
     finally:
         megabase_database.close()
 
@@ -901,26 +971,48 @@ async def upload_log_files(
     group = _require_owned_group(database=database, group_id=group_id, user_id=current_user.id)
     if not files:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="At least one file is required.")
+    if len(files) > _MAX_UPLOAD_FILES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Too many files. Upload at most {_MAX_UPLOAD_FILES} files at a time.",
+        )
 
     uploaded_files: list[LogFileResponse] = []
     process_ids: list[str] = []
     outcomes: list[FileProcessOutcomeResponse] = []
+    total_bytes = 0
 
     for file in files:
         filename = (file.filename or "uploaded.log").strip() or "uploaded.log"
         content_type = file.content_type or "application/octet-stream"
-        file_data = await file.read()
+        file_data = await file.read(_MAX_UPLOAD_BYTES + 1)
+        if len(file_data) > _MAX_UPLOAD_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"File '{filename}' exceeds the {_MAX_UPLOAD_BYTES} byte upload limit.",
+            )
+        total_bytes += len(file_data)
+        if total_bytes > _MAX_UPLOAD_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"Upload exceeds the {_MAX_UPLOAD_BYTES} byte total limit.",
+            )
 
         asset = upload_file(file_data=file_data, filename=filename, content_type=content_type, db=database)
 
-        log_file = LogFile(
-            user_id=current_user.id,
-            asset_id=asset.id,
-            group_id=group.id,
-        )
-        database.add(log_file)
-        database.commit()
-        database.refresh(log_file)
+        try:
+            log_file = LogFile(
+                user_id=current_user.id,
+                asset_id=asset.id,
+                group_id=group.id,
+            )
+            database.add(log_file)
+            database.commit()
+            database.refresh(log_file)
+        except Exception:
+            database.rollback()
+            delete_file(asset_id=asset.id, db=database)
+            raise
 
         file_id = str(log_file.id)
         uploaded_files.append(_log_file_response(log_file, asset))
@@ -1141,7 +1233,7 @@ def _fetch_group_table_context(group_id: str, database: Session) -> str:
             lines.append(f"Table: {table.table}")
             lines.append(f"Schema: {table.schema}")
             try:
-                result = megabase_database.execute(sa_text(f'SELECT * FROM "{table.table}" LIMIT 20'))
+                result = megabase_database.execute(sa_text(f"SELECT * FROM {_quote_identifier(table.table)} LIMIT 20"))
                 columns = [str(col) for col in result.keys()]
                 rows = result.fetchall()
                 lines.append(f"Columns: {', '.join(columns)}")
@@ -1221,7 +1313,9 @@ def _fetch_group_rows_for_report(group_id: str, database: Session) -> str:
         for table in tables:
             lines.append(f"Table: {table.table}")
             try:
-                result = megabase_database.execute(sa_text(f'SELECT * FROM "{table.table}" LIMIT {MAX_REPORT_ROWS}'))
+                result = megabase_database.execute(
+                    sa_text(f"SELECT * FROM {_quote_identifier(table.table)} LIMIT {MAX_REPORT_ROWS}")
+                )
                 columns = [str(col) for col in result.keys()]
                 rows = result.fetchall()
                 lines.append(f"Columns: {', '.join(columns)}")
@@ -1299,7 +1393,9 @@ def get_group_stats(
             init_megabase(megabase_database)
             for table in tables:
                 try:
-                    result = megabase_database.execute(sa_text(f'SELECT COUNT(*) FROM "{table.table}"'))
+                    result = megabase_database.execute(
+                        sa_text(f"SELECT COUNT(*) FROM {_quote_identifier(table.table)}")
+                    )
                     row_count = result.scalar() or 0
                     table_row_counts[table.table] = row_count
                     total_rows += row_count
@@ -1380,7 +1476,7 @@ SUMMARY_ROWS_LIMIT = 200
 SUMMARY_CACHE_KEY = "v1"
 
 
-def _fetch_table_rows_for_summary(group_id: str, table_name: str) -> str:
+def _fetch_table_rows_for_summary(table_name: str) -> str:
     """Fetch schema + sample rows from a specific megabase table for summarization."""
     database = MegabaseSessionLocal()
     try:
@@ -1410,13 +1506,18 @@ def _fetch_table_rows_for_summary(group_id: str, table_name: str) -> str:
 
         # Sample rows
         try:
-            result = database.execute(sa_text(f'SELECT * FROM "{table_name}" LIMIT {SUMMARY_ROWS_LIMIT}'))
+            result = database.execute(
+                sa_text(f"SELECT * FROM {_quote_identifier(table_name)} LIMIT {SUMMARY_ROWS_LIMIT}")
+            )
             raw_columns = [str(col) for col in result.keys()]
             rows = result.fetchall()
             lines.append(f"Sample rows ({len(rows)} of up to {SUMMARY_ROWS_LIMIT}):")
             for row in rows[:20]:
                 row_dict = dict(zip(raw_columns, row))
-                serialized = {k: (str(v) if not isinstance(v, (str, int, float, bool, type(None))) else v) for k, v in row_dict.items()}
+                serialized = {
+                    k: (str(v) if not isinstance(v, (str, int, float, bool, type(None))) else v)
+                    for k, v in row_dict.items()
+                }
                 lines.append(json.dumps(serialized, ensure_ascii=True, default=str))
         except Exception as e:
             lines.append(f"Could not read rows: {e}")
@@ -1456,8 +1557,9 @@ def summarize_table(
     database: Session = Depends(get_database),
 ):
     group = _require_owned_group(database=database, group_id=group_id, user_id=current_user.id)
+    _require_owned_table(database=database, group_id=group.id, table_name=table_name)
 
-    context = _fetch_table_rows_for_summary(str(group.id), table_name)
+    context = _fetch_table_rows_for_summary(table_name)
 
     system_prompt = (
         "You are an expert log analyst. Analyze the provided log table data and generate a concise, "
@@ -1540,6 +1642,10 @@ def execute_group_query(
     megabase_database = MegabaseSessionLocal()
     try:
         init_megabase(megabase_database)
+        try:
+            megabase_database.execute(sa_text("SET LOCAL statement_timeout = '5000ms'"))
+        except Exception:
+            logger.debug("Could not set megabase statement timeout", exc_info=True)
         result = megabase_database.execute(sa_text(sql_text))
         raw_columns = list(result.keys()) if result.returns_rows else []
         raw_rows = result.fetchall() if result.returns_rows else []
@@ -1707,7 +1813,11 @@ def generate_workbook_report(
             worksheet = workbook.create_sheet(title=sheet_title)
 
             try:
-                result = megabase_database.execute(sa_text(f'SELECT * FROM "{table.table}"'))
+                result = megabase_database.execute(
+                    sa_text(
+                        f"SELECT * FROM {_quote_identifier(table.table)} LIMIT {_MAX_WORKBOOK_EXPORT_ROWS_PER_TABLE}"
+                    )
+                )
                 columns = [str(col) for col in result.keys()]
                 rows = result.fetchall()
 

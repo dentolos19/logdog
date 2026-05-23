@@ -5,7 +5,7 @@ import { Alert, AlertDescription, AlertTitle } from "#/components/ui/alert";
 import { Button } from "#/components/ui/button";
 import { Progress } from "#/components/ui/progress";
 import { Spinner } from "#/components/ui/spinner";
-import { type UploadFileOutcome, uploadLogFiles } from "#/lib/server";
+import { type UploadFileOutcome, uploadLogFiles } from "#/lib/logs";
 
 type UploadSectionProps = {
   logGroupId: string;

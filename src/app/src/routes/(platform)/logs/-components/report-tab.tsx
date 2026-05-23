@@ -13,7 +13,7 @@ import {
   SparklesIcon,
   TableIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "#/components/ui/alert";
 import { Badge } from "#/components/ui/badge";
@@ -30,7 +30,7 @@ import {
   getTableSummary,
   type LogInsightReport,
   type TableSummaryResponse,
-} from "#/lib/server";
+} from "#/lib/logs";
 import { StatCard } from "#/routes/(platform)/dashboard/-components/stat-card";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -62,6 +62,7 @@ export function ReportTab({ logGroupId, tableNames }: ReportTabProps) {
 
   // Per-table reports state
   const [tableReports, setTableReports] = useState<Map<string, TableReportState>>(new Map());
+  const loadingTableIdsRef = useRef<Set<string>>(new Set());
 
   // ── Fetch Report ──────────────────────────────────────────────────────────
 
@@ -114,8 +115,27 @@ export function ReportTab({ logGroupId, tableNames }: ReportTabProps) {
   useEffect(() => {
     for (const table of tableNames) {
       const state = tableReports.get(table.id);
-      if (state === undefined || state.loading) {
-        void loadTableSummary(logGroupId, table.id, table.name, setTableReports);
+      if (state === undefined && !loadingTableIdsRef.current.has(table.id)) {
+        loadingTableIdsRef.current.add(table.id);
+        setTableReports((prev) => {
+          if (prev.has(table.id)) {
+            return prev;
+          }
+
+          const next = new Map(prev);
+          next.set(table.id, {
+            tableName: table.id,
+            displayName: table.name,
+            report: null,
+            loading: true,
+            generating: false,
+          });
+          return next;
+        });
+
+        void loadTableSummary(logGroupId, table.id, table.name, setTableReports).finally(() => {
+          loadingTableIdsRef.current.delete(table.id);
+        });
       }
     }
   }, [tableNames, logGroupId, tableReports]);
@@ -296,161 +316,161 @@ export function ReportTab({ logGroupId, tableNames }: ReportTabProps) {
 
       {/* AI Insight Report */}
       <div className={"flex flex-col gap-4"}>
-        <h2 className={"flex items-center gap-2 font-medium text-sm text-muted-foreground"}>
+        <h2 className={"flex items-center gap-2 font-medium text-muted-foreground text-sm"}>
           <SparklesIcon className={"size-4"} />
           AI Insight Report
         </h2>
         <div
-              className={"flex items-center gap-4 rounded-lg border bg-muted/20 p-4"}
-              style={{ borderColor: `${severityAttrs.hex}25` }}
+          className={"flex items-center gap-4 rounded-lg border bg-muted/20 p-4"}
+          style={{ borderColor: `${severityAttrs.hex}25` }}
+        >
+          <div
+            className={"flex size-10 shrink-0 items-center justify-center rounded-lg"}
+            style={{ background: severityAttrs.hex, color: severityAttrs.textColor }}
+          >
+            {severityAttrs.icon}
+          </div>
+          <div className={"min-w-0 flex-1"}>
+            <div className={"flex items-center gap-2"}>
+              <span className={"font-semibold text-sm uppercase"} style={{ color: severityAttrs.hex }}>
+                {report.severity}
+              </span>
+              <span className={"text-muted-foreground text-xs"}>Severity</span>
+            </div>
+            <p className={"mt-0.5 text-muted-foreground text-sm leading-relaxed"}>{report.summary}</p>
+          </div>
+        </div>
+
+        {/* Root Cause + Top Errors */}
+        <div className={"grid gap-4 md:grid-cols-2"}>
+          <Card className={"border-l-4"} style={{ borderLeftColor: severityAttrs.hex }}>
+            <CardHeader className={"pb-2"}>
+              <CardDescription>Root Cause Hypothesis</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className={"text-sm leading-relaxed"}>{report.root_cause_hypothesis}</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className={"pb-2"}>
+              <CardDescription>Top Errors</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {report.top_errors.length === 0 ? (
+                <p className={"text-muted-foreground text-sm"}>No top errors identified.</p>
+              ) : (
+                <ul className={"space-y-1.5"}>
+                  {report.top_errors.map((error, index) => (
+                    <li className={"flex items-start gap-2 text-sm"} key={index}>
+                      <span
+                        className={"mt-1.5 block size-1.5 shrink-0 rounded-full"}
+                        style={{ background: severityAttrs.hex }}
+                      />
+                      <span>{error}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Log Sequence Narrative */}
+        <Card>
+          <CardHeader className={"pb-2"}>
+            <CardTitle className={"flex items-center gap-2 font-medium text-sm"}>
+              <FileTextIcon className={"size-4 text-muted-foreground"} />
+              Log Sequence Narrative
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div
+              className={"rounded-lg border-l-4 bg-muted/30 p-4 text-sm leading-relaxed"}
+              style={{ borderLeftColor: `${severityAttrs.hex}60` }}
             >
-              <div
-                className={"flex size-10 shrink-0 items-center justify-center rounded-lg"}
-                style={{ background: severityAttrs.hex, color: severityAttrs.textColor }}
-              >
-                {severityAttrs.icon}
-              </div>
-              <div className={"min-w-0 flex-1"}>
-                <div className={"flex items-center gap-2"}>
-                  <span className={"font-semibold text-sm uppercase"} style={{ color: severityAttrs.hex }}>
-                    {report.severity}
-                  </span>
-                  <span className={"text-muted-foreground text-xs"}>Severity</span>
-                </div>
-                <p className={"mt-0.5 text-muted-foreground text-sm leading-relaxed"}>{report.summary}</p>
-              </div>
+              {report.log_sequence_narrative}
             </div>
+          </CardContent>
+        </Card>
 
-            {/* Root Cause + Top Errors */}
-            <div className={"grid gap-4 md:grid-cols-2"}>
-              <Card className={"border-l-4"} style={{ borderLeftColor: severityAttrs.hex }}>
-                <CardHeader className={"pb-2"}>
-                  <CardDescription>Root Cause Hypothesis</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <p className={"text-sm leading-relaxed"}>{report.root_cause_hypothesis}</p>
-                </CardContent>
-              </Card>
+        {/* Recommendations + Anomalies */}
+        <div className={"grid gap-4 md:grid-cols-2"}>
+          <Card>
+            <CardHeader className={"pb-2"}>
+              <CardTitle className={"flex items-center gap-2 font-medium text-sm"}>
+                <LightbulbIcon className={"size-4 text-muted-foreground"} />
+                Recommendations
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {report.recommendations.length === 0 ? (
+                <p className={"text-muted-foreground text-sm"}>No recommendations.</p>
+              ) : (
+                <ul className={"space-y-2"}>
+                  {report.recommendations.map((rec, index) => (
+                    <li className={"flex items-start gap-2.5 text-sm"} key={index}>
+                      <span
+                        className={
+                          "flex size-5 shrink-0 items-center justify-center rounded-full font-bold text-[11px]"
+                        }
+                        style={{ background: `${severityAttrs.hex}20`, color: severityAttrs.hex }}
+                      >
+                        {index + 1}
+                      </span>
+                      <span className={"mt-0.5"}>{rec}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
 
-              <Card>
-                <CardHeader className={"pb-2"}>
-                  <CardDescription>Top Errors</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {report.top_errors.length === 0 ? (
-                    <p className={"text-muted-foreground text-sm"}>No top errors identified.</p>
-                  ) : (
-                    <ul className={"space-y-1.5"}>
-                      {report.top_errors.map((error, index) => (
-                        <li className={"flex items-start gap-2 text-sm"} key={index}>
-                          <span
-                            className={"mt-1.5 block size-1.5 shrink-0 rounded-full"}
-                            style={{ background: severityAttrs.hex }}
-                          />
-                          <span>{error}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
+          <Card>
+            <CardHeader className={"pb-2"}>
+              <CardTitle className={"flex items-center gap-2 font-medium text-sm"}>
+                <AlertTriangleIcon className={"size-4 text-muted-foreground"} />
+                Anomalies
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {report.anomalies.length === 0 ? (
+                <p className={"text-muted-foreground text-sm"}>No anomalies detected.</p>
+              ) : (
+                <ul className={"space-y-2"}>
+                  {report.anomalies.map((anomaly, index) => (
+                    <li
+                      className={
+                        "flex items-start gap-2.5 rounded-lg border border-rose-500/15 bg-rose-500/5 p-3 text-sm"
+                      }
+                      key={index}
+                    >
+                      <ShieldAlertIcon className={"mt-0.5 size-4 shrink-0 text-rose-400"} />
+                      <div>
+                        <span className={"font-medium text-rose-400 text-xs uppercase"}>Anomaly {index + 1}</span>
+                        <p className={"mt-0.5 text-muted-foreground"}>{anomaly}</p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+        </div>
 
-            {/* Log Sequence Narrative */}
-            <Card>
-              <CardHeader className={"pb-2"}>
-                <CardTitle className={"flex items-center gap-2 font-medium text-sm"}>
-                  <FileTextIcon className={"size-4 text-muted-foreground"} />
-                  Log Sequence Narrative
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div
-                  className={"rounded-lg border-l-4 bg-muted/30 p-4 text-sm leading-relaxed"}
-                  style={{ borderLeftColor: `${severityAttrs.hex}60` }}
-                >
-                  {report.log_sequence_narrative}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Recommendations + Anomalies */}
-            <div className={"grid gap-4 md:grid-cols-2"}>
-              <Card>
-                <CardHeader className={"pb-2"}>
-                  <CardTitle className={"flex items-center gap-2 font-medium text-sm"}>
-                    <LightbulbIcon className={"size-4 text-muted-foreground"} />
-                    Recommendations
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {report.recommendations.length === 0 ? (
-                    <p className={"text-muted-foreground text-sm"}>No recommendations.</p>
-                  ) : (
-                    <ul className={"space-y-2"}>
-                      {report.recommendations.map((rec, index) => (
-                        <li className={"flex items-start gap-2.5 text-sm"} key={index}>
-                          <span
-                            className={
-                              "flex size-5 shrink-0 items-center justify-center rounded-full font-bold text-[11px]"
-                            }
-                            style={{ background: `${severityAttrs.hex}20`, color: severityAttrs.hex }}
-                          >
-                            {index + 1}
-                          </span>
-                          <span className={"mt-0.5"}>{rec}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className={"pb-2"}>
-                  <CardTitle className={"flex items-center gap-2 font-medium text-sm"}>
-                    <AlertTriangleIcon className={"size-4 text-muted-foreground"} />
-                    Anomalies
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {report.anomalies.length === 0 ? (
-                    <p className={"text-muted-foreground text-sm"}>No anomalies detected.</p>
-                  ) : (
-                    <ul className={"space-y-2"}>
-                      {report.anomalies.map((anomaly, index) => (
-                        <li
-                          className={
-                            "flex items-start gap-2.5 rounded-lg border border-rose-500/15 bg-rose-500/5 p-3 text-sm"
-                          }
-                          key={index}
-                        >
-                          <ShieldAlertIcon className={"mt-0.5 size-4 shrink-0 text-rose-400"} />
-                          <div>
-                            <span className={"font-medium text-rose-400 text-xs uppercase"}>Anomaly {index + 1}</span>
-                            <p className={"mt-0.5 text-muted-foreground"}>{anomaly}</p>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Action Row */}
-            <div className={"flex items-center justify-between gap-4 rounded-lg border bg-muted/20 px-4 py-3"}>
-              <p className={"text-muted-foreground text-xs"}>Run the analysis again with fresh data.</p>
-              <Button disabled={generating} onClick={() => void handleGenerate()} size={"sm"} variant={"outline"}>
-                {generating ? <Spinner className={"size-3"} /> : <RefreshCwIcon />}
-                {generating ? "Generating..." : "Regenerate Report"}
-              </Button>
-            </div>
+        {/* Action Row */}
+        <div className={"flex items-center justify-between gap-4 rounded-lg border bg-muted/20 px-4 py-3"}>
+          <p className={"text-muted-foreground text-xs"}>Run the analysis again with fresh data.</p>
+          <Button disabled={generating} onClick={() => void handleGenerate()} size={"sm"} variant={"outline"}>
+            {generating ? <Spinner className={"size-3"} /> : <RefreshCwIcon />}
+            {generating ? "Generating..." : "Regenerate Report"}
+          </Button>
+        </div>
       </div>
 
       {/* Per-Table Reports */}
       <div className={"flex flex-col gap-4"}>
-        <h2 className={"flex items-center gap-2 font-medium text-sm text-muted-foreground"}>
+        <h2 className={"flex items-center gap-2 font-medium text-muted-foreground text-sm"}>
           <TableIcon className={"size-4"} />
           Per-Table Reports
         </h2>
@@ -512,7 +532,7 @@ function PerTableReportsGrid({
                     <TableIcon className={"size-3.5 shrink-0 text-muted-foreground"} />
                   </div>
                   <Link
-                    className={"truncate hover:underline underline-offset-2"}
+                    className={"truncate underline-offset-2 hover:underline"}
                     params={{ id: logGroupId, tableId: table.id }}
                     to={"/logs/$id/$tableId"}
                   >
@@ -703,8 +723,8 @@ function getSeverityAttrs(severity: string): {
   return {
     className: "",
     variant: "secondary",
-    hex: "hsl(var(--muted-foreground))",
-    textColor: "hsl(var(--foreground))",
+    hex: "var(--muted-foreground)",
+    textColor: "var(--foreground)",
     icon: <BarChart3Icon className={"size-5"} />,
   };
 }

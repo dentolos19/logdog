@@ -119,10 +119,7 @@ def get_dashboard_stats(
         ext = os.path.splitext(name)[1].lower() or "unknown"
         file_format_counts[ext] += 1
 
-    format_distribution = [
-        FormatCount(format=fmt, count=cnt)
-        for fmt, cnt in file_format_counts.most_common()
-    ]
+    format_distribution = [FormatCount(format=fmt, count=cnt) for fmt, cnt in file_format_counts.most_common()]
 
     return DashboardStatsResponse(
         log_group_count=log_group_count,

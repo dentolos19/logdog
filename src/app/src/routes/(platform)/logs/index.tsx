@@ -16,7 +16,7 @@ import { Field, FieldContent, FieldError, FieldGroup, FieldLabel } from "#/compo
 import { Input } from "#/components/ui/input";
 import { Skeleton } from "#/components/ui/skeleton";
 import { Spinner } from "#/components/ui/spinner";
-import { createLogGroup, type LogGroup, listLogGroups } from "#/lib/server";
+import { createLogGroup, type LogGroup, listLogGroups } from "#/lib/logs";
 import { PageHeader } from "#/routes/(platform)/-components/page-header";
 
 export const Route = createFileRoute("/(platform)/logs/")({
@@ -157,7 +157,7 @@ function LogsPage() {
         {fetchError !== null && (
           <div className={"flex flex-col items-center gap-4 py-12 text-center"}>
             <p className={"text-destructive text-sm"}>{fetchError}</p>
-            <Button onClick={() => void fetchEntries()} size={"sm"} variant={"outline"}>
+            <Button onClick={() => void fetchGroups()} size={"sm"} variant={"outline"}>
               Try again
             </Button>
           </div>

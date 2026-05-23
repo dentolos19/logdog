@@ -55,6 +55,14 @@ PARSE_JOB_EXECUTOR = ThreadPoolExecutor(
     thread_name_prefix="logdog-parse-job",
 )
 
+MAX_STORED_PROCESS_RECORDS_PER_TABLE = int(os.environ.get("LOGDOG_MAX_STORED_PROCESS_RECORDS_PER_TABLE", "1000"))
+MAX_ARCHIVE_DEPTH = int(os.environ.get("LOGDOG_MAX_ARCHIVE_DEPTH", "2"))
+MAX_ARCHIVE_MEMBERS = int(os.environ.get("LOGDOG_MAX_ARCHIVE_MEMBERS", "100"))
+MAX_ARCHIVE_MEMBER_SIZE = int(os.environ.get("LOGDOG_MAX_ARCHIVE_MEMBER_SIZE", str(10 * 1024 * 1024)))
+MAX_ARCHIVE_TOTAL_SIZE = int(os.environ.get("LOGDOG_MAX_ARCHIVE_TOTAL_SIZE", str(50 * 1024 * 1024)))
+MAX_XLSX_ROWS_PER_SHEET = int(os.environ.get("LOGDOG_MAX_XLSX_ROWS_PER_SHEET", "10000"))
+MAX_XLSX_CELLS_PER_SHEET = int(os.environ.get("LOGDOG_MAX_XLSX_CELLS_PER_SHEET", "200000"))
+
 
 def register_pipelines() -> None:
     ParserRegistry.discover(force=True)
@@ -163,9 +171,9 @@ def run_parse_job(
 ) -> None:
     db = SessionLocal()
     megabase_db = MegabaseSessionLocal()
-    init_megabase(megabase_db)
 
     try:
+        init_megabase(megabase_db)
         register_pipelines()
 
         process = db.query(LogProcess).filter_by(id=_uuid_or_raw(process_id), group_id=_uuid_or_raw(group_id)).first()
@@ -345,7 +353,7 @@ def _decode_hex_dump(raw_bytes: bytes) -> str:
         return raw_bytes.decode("utf-8", errors="ignore")
 
 
-def _decode_payload(filename: str, raw_bytes: bytes) -> list[FileInput]:
+def _decode_payload(filename: str, raw_bytes: bytes, *, depth: int = 0) -> list[FileInput]:
     """Decode *raw_bytes* into one or more ``FileInput`` objects.
 
     Spreadsheet workbooks are converted into per-sheet CSV-like text inputs.
@@ -353,6 +361,10 @@ def _decode_payload(filename: str, raw_bytes: bytes) -> list[FileInput]:
     objects. Plain files produce a single ``FileInput``. Each member is
     independently classified as text or binary.
     """
+    if depth > MAX_ARCHIVE_DEPTH:
+        logger.warning("Archive depth limit reached while decoding %s", filename)
+        return [_decode_payload_to_file_input(filename, raw_bytes)]
+
     workbook_inputs = _decode_xlsx_payload(filename, raw_bytes)
     if workbook_inputs:
         return workbook_inputs
@@ -362,7 +374,7 @@ def _decode_payload(filename: str, raw_bytes: bytes) -> list[FileInput]:
         expanded: list[FileInput] = []
         for member_name, member_bytes in archive_members:
             synthetic_name = f"{filename}:{member_name}"
-            expanded.extend(_decode_payload(synthetic_name, member_bytes))
+            expanded.extend(_decode_payload(synthetic_name, member_bytes, depth=depth + 1))
         return expanded
     return [_decode_payload_to_file_input(filename, raw_bytes)]
 
@@ -393,7 +405,21 @@ def _decode_xlsx_payload(filename: str, raw_bytes: bytes) -> list[FileInput]:
     try:
         inputs: list[FileInput] = []
         for worksheet in workbook.worksheets:
-            rows = list(worksheet.iter_rows(values_only=True))
+            rows = []
+            cell_count = 0
+            for index, row in enumerate(worksheet.iter_rows(values_only=True), start=1):
+                if index > MAX_XLSX_ROWS_PER_SHEET:
+                    logger.warning(
+                        "Workbook sheet %s was truncated at %d rows", worksheet.title, MAX_XLSX_ROWS_PER_SHEET
+                    )
+                    break
+                cell_count += len(row)
+                if cell_count > MAX_XLSX_CELLS_PER_SHEET:
+                    logger.warning(
+                        "Workbook sheet %s was truncated at %d cells", worksheet.title, MAX_XLSX_CELLS_PER_SHEET
+                    )
+                    break
+                rows.append(row)
             trimmed_rows = _trim_empty_xlsx_rows(rows)
             if not trimmed_rows:
                 continue
@@ -471,26 +497,37 @@ def _serialize_xlsx_cell(value: Any) -> Any:
 
 
 def _extract_archive_members(filename: str, raw_bytes: bytes) -> list[tuple[str, bytes]]:
-    MAX_MEMBERS = 100
-    MAX_MEMBER_SIZE = 10 * 1024 * 1024
+    total_size = 0
+
+    def can_accept_member(size: int) -> bool:
+        return size <= MAX_ARCHIVE_MEMBER_SIZE and total_size + size <= MAX_ARCHIVE_TOTAL_SIZE
 
     if raw_bytes.startswith(b"PK\x03\x04"):
         with zipfile.ZipFile(io.BytesIO(raw_bytes)) as zf:
             members: list[tuple[str, bytes]] = []
             for info in zf.infolist():
-                if len(members) >= MAX_MEMBERS:
+                if len(members) >= MAX_ARCHIVE_MEMBERS:
                     break
                 if info.is_dir():
                     continue
-                if info.file_size > MAX_MEMBER_SIZE:
+                if not can_accept_member(info.file_size):
                     continue
-                members.append((info.filename, zf.read(info.filename)))
+                member_bytes = zf.read(info.filename)
+                if not can_accept_member(len(member_bytes)):
+                    continue
+                total_size += len(member_bytes)
+                members.append((info.filename, member_bytes))
             return members
 
     if raw_bytes.startswith(b"\x1f\x8b\x08"):
-        decompressed = gzip.decompress(raw_bytes)
-        if len(decompressed) > MAX_MEMBER_SIZE:
-            decompressed = decompressed[:MAX_MEMBER_SIZE]
+        output = io.BytesIO()
+        with gzip.GzipFile(fileobj=io.BytesIO(raw_bytes)) as gz:
+            while output.tell() <= MAX_ARCHIVE_MEMBER_SIZE:
+                chunk = gz.read(1024 * 1024)
+                if not chunk:
+                    break
+                output.write(chunk)
+        decompressed = output.getvalue()[:MAX_ARCHIVE_MEMBER_SIZE]
         base_name = filename[:-3] if filename.lower().endswith(".gz") else f"{filename}.decompressed"
         return [(base_name, decompressed)]
 
@@ -498,16 +535,20 @@ def _extract_archive_members(filename: str, raw_bytes: bytes) -> list[tuple[str,
         members = []
         with tarfile.open(fileobj=io.BytesIO(raw_bytes), mode="r:*") as tf:
             for member in tf.getmembers():
-                if len(members) >= MAX_MEMBERS:
+                if len(members) >= MAX_ARCHIVE_MEMBERS:
                     break
                 if not member.isfile():
                     continue
-                if member.size > MAX_MEMBER_SIZE:
+                if not can_accept_member(member.size):
                     continue
                 extracted = tf.extractfile(member)
                 if extracted is None:
                     continue
-                members.append((member.name, extracted.read()))
+                member_bytes = extracted.read(MAX_ARCHIVE_MEMBER_SIZE + 1)
+                if not can_accept_member(len(member_bytes)):
+                    continue
+                total_size += len(member_bytes)
+                members.append((member.name, member_bytes))
         return members
 
     return []
@@ -525,6 +566,13 @@ def _make_json_safe_pipeline_result(result: ParserPipelineResult) -> dict[str, A
     """
     data = result.model_dump()
     for table_name, records in data.get("records", {}).items():
+        original_count = len(records)
+        if original_count > MAX_STORED_PROCESS_RECORDS_PER_TABLE:
+            data.setdefault("diagnostics", {}).setdefault("truncated_records", {})[table_name] = {
+                "stored": MAX_STORED_PROCESS_RECORDS_PER_TABLE,
+                "total": original_count,
+            }
+            del records[MAX_STORED_PROCESS_RECORDS_PER_TABLE:]
         for record in records:
             for key, value in list(record.items()):
                 if isinstance(value, bytes):

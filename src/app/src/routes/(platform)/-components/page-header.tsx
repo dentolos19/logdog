@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect } from "react";
+import { type ReactNode, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { type BreadcrumbItem, usePageHeaderContext } from "#/routes/(platform)/-components/page-header-context";
 
@@ -11,11 +11,12 @@ type PageHeaderProps = {
 export function PageHeader({ breadcrumbs, loading = false, children }: PageHeaderProps) {
   const { setBreadcrumbs, setIsLoading, actionsContainer } = usePageHeaderContext();
   const breadcrumbsKey = JSON.stringify(breadcrumbs ?? []);
+  const breadcrumbItems = useMemo(() => breadcrumbs ?? [], [breadcrumbsKey]);
 
   useEffect(() => {
-    setBreadcrumbs(breadcrumbs ?? []);
+    setBreadcrumbs(breadcrumbItems);
     return () => setBreadcrumbs([]);
-  }, [breadcrumbsKey, breadcrumbs, setBreadcrumbs]);
+  }, [breadcrumbItems, setBreadcrumbs]);
 
   useEffect(() => {
     setIsLoading(loading);

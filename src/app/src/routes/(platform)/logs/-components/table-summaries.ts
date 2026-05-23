@@ -1,4 +1,4 @@
-import type { LogFile, LogProcess } from "#/lib/server";
+import type { LogFile, LogProcess } from "#/lib/logs";
 
 export type TableColumn = {
   name: string;
@@ -56,13 +56,32 @@ export function inferTablesFromProcesses(files: LogFile[], processes: LogProcess
       const sourceFileByProcess = process.file_id !== null ? (fileById.get(process.file_id) ?? null) : null;
       const sourceFileByHint = resolveSourceFileByHint(tableName, files);
 
+      const nextSourceFile = sourceFileByProcess ?? sourceFileByHint;
+      const existing = tableMap.get(tableName);
+      if (existing === undefined) {
+        tableMap.set(tableName, {
+          id: tableName,
+          name: displayName,
+          rowCount: recordRows.length,
+          columns,
+          rows,
+          sourceFile: nextSourceFile,
+        });
+        continue;
+      }
+
+      const columnsByName = new Map<string, TableColumn>(existing.columns.map((column) => [column.name, column]));
+      for (const column of columns) {
+        columnsByName.set(column.name, columnsByName.get(column.name) ?? column);
+      }
+
       tableMap.set(tableName, {
-        id: tableName,
-        name: displayName,
-        rowCount: recordRows.length,
-        columns,
-        rows,
-        sourceFile: sourceFileByProcess ?? sourceFileByHint,
+        ...existing,
+        name: existing.name === "unknown_table" ? displayName : existing.name,
+        rowCount: existing.rowCount + recordRows.length,
+        columns: [...columnsByName.values()],
+        rows: [...existing.rows, ...rows],
+        sourceFile: existing.sourceFile?.id === nextSourceFile?.id ? existing.sourceFile : null,
       });
     }
   }

@@ -33,7 +33,7 @@ import {
   listLogFiles,
   listLogProcesses,
   updateLogGroup,
-} from "#/lib/server";
+} from "#/lib/logs";
 import { PageHeader } from "#/routes/(platform)/-components/page-header";
 import { ChatbotTab } from "#/routes/(platform)/logs/-components/chatbot-tab";
 import { ProcessesTab } from "#/routes/(platform)/logs/-components/processes-tab";
@@ -361,6 +361,7 @@ function LogGroupPage() {
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
+                  aria-label={"Download workbook"}
                   onClick={async () => {
                     try {
                       const blob = await downloadWorkbookReport(id);
@@ -386,7 +387,7 @@ function LogGroupPage() {
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button onClick={openRenameDialog} size={"icon-sm"} variant={"ghost"}>
+                <Button aria-label={"Rename group"} onClick={openRenameDialog} size={"icon-sm"} variant={"ghost"}>
                   <PencilIcon />
                 </Button>
               </TooltipTrigger>
@@ -394,7 +395,12 @@ function LogGroupPage() {
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button onClick={() => setIsDeleteAlertOpen(true)} size={"icon-sm"} variant={"ghost"}>
+                <Button
+                  aria-label={"Delete group"}
+                  onClick={() => setIsDeleteAlertOpen(true)}
+                  size={"icon-sm"}
+                  variant={"ghost"}
+                >
                   <Trash2Icon />
                 </Button>
               </TooltipTrigger>

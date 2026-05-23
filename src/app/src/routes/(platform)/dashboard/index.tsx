@@ -11,7 +11,7 @@ import {
   ChartTooltipContent,
 } from "#/components/ui/chart";
 import { Skeleton } from "#/components/ui/skeleton";
-import { type DashboardStats, getDashboardStats } from "#/lib/server";
+import { type DashboardStats, getDashboardStats } from "#/lib/logs";
 import { PageHeader } from "#/routes/(platform)/-components/page-header";
 import { StatCard } from "#/routes/(platform)/dashboard/-components/stat-card";
 
@@ -122,7 +122,7 @@ function DashboardPage() {
               {loading ? (
                 <Skeleton className={"h-[200px] w-full"} />
               ) : processStatusData.length === 0 || processStatusData.every((d) => d.value === 0) ? (
-                <p className={"text-muted-foreground py-8 text-center text-sm"}>No process data yet.</p>
+                <p className={"py-8 text-center text-muted-foreground text-sm"}>No process data yet.</p>
               ) : (
                 <ChartContainer className={"h-[200px] w-full"} config={processStatusChartConfig}>
                   <BarChart data={processStatusData}>
@@ -150,7 +150,7 @@ function DashboardPage() {
               {loading ? (
                 <Skeleton className={"h-[200px] w-full"} />
               ) : fileFormatData.length === 0 ? (
-                <p className={"text-muted-foreground py-8 text-center text-sm"}>No file format data yet.</p>
+                <p className={"py-8 text-center text-muted-foreground text-sm"}>No file format data yet.</p>
               ) : (
                 <ChartContainer className={"h-[200px] w-full"} config={fileFormatChartConfig}>
                   <PieChart>

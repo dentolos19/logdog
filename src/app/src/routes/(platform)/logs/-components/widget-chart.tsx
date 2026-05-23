@@ -10,13 +10,7 @@ type WidgetChartProps = {
   title?: string;
 };
 
-const CHART_COLORS = [
-  "hsl(var(--chart-1))",
-  "hsl(var(--chart-2))",
-  "hsl(var(--chart-3))",
-  "hsl(var(--chart-4))",
-  "hsl(var(--chart-5))",
-];
+const CHART_COLORS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)"];
 
 export function WidgetChart({ chart_type, data, x_key, y_key, title }: WidgetChartProps) {
   const chartConfig = useMemo<ChartConfig>(() => {
@@ -63,7 +57,7 @@ export function WidgetChart({ chart_type, data, x_key, y_key, title }: WidgetCha
               cy={"50%"}
               data={sanitizedData}
               dataKey={y_key}
-              label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+              label={({ name, percent }) => `${name} (${((percent ?? 0) * 100).toFixed(0)}%)`}
               labelLine={true}
               nameKey={x_key}
               outerRadius={100}

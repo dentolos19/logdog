@@ -14,8 +14,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CLOUDFLARE_ENV: production
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ID }}
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
       - name: Checkout Source
         uses: actions/checkout@v4
@@ -36,7 +36,7 @@ jobs:
         working-directory: src/app
         run: bun run build
 
-      - name: Upload Secrets
+      - name: Deploy to Cloudflare
         working-directory: src/app
         run: |
           echo "${{ secrets.SECRET_KEY }}" | bun wrangler secret put SECRET_KEY
@@ -51,7 +51,4 @@ jobs:
           echo "${{ vars.OPENROUTER_TITLE }}" | bun wrangler secret put OPENROUTER_TITLE
           echo "${{ vars.OPENROUTER_REFERER }}" | bun wrangler secret put OPENROUTER_REFERER
           echo "${{ vars.OPENROUTER_MODEL }}" | bun wrangler secret put OPENROUTER_MODEL
-
-      - name: Deploy to Cloudflare
-        working-directory: src/app
-        run: bun run deploy
+          bun run deploy

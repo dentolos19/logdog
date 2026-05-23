@@ -7,7 +7,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "#/components/ui/sh
 import { Skeleton } from "#/components/ui/skeleton";
 import { Spinner } from "#/components/ui/spinner";
 import { Textarea } from "#/components/ui/textarea";
-import { type ChatHistoryMessage, streamChatWithLogs } from "#/lib/server";
+import { type ChatHistoryMessage, streamChatWithLogs } from "#/lib/logs";
 
 type ChatMessage = {
   id: string;

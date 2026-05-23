@@ -1,29 +1,26 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "logdog-development",
-  "main": "src/server.ts",
   "account_id": "d910f54eba4cf3d1634aa41c3d9a93bc",
   "compatibility_date": "2026-05-01",
   "compatibility_flags": ["nodejs_compat"],
+  "main": "src/server.ts",
+  "logpush": true,
+  "observability": {
+    "logs": {
+      "enabled": true
+    },
+    "traces": {
+      "enabled": true
+    }
+  },
+  "route": {
+    "pattern": "logdog.dennise.me",
+    "custom_domain": true
+  },
   "env": {
     "production": {
       "name": "logdog",
-      "workers_dev": false,
-      "logpush": true,
-      "observability": {
-        "logs": {
-          "enabled": true
-        },
-        "traces": {
-          "enabled": true
-        }
-      },
-      "routes": [
-        {
-          "pattern": "logdog.dennise.me",
-          "custom_domain": true
-        }
-      ],
       "containers": [
         {
           "name": "logdog-server",

@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from pydantic import BaseModel, ConfigDict
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from environment import SECRET_KEY
@@ -17,6 +18,8 @@ from lib.models import User
 ACCESS_TOKEN_EXPIRES_MINUTES = 30
 REFRESH_TOKEN_EXPIRES_DAYS = 7
 JWT_ALGORITHM = "HS256"
+MAX_BCRYPT_PASSWORD_BYTES = 72
+_REVOKED_REFRESH_TOKEN_IDS: set[str] = set()
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -35,6 +38,10 @@ class LoginRequest(BaseModel):
 
 class RefreshRequest(BaseModel):
     refresh_token: str
+
+
+class LogoutRequest(BaseModel):
+    refresh_token: str | None = None
 
 
 class TokenResponse(BaseModel):
@@ -58,6 +65,8 @@ class UserResponse(BaseModel):
 def hash_password(password: str):
     if not password:
         raise ValueError("Password must not be empty.")
+    if len(password.encode("utf-8")) > MAX_BCRYPT_PASSWORD_BYTES:
+        raise ValueError(f"Password must be at most {MAX_BCRYPT_PASSWORD_BYTES} bytes.")
 
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
@@ -77,6 +86,7 @@ def _create_token(subject: str, token_type: str, expires_delta: timedelta):
     payload = {
         "sub": subject,
         "type": token_type,
+        "jti": str(uuid.uuid4()),
         "iat": int(now.timestamp()),
         "exp": int((now + expires_delta).timestamp()),
     }
@@ -99,7 +109,7 @@ def create_refresh_token(subject: str):
     )
 
 
-def decode_token(token: str, expected_type: str):
+def decode_token_payload(token: str, expected_type: str):
     try:
         payload = jwt.decode(token, SECRET_KEY.get_secret_value(), algorithms=[JWT_ALGORITHM])
     except JWTError as error:
@@ -113,7 +123,26 @@ def decode_token(token: str, expected_type: str):
     if not subject:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token subject is missing.")
 
+    if expected_type == "refresh":
+        token_id = str(payload.get("jti") or token)
+        if token_id in _REVOKED_REFRESH_TOKEN_IDS:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token has been revoked.")
+
+    return payload
+
+
+def decode_token(token: str, expected_type: str):
+    payload = decode_token_payload(token, expected_type)
+    subject = str(payload.get("sub") or "")
     return subject
+
+
+def revoke_refresh_token(token: str) -> None:
+    try:
+        payload = decode_token_payload(token, expected_type="refresh")
+    except HTTPException:
+        return
+    _REVOKED_REFRESH_TOKEN_IDS.add(str(payload.get("jti") or token))
 
 
 def _normalize_email(email: str):
@@ -149,14 +178,23 @@ def register(payload: RegisterRequest, database: Session = Depends(get_database)
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Email must not be empty.")
     if not payload.password:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Password must not be empty.")
+    if len(payload.password.encode("utf-8")) > MAX_BCRYPT_PASSWORD_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Password must be at most {MAX_BCRYPT_PASSWORD_BYTES} bytes.",
+        )
 
     existing_user = database.query(User).filter(User.email == normalized_email).first()
     if existing_user is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email is already registered.")
 
-    user = User(email=normalized_email, password=hash_password(payload.password))
-    database.add(user)
-    database.commit()
+    try:
+        user = User(email=normalized_email, password=hash_password(payload.password))
+        database.add(user)
+        database.commit()
+    except IntegrityError as error:
+        database.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email is already registered.") from error
     database.refresh(user)
 
     return UserResponse(id=str(user.id), email=user.email, created_at=user.created_at)
@@ -184,6 +222,7 @@ def refresh(payload: RefreshRequest, database: Session = Depends(get_database)):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found.")
 
     normalized_user_id = str(user.id)
+    revoke_refresh_token(payload.refresh_token)
     return TokenResponse(
         access_token=create_access_token(subject=normalized_user_id),
         refresh_token=create_refresh_token(subject=normalized_user_id),
@@ -191,7 +230,9 @@ def refresh(payload: RefreshRequest, database: Session = Depends(get_database)):
 
 
 @router.post("/logout", response_model=MessageResponse)
-def logout():
+def logout(payload: LogoutRequest | None = None):
+    if payload is not None and payload.refresh_token:
+        revoke_refresh_token(payload.refresh_token)
     return MessageResponse(message="Logged out.")
 
 

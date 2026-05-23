@@ -16,8 +16,8 @@ import { Button } from "#/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "#/components/ui/collapsible";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "#/components/ui/input-group";
 import { Spinner } from "#/components/ui/spinner";
-import { getLogChatMessages, replaceLogChatMessages } from "#/lib/server";
-import { generateChatSuggestions, streamLogChat } from "#/lib/server/chat";
+import { generateChatSuggestions, streamLogChat } from "#/lib/chat";
+import { getLogChatMessages, replaceLogChatMessages } from "#/lib/logs";
 import { ChatMessageItem } from "#/routes/(platform)/logs/-components/chat-message";
 
 type ChatbotTabProps = {
@@ -49,8 +49,15 @@ const STARTER_MESSAGES: StarterMessage[] = [
   },
 ];
 
+const MAX_PERSISTED_MESSAGES = 500;
+const MAX_MESSAGE_CONTENT_LENGTH = 100_000;
+
+function trimChatMessages<T>(messages: T[]) {
+  return messages.slice(-MAX_PERSISTED_MESSAGES);
+}
+
 function toPersistedMessages(messages: UIMessage[]) {
-  return messages
+  return trimChatMessages(messages)
     .filter((message) => message.role === "user" || message.role === "assistant")
     .map((message) => ({
       id: message.id,
@@ -58,7 +65,8 @@ function toPersistedMessages(messages: UIMessage[]) {
       content: message.parts
         .filter((part) => part.type === "text" && typeof part.content === "string")
         .map((part) => (part as { content: string }).content)
-        .join("\n"),
+        .join("\n")
+        .slice(0, MAX_MESSAGE_CONTENT_LENGTH),
       parts: message.parts as Array<Record<string, unknown>>,
     }));
 }
@@ -66,7 +74,7 @@ function toPersistedMessages(messages: UIMessage[]) {
 function restoreUIMessages(
   messages: Array<{ role: string; content?: string; parts?: Array<Record<string, unknown>>; id?: string }>,
 ) {
-  return messages
+  return trimChatMessages(messages)
     .filter((msg) => msg.role === "user" || msg.role === "assistant")
     .map((msg) => {
       const restoredParts =
@@ -206,7 +214,7 @@ export function ChatbotTab({ entryId, groupName, tables }: ChatbotTabProps) {
         return streamLogChat({
           data: {
             entryId,
-            messages: Array.isArray(parsedBody.messages) ? parsedBody.messages : [],
+            messages: Array.isArray(parsedBody.messages) ? trimChatMessages(parsedBody.messages) : [],
           },
           signal: init?.signal ?? undefined,
         });
