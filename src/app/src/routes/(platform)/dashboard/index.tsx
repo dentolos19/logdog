@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { BarChart3Icon, FileIcon, FolderOpenIcon, GaugeIcon, PieChartIcon, RowsIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Bar, BarChart, Cell, Pie, PieChart, XAxis } from "recharts";
+
 import { Card, CardContent, CardHeader, CardTitle } from "#/components/ui/card";
 import {
   ChartContainer,
@@ -113,8 +114,8 @@ function DashboardPage() {
         <div className={"grid gap-4 md:grid-cols-2"}>
           <Card>
             <CardHeader className={"pb-2"}>
-              <CardTitle className={"flex items-center gap-2 font-medium text-sm"}>
-                <BarChart3Icon className={"size-4 text-muted-foreground"} />
+              <CardTitle className={"flex items-center gap-2 text-sm font-medium"}>
+                <BarChart3Icon className={"text-muted-foreground size-4"} />
                 Process Status
               </CardTitle>
             </CardHeader>
@@ -122,7 +123,7 @@ function DashboardPage() {
               {loading ? (
                 <Skeleton className={"h-[200px] w-full"} />
               ) : processStatusData.length === 0 || processStatusData.every((d) => d.value === 0) ? (
-                <p className={"py-8 text-center text-muted-foreground text-sm"}>No process data yet.</p>
+                <p className={"text-muted-foreground py-8 text-center text-sm"}>No process data yet.</p>
               ) : (
                 <ChartContainer className={"h-[200px] w-full"} config={processStatusChartConfig}>
                   <BarChart data={processStatusData}>
@@ -141,8 +142,8 @@ function DashboardPage() {
 
           <Card>
             <CardHeader className={"pb-2"}>
-              <CardTitle className={"flex items-center gap-2 font-medium text-sm"}>
-                <PieChartIcon className={"size-4 text-muted-foreground"} />
+              <CardTitle className={"flex items-center gap-2 text-sm font-medium"}>
+                <PieChartIcon className={"text-muted-foreground size-4"} />
                 File Format Distribution
               </CardTitle>
             </CardHeader>
@@ -150,7 +151,7 @@ function DashboardPage() {
               {loading ? (
                 <Skeleton className={"h-[200px] w-full"} />
               ) : fileFormatData.length === 0 ? (
-                <p className={"py-8 text-center text-muted-foreground text-sm"}>No file format data yet.</p>
+                <p className={"text-muted-foreground py-8 text-center text-sm"}>No file format data yet.</p>
               ) : (
                 <ChartContainer className={"h-[200px] w-full"} config={fileFormatChartConfig}>
                   <PieChart>

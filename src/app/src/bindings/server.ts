@@ -1,5 +1,5 @@
-import { env } from "cloudflare:workers";
 import { Container, getContainer } from "@cloudflare/containers";
+import { env } from "cloudflare:workers";
 
 const PORT = 3001;
 

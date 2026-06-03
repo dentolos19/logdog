@@ -3,6 +3,7 @@ import type { UIMessage } from "@tanstack/ai-react";
 import { BotIcon, CheckIcon, CopyIcon, UserIcon, WrenchIcon } from "lucide-react";
 import { useCallback, useState } from "react";
 import { Streamdown } from "streamdown";
+
 import { Badge } from "#/components/ui/badge";
 import { Button } from "#/components/ui/button";
 
@@ -85,7 +86,7 @@ function BotAvatar() {
     <div
       className={
         "flex size-8 shrink-0 items-center justify-center rounded-full " +
-        "bg-gradient-to-br from-primary/10 to-primary/5 ring-1 ring-primary/10 text-primary"
+        "from-primary/10 to-primary/5 ring-primary/10 text-primary bg-gradient-to-br ring-1"
       }
     >
       <BotIcon className={"size-4"} />
@@ -98,7 +99,7 @@ function UserAvatar() {
     <div
       className={
         "flex size-8 shrink-0 items-center justify-center rounded-full " +
-        "bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-sm"
+        "from-primary to-primary/80 text-primary-foreground bg-gradient-to-br shadow-sm"
       }
     >
       <UserIcon className={"size-4"} />
@@ -128,8 +129,8 @@ export function ChatMessageItem({ message, entryId, groupName, tableNameMap }: C
           className={
             "relative rounded-2xl px-4 py-3 shadow-xs " +
             (isUser
-              ? "bg-primary text-primary-foreground rounded-br-sm shadow-primary/10"
-              : "border bg-card text-card-foreground rounded-bl-sm shadow-sm")
+              ? "bg-primary text-primary-foreground shadow-primary/10 rounded-br-sm"
+              : "bg-card text-card-foreground rounded-bl-sm border shadow-sm")
           }
         >
           <div className={"pr-6 text-sm"}>
@@ -142,8 +143,8 @@ export function ChatMessageItem({ message, entryId, groupName, tableNameMap }: C
         {!isUser && toolCallCount > 0 && (
           <Badge
             className={
-              "mt-1.5 gap-1 rounded-full border-muted-foreground/10 bg-muted/50 px-2 py-0.5 text-[10px] " +
-              "font-normal text-muted-foreground/70"
+              "border-muted-foreground/10 bg-muted/50 mt-1.5 gap-1 rounded-full px-2 py-0.5 text-[10px] " +
+              "text-muted-foreground/70 font-normal"
             }
             variant={"outline"}
           >

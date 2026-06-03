@@ -11,6 +11,7 @@ import {
   XIcon,
 } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
+
 import { Alert, AlertDescription, AlertTitle } from "#/components/ui/alert";
 import { Badge } from "#/components/ui/badge";
 import { Button } from "#/components/ui/button";
@@ -167,11 +168,11 @@ function ParserTesterBody() {
           role={"button"}
           tabIndex={0}
         >
-          <div className={"flex size-10 items-center justify-center rounded-lg bg-muted"}>
-            <UploadIcon className={"size-4 text-muted-foreground"} />
+          <div className={"bg-muted flex size-10 items-center justify-center rounded-lg"}>
+            <UploadIcon className={"text-muted-foreground size-4"} />
           </div>
           <div className={"flex flex-col gap-0.5"}>
-            <p className={"font-medium text-sm"}>Drop files here or click to browse</p>
+            <p className={"text-sm font-medium"}>Drop files here or click to browse</p>
             <p className={"text-muted-foreground text-xs"}>Plaintext, JSON, CSV, syslog, key=value, and more</p>
           </div>
         </div>
@@ -193,9 +194,9 @@ function ParserTesterBody() {
           <ul className={"flex flex-col gap-1.5"}>
             {selectedFiles.map((file) => (
               <li className={"flex items-center gap-2 rounded-md border px-3 py-2"} key={file.name}>
-                <FileTextIcon className={"size-4 shrink-0 text-muted-foreground"} />
+                <FileTextIcon className={"text-muted-foreground size-4 shrink-0"} />
                 <span className={"flex-1 truncate font-mono text-sm"}>{file.name}</span>
-                <span className={"shrink-0 text-muted-foreground text-xs"}>{(file.size / 1024).toFixed(1)} KB</span>
+                <span className={"text-muted-foreground shrink-0 text-xs"}>{(file.size / 1024).toFixed(1)} KB</span>
                 <button
                   aria-label={`Remove ${file.name}`}
                   className={"ml-1 shrink-0 rounded-sm opacity-60 hover:opacity-100"}
@@ -235,7 +236,7 @@ function ParserTesterBody() {
         {results !== null && (
           <div className={"flex flex-col gap-3"}>
             <Separator />
-            <p className={"font-semibold text-sm"}>
+            <p className={"text-sm font-semibold"}>
               Results - {results.length} {results.length === 1 ? "file" : "files"}
             </p>
             {results.map((result) => (
@@ -256,8 +257,8 @@ function ParseResultCard({ result }: { result: LocalParseResult }) {
     <div className={"flex flex-col gap-3 rounded-lg border p-4"}>
       <div className={"flex items-start justify-between gap-2"}>
         <div className={"flex items-center gap-2"}>
-          <FileTextIcon className={"size-4 shrink-0 text-muted-foreground"} />
-          <span className={"font-medium font-mono text-sm"}>{result.filename}</span>
+          <FileTextIcon className={"text-muted-foreground size-4 shrink-0"} />
+          <span className={"font-mono text-sm font-medium"}>{result.filename}</span>
         </div>
         <div className={"flex shrink-0 flex-wrap items-center justify-end gap-1.5"}>
           {result.ai_fallback_used && (
@@ -279,7 +280,7 @@ function ParseResultCard({ result }: { result: LocalParseResult }) {
             <span className={"text-muted-foreground text-xs"}>Heuristic preview</span>
             <Tooltip>
               <TooltipTrigger asChild>
-                <InfoIcon className={"size-3 text-muted-foreground/60"} />
+                <InfoIcon className={"text-muted-foreground/60 size-3"} />
               </TooltipTrigger>
               <TooltipContent>
                 Client-side estimate only. Real parser confidence is computed by the backend after extraction quality
@@ -287,46 +288,46 @@ function ParseResultCard({ result }: { result: LocalParseResult }) {
               </TooltipContent>
             </Tooltip>
           </div>
-          <span className={"font-medium text-xs"}>{percent}%</span>
+          <span className={"text-xs font-medium"}>{percent}%</span>
         </div>
         <Progress className={"h-1.5"} value={percent} />
       </div>
 
       <div className={"flex flex-wrap gap-3"}>
-        <div className={"flex items-center gap-1 text-muted-foreground text-xs"}>
+        <div className={"text-muted-foreground flex items-center gap-1 text-xs"}>
           <ClockIcon className={"size-3"} />
           {result.total_latency_ms.toFixed(1)} ms
         </div>
-        <div className={"flex items-center gap-1 text-muted-foreground text-xs"}>
+        <div className={"text-muted-foreground flex items-center gap-1 text-xs"}>
           <CheckCircle2Icon className={"size-3"} />
           {result.stages_executed.join(" -> ")}
         </div>
       </div>
 
-      <div className={"grid grid-cols-2 gap-x-4 gap-y-2 rounded-md bg-muted/50 p-3"}>
+      <div className={"bg-muted/50 grid grid-cols-2 gap-x-4 gap-y-2 rounded-md p-3"}>
         {[
           { label: "log_level", value: row.log_level },
           { label: "timestamp", value: row.timestamp },
         ].map(({ label, value }) =>
           value ? (
             <div className={"flex flex-col gap-0.5"} key={label}>
-              <span className={"font-mono text-[10px] text-muted-foreground"}>{label}</span>
+              <span className={"text-muted-foreground font-mono text-[10px]"}>{label}</span>
               <span className={"truncate font-mono text-xs"}>{value}</span>
             </div>
           ) : null,
         )}
       </div>
 
-      <p className={"rounded-md border px-3 py-2 font-mono text-muted-foreground text-xs"}>{row.message}</p>
+      <p className={"text-muted-foreground rounded-md border px-3 py-2 font-mono text-xs"}>{row.message}</p>
 
       {Object.keys(row.extra).length > 0 && (
         <Collapsible>
-          <CollapsibleTrigger className={"flex items-center gap-1 text-muted-foreground text-xs hover:text-foreground"}>
+          <CollapsibleTrigger className={"text-muted-foreground hover:text-foreground flex items-center gap-1 text-xs"}>
             <ChevronDownIcon className={"size-3 transition-transform [[data-state=open]_&]:rotate-180"} />
             extra ({Object.keys(row.extra).length} fields)
           </CollapsibleTrigger>
           <CollapsibleContent>
-            <pre className={"mt-2 overflow-x-auto rounded-md bg-muted p-3 font-mono text-[10px] text-foreground"}>
+            <pre className={"bg-muted text-foreground mt-2 overflow-x-auto rounded-md p-3 font-mono text-[10px]"}>
               {JSON.stringify(row.extra, null, 2)}
             </pre>
           </CollapsibleContent>

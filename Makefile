@@ -7,9 +7,8 @@ setup:
 start:
 	cd src/app && bun run dev & \
 	cd src/server && uv run main.py & \
-  wait
+	wait
 
 check:
 	cd src/app && bun run check
-	cd src/server && uv run ruff check --fix
-	cd src/server && uv run ruff format
+	cd src/server && uv run ruff format && uv run ruff check --fix

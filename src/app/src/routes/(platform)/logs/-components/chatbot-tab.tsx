@@ -1,5 +1,4 @@
 import type { UIMessage } from "@tanstack/ai-react";
-
 import { fetchServerSentEvents, useChat } from "@tanstack/ai-react";
 import {
   AlertCircleIcon,
@@ -12,6 +11,7 @@ import {
   SparklesIcon,
 } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+
 import { Button } from "#/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "#/components/ui/collapsible";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "#/components/ui/input-group";
@@ -106,8 +106,8 @@ function ErrorBadge({ label, message }: { label: string; message: string }) {
       <CollapsibleTrigger asChild>
         <button
           className={
-            "inline-flex cursor-pointer items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5" +
-            "text-destructive text-xs transition-colors hover:bg-destructive/20"
+            "bg-destructive/10 inline-flex cursor-pointer items-center gap-1 rounded-full px-2 py-0.5" +
+            "text-destructive hover:bg-destructive/20 text-xs transition-colors"
           }
           type={"button"}
         >
@@ -117,7 +117,7 @@ function ErrorBadge({ label, message }: { label: string; message: string }) {
         </button>
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <p className={"mt-2 max-w-md rounded-md bg-destructive/5 px-3 py-2 text-destructive text-xs"}>{message}</p>
+        <p className={"bg-destructive/5 text-destructive mt-2 max-w-md rounded-md px-3 py-2 text-xs"}>{message}</p>
       </CollapsibleContent>
     </Collapsible>
   );
@@ -144,24 +144,24 @@ function ThinkingIndicator() {
       <div
         className={
           "flex size-8 shrink-0 items-center justify-center rounded-full" +
-          "bg-gradient-to-br from-primary/10 to-primary/5 text-primary ring-1 ring-primary/10"
+          "from-primary/10 to-primary/5 text-primary ring-primary/10 bg-gradient-to-br ring-1"
         }
       >
         <BotIcon className={"size-4"} />
       </div>
-      <div className={"rounded-2xl rounded-bl-sm border bg-card px-4 py-3 shadow-sm"}>
+      <div className={"bg-card rounded-2xl rounded-bl-sm border px-4 py-3 shadow-sm"}>
         <div className={"flex items-center gap-2.5"}>
           <div className={"flex items-center gap-1"}>
             <span
-              className={"size-1.5 animate-bounce rounded-full bg-muted-foreground/40"}
+              className={"bg-muted-foreground/40 size-1.5 animate-bounce rounded-full"}
               style={{ animationDelay: "0ms" }}
             />
             <span
-              className={"size-1.5 animate-bounce rounded-full bg-muted-foreground/40"}
+              className={"bg-muted-foreground/40 size-1.5 animate-bounce rounded-full"}
               style={{ animationDelay: "150ms" }}
             />
             <span
-              className={"size-1.5 animate-bounce rounded-full bg-muted-foreground/40"}
+              className={"bg-muted-foreground/40 size-1.5 animate-bounce rounded-full"}
               style={{ animationDelay: "300ms" }}
             />
           </div>
@@ -432,8 +432,8 @@ export function ChatbotTab({ entryId, groupName, tables }: ChatbotTabProps) {
       <div
         className={
           "flex min-h-0 flex-1 flex-col overflow-y-auto" +
-          "scrollbar-thin scrollbar-thumb-muted-foreground/10 scrollbar-track-transparent hover:scrollbar-thumb-muted-foreground/20" +
-          (hasMessages ? "" : "bg-gradient-to-b from-muted/20 to-background")
+          "scrollbar-thumb-muted-foreground/10 hover:scrollbar-thumb-muted-foreground/20 scrollbar-thin scrollbar-track-transparent" +
+          (hasMessages ? "" : "from-muted/20 to-background bg-gradient-to-b")
         }
         onScroll={handleScroll}
         ref={scrollContainerRef}
@@ -448,32 +448,32 @@ export function ChatbotTab({ entryId, groupName, tables }: ChatbotTabProps) {
               <div
                 className={
                   "flex size-16 items-center justify-center rounded-2xl" +
-                  "bg-gradient-to-br from-primary/10 via-primary/5 to-primary/0 ring-1 ring-primary/10" +
+                  "from-primary/10 via-primary/5 to-primary/0 ring-primary/10 bg-gradient-to-br ring-1" +
                   "shadow-primary/5 shadow-sm"
                 }
               >
-                <BotIcon className={"size-8 text-primary"} />
+                <BotIcon className={"text-primary size-8"} />
               </div>
               <div className={"flex flex-col gap-2"}>
-                <h2 className={"font-semibold text-xl tracking-tight"}>Log Analysis Chatbot</h2>
-                <p className={"mx-auto max-w-sm text-balance text-muted-foreground text-sm leading-relaxed"}>
-                  Ask questions about <span className={"font-medium text-foreground"}>{groupName}</span>. I can query
+                <h2 className={"text-xl font-semibold tracking-tight"}>Log Analysis Chatbot</h2>
+                <p className={"text-muted-foreground mx-auto max-w-sm text-sm leading-relaxed text-balance"}>
+                  Ask questions about <span className={"text-foreground font-medium"}>{groupName}</span>. I can query
                   tables, summarize logs, find anomalies, and generate charts.
                 </p>
               </div>
               <div className={"mb-16 flex w-full flex-col gap-2.5"}>
                 <div className={"flex items-center gap-2 px-1"}>
-                  <span className={"h-px flex-1 bg-border/50"} />
-                  <span className={"font-medium text-[10px] text-muted-foreground/50 uppercase tracking-widest"}>
+                  <span className={"bg-border/50 h-px flex-1"} />
+                  <span className={"text-muted-foreground/50 text-[10px] font-medium tracking-widest uppercase"}>
                     Get started
                   </span>
-                  <span className={"h-px flex-1 bg-border/50"} />
+                  <span className={"bg-border/50 h-px flex-1"} />
                 </div>
                 {STARTER_MESSAGES.map((message, i) => (
                   <Button
                     className={
-                      "group/start h-auto w-full justify-start gap-3 border-border/50 px-4 py-3 text-left text-sm" +
-                      "shadow-xs transition-all duration-200 hover:border-border hover:shadow-sm" +
+                      "group/start border-border/50 h-auto w-full justify-start gap-3 px-4 py-3 text-left text-sm" +
+                      "hover:border-border shadow-xs transition-all duration-200 hover:shadow-sm" +
                       "hover:-translate-y-0.5 active:translate-y-0"
                     }
                     disabled={isLoading}
@@ -527,10 +527,10 @@ export function ChatbotTab({ entryId, groupName, tables }: ChatbotTabProps) {
 
       {/* Scroll to bottom button */}
       {!isAtBottom && hasMessages && (
-        <div className={"fade-in slide-in-from-bottom-2 absolute right-6 bottom-28 z-10 animate-in duration-200"}>
+        <div className={"fade-in slide-in-from-bottom-2 animate-in absolute right-6 bottom-28 z-10 duration-200"}>
           <Button
             className={
-              "h-9 w-9 rounded-full shadow-lg ring-1 ring-border/50" +
+              "ring-border/50 h-9 w-9 rounded-full shadow-lg ring-1" +
               "transition-all duration-200 hover:scale-105 hover:shadow-xl active:scale-95"
             }
             onClick={scrollToBottom}
@@ -547,8 +547,8 @@ export function ChatbotTab({ entryId, groupName, tables }: ChatbotTabProps) {
       {!isLoading && (
         <div
           className={
-            "shrink-0 border-t bg-background/80 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60" +
-            "z-10 shadow-[0_-1px_0_0] shadow-border/50" +
+            "bg-background/80 supports-[backdrop-filter]:bg-background/60 shrink-0 border-t backdrop-blur-xl" +
+            "shadow-border/50 z-10 shadow-[0_-1px_0_0]" +
             (hasMessages ? "" : "border-t-transparent")
           }
         >
@@ -557,7 +557,7 @@ export function ChatbotTab({ entryId, groupName, tables }: ChatbotTabProps) {
             {hasMessages && !isLoading && (
               <div className={"flex flex-wrap items-center gap-2 px-4 pt-3 pb-2"}>
                 {isGeneratingSuggestions && aiSuggestions.length === 0 && (
-                  <span className={"flex items-center gap-1.5 text-muted-foreground/60 text-xs"}>
+                  <span className={"text-muted-foreground/60 flex items-center gap-1.5 text-xs"}>
                     <Spinner className={"size-3"} />
                     Generating suggestions&hellip;
                   </span>
@@ -565,8 +565,8 @@ export function ChatbotTab({ entryId, groupName, tables }: ChatbotTabProps) {
                 {aiSuggestions.map((suggestion) => (
                   <Button
                     className={
-                      "group/pill h-auto gap-1.5 rounded-full border-border/50 px-3 py-1.5 text-xs" +
-                      "shadow-xs transition-all duration-200 hover:border-border hover:shadow-sm" +
+                      "group/pill border-border/50 h-auto gap-1.5 rounded-full px-3 py-1.5 text-xs" +
+                      "hover:border-border shadow-xs transition-all duration-200 hover:shadow-sm" +
                       "hover:bg-accent active:scale-95"
                     }
                     key={suggestion.display}
@@ -576,7 +576,7 @@ export function ChatbotTab({ entryId, groupName, tables }: ChatbotTabProps) {
                   >
                     <SparklesIcon
                       className={
-                        "size-3 shrink-0 text-muted-foreground/50 transition-colors duration-200" +
+                        "text-muted-foreground/50 size-3 shrink-0 transition-colors duration-200" +
                         "group-hover/pill:text-primary"
                       }
                     />
@@ -632,8 +632,8 @@ export function ChatbotTab({ entryId, groupName, tables }: ChatbotTabProps) {
               <div className={"flex items-center justify-end gap-2 px-4 pt-1 pb-4"}>
                 <Button
                   className={
-                    "h-auto gap-1.5 rounded-full px-3 py-1 text-muted-foreground/60 text-xs" +
-                    "transition-all duration-200 hover:bg-muted/50 hover:text-muted-foreground active:scale-95"
+                    "text-muted-foreground/60 h-auto gap-1.5 rounded-full px-3 py-1 text-xs" +
+                    "hover:bg-muted/50 hover:text-muted-foreground transition-all duration-200 active:scale-95"
                   }
                   disabled={isLoading}
                   onClick={() => void handleClearChat()}

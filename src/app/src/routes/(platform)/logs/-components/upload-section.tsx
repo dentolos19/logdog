@@ -1,6 +1,7 @@
 import { AlertCircleIcon, CheckCircle2Icon, FileTextIcon, UploadIcon, XIcon } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
+
 import { Alert, AlertDescription, AlertTitle } from "#/components/ui/alert";
 import { Button } from "#/components/ui/button";
 import { Progress } from "#/components/ui/progress";
@@ -71,7 +72,7 @@ export function UploadSection({ logGroupId, onUploadSuccess, onNavigateToProcess
 
   return (
     <section className={"flex flex-col gap-3"}>
-      <h2 className={"font-semibold text-sm"}>Upload Logs</h2>
+      <h2 className={"text-sm font-semibold"}>Upload Logs</h2>
 
       <div
         className={[
@@ -99,11 +100,11 @@ export function UploadSection({ logGroupId, onUploadSuccess, onNavigateToProcess
         role={"button"}
         tabIndex={0}
       >
-        <div className={"flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted"}>
-          <UploadIcon className={"size-4 text-muted-foreground"} />
+        <div className={"bg-muted flex size-10 shrink-0 items-center justify-center rounded-lg"}>
+          <UploadIcon className={"text-muted-foreground size-4"} />
         </div>
         <div className={"flex flex-col gap-0.5"}>
-          <p className={"font-medium text-sm"}>Drop files here or click to browse</p>
+          <p className={"text-sm font-medium"}>Drop files here or click to browse</p>
           <p className={"text-muted-foreground text-xs"}>
             Supports plaintext, JSON Lines, CSV, syslog, and mixed files.
           </p>
@@ -127,13 +128,13 @@ export function UploadSection({ logGroupId, onUploadSuccess, onNavigateToProcess
         <ul className={"flex flex-col gap-1.5"}>
           {selectedFiles.map((file) => (
             <li className={"flex items-center gap-2 rounded-md border px-3 py-2"} key={file.name}>
-              <FileTextIcon className={"size-4 shrink-0 text-muted-foreground"} />
+              <FileTextIcon className={"text-muted-foreground size-4 shrink-0"} />
               <span className={"flex-1 truncate font-mono text-sm"}>{file.name}</span>
-              <span className={"shrink-0 text-muted-foreground text-xs"}>{(file.size / 1024).toFixed(1)} KB</span>
+              <span className={"text-muted-foreground shrink-0 text-xs"}>{(file.size / 1024).toFixed(1)} KB</span>
               <button
                 aria-label={`Remove ${file.name}`}
                 className={
-                  "ml-1 shrink-0 rounded-sm opacity-60 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring"
+                  "focus:ring-ring ml-1 shrink-0 rounded-sm opacity-60 hover:opacity-100 focus:ring-2 focus:outline-none"
                 }
                 onClick={(event) => {
                   event.stopPropagation();

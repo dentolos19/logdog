@@ -14,6 +14,7 @@ import {
   Zap,
 } from "lucide-react";
 import type { ReactNode } from "react";
+
 import { Button } from "#/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "#/components/ui/card";
 import { Separator } from "#/components/ui/separator";
@@ -176,7 +177,7 @@ function LandingPage() {
       <section className={"relative z-10 mx-auto max-w-7xl px-6 pt-20 pb-28 text-center"}>
         <h1
           className={
-            "stagger-2 mb-6 animate-fade-up font-extrabold text-5xl leading-[1.04] tracking-tight md:text-[4.5rem] lg:text-[5.5rem]"
+            "stagger-2 animate-fade-up mb-6 text-5xl leading-[1.04] font-extrabold tracking-tight md:text-[4.5rem] lg:text-[5.5rem]"
           }
         >
           Parse any log.
@@ -186,18 +187,18 @@ function LandingPage() {
 
         <p
           className={
-            "stagger-3 mx-auto mb-10 max-w-2xl animate-fade-up text-lg text-zinc-400 leading-relaxed md:text-xl"
+            "stagger-3 animate-fade-up mx-auto mb-10 max-w-2xl text-lg leading-relaxed text-zinc-400 md:text-xl"
           }
         >
           Drop in your raw logs. Logdog detects schema, extracts fields, and surfaces insight you can act on without
           brittle parser setup.
         </p>
 
-        <div className={"stagger-4 mb-20 flex animate-fade-up flex-col justify-center gap-3 sm:flex-row"}>
+        <div className={"stagger-4 animate-fade-up mb-20 flex flex-col justify-center gap-3 sm:flex-row"}>
           <Button
             asChild
             className={
-              "h-12 gap-2 bg-[#F9F618] px-7 font-semibold text-[#141414] text-base shadow-none hover:bg-[#F9F618]/90"
+              "h-12 gap-2 bg-[#F9F618] px-7 text-base font-semibold text-[#141414] shadow-none hover:bg-[#F9F618]/90"
             }
             size={"lg"}
           >
@@ -218,7 +219,7 @@ function LandingPage() {
           </Button>
         </div>
 
-        <div className={"stagger-5 relative mx-auto max-w-5xl animate-fade-up"}>
+        <div className={"stagger-5 animate-fade-up relative mx-auto max-w-5xl"}>
           <div
             className={"pointer-events-none absolute -inset-12 rounded-3xl"}
             style={{
@@ -231,8 +232,8 @@ function LandingPage() {
               "relative grid gap-0 overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950/90 shadow-2xl md:grid-cols-2"
             }
           >
-            <div className={"border-zinc-800 border-r"}>
-              <div className={"flex items-center gap-2 border-zinc-800 border-b bg-zinc-900/60 px-4 py-3"}>
+            <div className={"border-r border-zinc-800"}>
+              <div className={"flex items-center gap-2 border-b border-zinc-800 bg-zinc-900/60 px-4 py-3"}>
                 <div className={"flex gap-1.5"}>
                   <div className={"size-3 rounded-full bg-zinc-700"} />
                   <div className={"size-3 rounded-full bg-zinc-700"} />
@@ -246,7 +247,7 @@ function LandingPage() {
 
               <div className={"relative h-64 overflow-hidden px-5 py-4"}>
                 <div
-                  className={"animate-scroll-logs whitespace-nowrap font-mono text-[11px] text-zinc-500 leading-[1.7]"}
+                  className={"animate-scroll-logs font-mono text-[11px] leading-[1.7] whitespace-nowrap text-zinc-500"}
                 >
                   {[...Array(2)].map((_, index) => (
                     <div key={index}>
@@ -281,7 +282,7 @@ function LandingPage() {
 
             <div>
               <div
-                className={"flex items-center justify-between gap-2 border-zinc-800 border-b bg-zinc-900/60 px-4 py-3"}
+                className={"flex items-center justify-between gap-2 border-b border-zinc-800 bg-zinc-900/60 px-4 py-3"}
               >
                 <div className={"flex items-center gap-2"}>
                   <div className={"flex gap-1.5"}>
@@ -343,8 +344,8 @@ function LandingPage() {
 
       <section className={"relative z-10 mx-auto max-w-7xl px-6 py-24"} id={"formats"}>
         <div className={"mb-14 text-center"}>
-          <p className={"mb-3 font-mono text-[#F9F618] text-xs uppercase tracking-[0.2em]"}>Universal compatibility</p>
-          <h2 className={"mb-4 font-bold text-4xl tracking-tight md:text-5xl"}>Every format. One parser.</h2>
+          <p className={"mb-3 font-mono text-xs tracking-[0.2em] text-[#F9F618] uppercase"}>Universal compatibility</p>
+          <h2 className={"mb-4 text-4xl font-bold tracking-tight md:text-5xl"}>Every format. One parser.</h2>
           <p className={"mx-auto max-w-xl text-lg text-zinc-400"}>
             Whether your logs come from modern services or legacy systems, Logdog handles it.
           </p>
@@ -401,7 +402,7 @@ function LandingPage() {
               preview={
                 <pre
                   className={
-                    "overflow-x-auto whitespace-pre-wrap px-5 py-5 font-mono text-[11px] text-zinc-300 leading-[1.8]"
+                    "overflow-x-auto px-5 py-5 font-mono text-[11px] leading-[1.8] whitespace-pre-wrap text-zinc-300"
                   }
                 >
                   {`{"ts":"2026-03-05T14:22:31Z","lvl":"ERROR","svc":"auth","msg":"Token expired"}\n{"ts":"2026-03-05T14:22:32Z","lvl":"INFO","svc":"api","msg":"Request completed"}`}
@@ -421,7 +422,7 @@ function LandingPage() {
               preview={
                 <pre
                   className={
-                    "overflow-x-auto whitespace-pre-wrap px-5 py-5 font-mono text-[11px] text-zinc-300 leading-[1.8]"
+                    "overflow-x-auto px-5 py-5 font-mono text-[11px] leading-[1.8] whitespace-pre-wrap text-zinc-300"
                   }
                 >
                   {`192.168.1.105 - alice [05/Mar/2026:14:22:31 +0000]\n"POST /api/v2/sessions HTTP/2.0" 201 512\n10.0.0.2 - - [05/Mar/2026:14:22:32 +0000]\n"GET /health HTTP/1.1" 200 34`}
@@ -441,7 +442,7 @@ function LandingPage() {
               preview={
                 <pre
                   className={
-                    "overflow-x-auto whitespace-pre-wrap px-5 py-5 font-mono text-[11px] text-zinc-300 leading-[1.8]"
+                    "overflow-x-auto px-5 py-5 font-mono text-[11px] leading-[1.8] whitespace-pre-wrap text-zinc-300"
                   }
                 >
                   {`CRITICAL auth-worker crashed while processing request from prod-node-3\nmemory limit exceeded, process restarted, connections dropped.`}
@@ -463,8 +464,8 @@ function LandingPage() {
       >
         <div className={"mx-auto max-w-7xl"}>
           <div className={"mb-16 text-center"}>
-            <p className={"mb-3 font-mono text-[#F9F618] text-xs uppercase tracking-[0.2em]"}>Simple by design</p>
-            <h2 className={"font-bold text-4xl tracking-tight md:text-5xl"}>
+            <p className={"mb-3 font-mono text-xs tracking-[0.2em] text-[#F9F618] uppercase"}>Simple by design</p>
+            <h2 className={"text-4xl font-bold tracking-tight md:text-5xl"}>
               From raw chaos to clean data
               <br />
               in three steps.
@@ -488,12 +489,12 @@ function LandingPage() {
                     "relative h-full rounded-2xl border border-zinc-800 bg-zinc-900/40 p-8 transition-all duration-200 hover:border-zinc-700 hover:bg-zinc-900/70"
                   }
                 >
-                  <div className={"mb-5 select-none font-black font-mono text-6xl text-[#F9F618]/20 leading-none"}>
+                  <div className={"mb-5 font-mono text-6xl leading-none font-black text-[#F9F618]/20 select-none"}>
                     {number}
                   </div>
-                  <h3 className={"mb-3 font-semibold text-xl"}>{title}</h3>
-                  <p className={"mb-5 text-sm text-zinc-400 leading-relaxed"}>{description}</p>
-                  <div className={"border-zinc-800 border-t pt-4 font-mono text-xs text-zinc-600"}>{detail}</div>
+                  <h3 className={"mb-3 text-xl font-semibold"}>{title}</h3>
+                  <p className={"mb-5 text-sm leading-relaxed text-zinc-400"}>{description}</p>
+                  <div className={"border-t border-zinc-800 pt-4 font-mono text-xs text-zinc-600"}>{detail}</div>
                 </div>
               </div>
             ))}
@@ -503,8 +504,8 @@ function LandingPage() {
 
       <section className={"relative z-10 mx-auto max-w-7xl px-6 py-24"} id={"features"}>
         <div className={"mb-16 text-center"}>
-          <p className={"mb-3 font-mono text-[#F9F618] text-xs uppercase tracking-[0.2em]"}>What you get</p>
-          <h2 className={"mb-4 font-bold text-4xl tracking-tight md:text-5xl"}>The whole pipeline, built in.</h2>
+          <p className={"mb-3 font-mono text-xs tracking-[0.2em] text-[#F9F618] uppercase"}>What you get</p>
+          <h2 className={"mb-4 text-4xl font-bold tracking-tight md:text-5xl"}>The whole pipeline, built in.</h2>
           <p className={"mx-auto max-w-xl text-lg text-zinc-400"}>
             Logdog is not only a parser. It is the ingestion-to-insight workflow designed for operations.
           </p>
@@ -526,10 +527,10 @@ function LandingPage() {
                 >
                   <Icon className={"size-5 text-[#F9F618]"} />
                 </div>
-                <CardTitle className={"font-semibold text-base text-white"}>{title}</CardTitle>
+                <CardTitle className={"text-base font-semibold text-white"}>{title}</CardTitle>
               </CardHeader>
               <CardContent>
-                <CardDescription className={"text-sm text-zinc-400 leading-relaxed"}>{description}</CardDescription>
+                <CardDescription className={"text-sm leading-relaxed text-zinc-400"}>{description}</CardDescription>
               </CardContent>
             </Card>
           ))}
@@ -543,7 +544,7 @@ function LandingPage() {
         >
           {STATS.map(({ value, label }) => (
             <div className={"p-10 text-center"} key={label}>
-              <div className={"mb-2 font-black font-mono text-5xl text-[#F9F618]"}>{value}</div>
+              <div className={"mb-2 font-mono text-5xl font-black text-[#F9F618]"}>{value}</div>
               <div className={"text-sm text-zinc-400"}>{label}</div>
             </div>
           ))}
@@ -558,10 +559,10 @@ function LandingPage() {
           }}
         />
         <div className={"relative"}>
-          <p className={"mb-5 font-mono text-[#F9F618] text-xs uppercase tracking-[0.2em]"}>Get started free</p>
+          <p className={"mb-5 font-mono text-xs tracking-[0.2em] text-[#F9F618] uppercase"}>Get started free</p>
           <h2
             className={
-              "mx-auto mb-6 max-w-3xl font-extrabold text-4xl leading-[1.08] tracking-tight md:text-5xl lg:text-6xl"
+              "mx-auto mb-6 max-w-3xl text-4xl leading-[1.08] font-extrabold tracking-tight md:text-5xl lg:text-6xl"
             }
           >
             Your logs have been trying to tell you something.
@@ -572,7 +573,7 @@ function LandingPage() {
           <Button
             asChild
             className={
-              "h-12 gap-2 bg-[#F9F618] px-8 font-semibold text-[#141414] text-base shadow-none hover:bg-[#F9F618]/90"
+              "h-12 gap-2 bg-[#F9F618] px-8 text-base font-semibold text-[#141414] shadow-none hover:bg-[#F9F618]/90"
             }
             size={"lg"}
           >
@@ -584,7 +585,7 @@ function LandingPage() {
         </div>
       </section>
 
-      <footer className={"relative z-10 border-zinc-800/80 border-t px-6 py-10"}>
+      <footer className={"relative z-10 border-t border-zinc-800/80 px-6 py-10"}>
         <div className={"mx-auto flex max-w-7xl flex-col items-center justify-between gap-5 md:flex-row"}>
           <div className={"flex items-center"}>
             <img alt="Logdog" className="h-9 w-auto dark:hidden" src="/logo.png" />
@@ -623,9 +624,9 @@ function FormatPanel({
   return (
     <div className={"grid items-start gap-10 md:grid-cols-2"}>
       <div>
-        <p className={"mb-4 font-mono text-[#F9F618] text-xs uppercase tracking-widest"}>{subtitle}</p>
-        <h3 className={"mb-3 font-bold text-2xl"}>{title}</h3>
-        <p className={"mb-7 text-zinc-400 leading-relaxed"}>{description}</p>
+        <p className={"mb-4 font-mono text-xs tracking-widest text-[#F9F618] uppercase"}>{subtitle}</p>
+        <h3 className={"mb-3 text-2xl font-bold"}>{title}</h3>
+        <p className={"mb-7 leading-relaxed text-zinc-400"}>{description}</p>
         <ul className={"space-y-2.5"}>
           {formats.map((format) => (
             <li className={"flex items-center gap-2.5 text-sm text-zinc-300"} key={format}>
@@ -637,7 +638,7 @@ function FormatPanel({
       </div>
 
       <div className={"overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/50 shadow-xl"}>
-        <div className={"flex items-center gap-2 border-zinc-800 border-b bg-zinc-900/80 px-4 py-3"}>
+        <div className={"flex items-center gap-2 border-b border-zinc-800 bg-zinc-900/80 px-4 py-3"}>
           <div className={"flex gap-1.5"}>
             <div className={"size-2.5 rounded-full bg-zinc-700"} />
             <div className={"size-2.5 rounded-full bg-zinc-700"} />

@@ -16,11 +16,11 @@ export function WidgetStats({ stats }: WidgetStatsProps) {
       {stats.map((stat) => (
         <Card key={stat.label}>
           <CardHeader className={"pb-2"}>
-            <CardTitle className={"font-medium text-muted-foreground text-xs"}>{stat.label}</CardTitle>
+            <CardTitle className={"text-muted-foreground text-xs font-medium"}>{stat.label}</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className={"font-bold text-2xl"}>{stat.value}</div>
-            {stat.description && <p className={"mt-1 text-muted-foreground text-xs"}>{stat.description}</p>}
+            <div className={"text-2xl font-bold"}>{stat.value}</div>
+            {stat.description && <p className={"text-muted-foreground mt-1 text-xs"}>{stat.description}</p>}
           </CardContent>
         </Card>
       ))}

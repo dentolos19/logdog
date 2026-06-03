@@ -3,6 +3,7 @@ import { format } from "date-fns";
 import { DatabaseZapIcon, DownloadIcon, FileSpreadsheetIcon, FileTextIcon, InfoIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+
 import { Badge } from "#/components/ui/badge";
 import { Button } from "#/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "#/components/ui/dialog";
@@ -178,7 +179,7 @@ function TableGroupRows({
       {group.tables.map((table, index) => (
         <TableRow
           className={`transition-all duration-500 ${
-            isHighlighted || highlightedTableIds.has(table.id) ? "bg-primary/10 ring-1 ring-primary/40" : ""
+            isHighlighted || highlightedTableIds.has(table.id) ? "bg-primary/10 ring-primary/40 ring-1" : ""
           } ${group.hasMultipleTables && index === 0 ? "border-t-2" : ""}`}
           key={table.id}
           ref={(element) => {
@@ -192,11 +193,11 @@ function TableGroupRows({
             <TableCell className={"align-middle"} rowSpan={group.tables.length}>
               <div className={"flex flex-col gap-0.5"}>
                 <div className={"flex items-center gap-2"}>
-                  <FileTextIcon className={"size-4 shrink-0 text-muted-foreground"} />
-                  <span className={"truncate font-medium font-mono text-sm"}>{group.label}</span>
+                  <FileTextIcon className={"text-muted-foreground size-4 shrink-0"} />
+                  <span className={"truncate font-mono text-sm font-medium"}>{group.label}</span>
                 </div>
                 {formattedDate !== null && formattedSize !== null && (
-                  <div className={"flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground text-xs"}>
+                  <div className={"text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 text-xs"}>
                     <span>
                       Uploaded: <span className={"text-foreground"}>{formattedDate}</span>
                     </span>
@@ -210,8 +211,8 @@ function TableGroupRows({
           ) : null}
           <TableCell>
             <div className={"flex items-center gap-2"}>
-              <FileSpreadsheetIcon className={"size-4 shrink-0 text-muted-foreground"} />
-              <span className={"truncate font-medium font-mono text-sm"}>{table.name}</span>
+              <FileSpreadsheetIcon className={"text-muted-foreground size-4 shrink-0"} />
+              <span className={"truncate font-mono text-sm font-medium"}>{table.name}</span>
             </div>
             {table.sourceFile === null && index === 0 && (
               <span className={"text-muted-foreground text-xs"}>Source file unknown</span>
@@ -330,7 +331,7 @@ function ColumnDetailRow({ column }: { column: TableColumn }) {
   return (
     <div className={"flex flex-col gap-1 px-3 py-2.5"}>
       <div className={"flex items-center gap-2"}>
-        <span className={"font-medium font-mono text-sm"}>{column.name}</span>
+        <span className={"font-mono text-sm font-medium"}>{column.name}</span>
         <div className={"ml-auto flex shrink-0 items-center gap-1"}>
           <Badge className={"font-mono text-xs"} variant={"outline"}>
             {column.type}

@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, XAxis, YAxis } from "recharts";
+
 import { type ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "#/components/ui/chart";
 
 type WidgetChartProps = {
@@ -31,7 +32,7 @@ export function WidgetChart({ chart_type, data, x_key, y_key, title }: WidgetCha
 
   return (
     <div className={"flex flex-col gap-2"}>
-      {title && <span className={"font-medium text-sm"}>{title}</span>}
+      {title && <span className={"text-sm font-medium"}>{title}</span>}
       <ChartContainer className={"max-h-[300px] w-full"} config={chartConfig}>
         {chart_type === "bar" ? (
           <BarChart accessibilityLayer data={sanitizedData}>

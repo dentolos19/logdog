@@ -36,7 +36,7 @@ jobs:
         working-directory: src/app
         run: bun run build
 
-      - name: Deploy to Cloudflare
+      - name: Upload Secrets
         working-directory: src/app
         run: |
           echo "${{ secrets.SECRET_KEY }}" | bun wrangler secret put SECRET_KEY
@@ -51,4 +51,7 @@ jobs:
           echo "${{ vars.OPENROUTER_TITLE }}" | bun wrangler secret put OPENROUTER_TITLE
           echo "${{ vars.OPENROUTER_REFERER }}" | bun wrangler secret put OPENROUTER_REFERER
           echo "${{ vars.OPENROUTER_MODEL }}" | bun wrangler secret put OPENROUTER_MODEL
-          bun run deploy
+
+      - name: Deploy to Cloudflare
+        working-directory: src/app
+        run: bun run deploy
