@@ -1,23 +1,25 @@
+from contextlib import asynccontextmanager
+
 import uvicorn
 from fastapi import Depends, FastAPI
 
-from lib.database import create_tables
 from parsers.orchestrator import register_pipelines
 from routes.auth import get_current_user, router as auth_router
 from routes.logs import router as logs_router
 from routes.stats import router as stats_router
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    register_pipelines()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 
 app.include_router(auth_router)
 app.include_router(logs_router)
 app.include_router(stats_router)
-
-
-@app.on_event("startup")
-def startup() -> None:
-    create_tables()
-    register_pipelines()
 
 
 @app.get("/")

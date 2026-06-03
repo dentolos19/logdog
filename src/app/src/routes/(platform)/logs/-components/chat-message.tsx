@@ -3,8 +3,13 @@ import type { UIMessage } from "@tanstack/ai-react";
 import { BotIcon, CheckIcon, CopyIcon, UserIcon, WrenchIcon } from "lucide-react";
 import { useCallback, useState } from "react";
 import { Streamdown } from "streamdown";
+
+import { Avatar, AvatarFallback } from "#/components/ui/avatar";
 import { Badge } from "#/components/ui/badge";
+import { Bubble, BubbleContent } from "#/components/ui/bubble";
 import { Button } from "#/components/ui/button";
+import { Message, MessageAvatar, MessageContent } from "#/components/ui/message";
+import { cn } from "#/lib/utils";
 
 type ChatMessageItemProps = {
   message: UIMessage;
@@ -43,7 +48,7 @@ function parseTextFromMessage(message: UIMessage) {
 function MarkdownMessage({ content, isUser }: { content: string; isUser: boolean }) {
   return (
     <Streamdown
-      className={`text-sm leading-relaxed ${isUser ? "streamdown-user" : "streamdown-assistant"}`}
+      className={cn("text-sm leading-relaxed", isUser ? "streamdown-user" : "streamdown-assistant")}
       plugins={{ mermaid }}
     >
       {content}
@@ -64,45 +69,36 @@ function CopyButton({ text }: { text: string }) {
   return (
     <Button
       aria-label={copied ? "Copied message" : "Copy message"}
-      className={
-        "absolute top-2 right-2 size-7 rounded-full opacity-0 shadow-xs transition-all duration-200 " +
-        "group-hover:opacity-100 group-hover:shadow-sm hover:scale-105 active:scale-95 " +
-        (copied
-          ? "bg-green-500/10 text-green-600 opacity-100"
-          : "bg-background/80 text-muted-foreground backdrop-blur-sm")
-      }
+      className={cn(
+        "absolute top-1 right-1 opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
+        copied && "text-primary opacity-100",
+      )}
       onClick={handleCopy}
       size={"icon-sm"}
       variant={"ghost"}
     >
-      {copied ? <CheckIcon className={"size-3 text-green-500"} /> : <CopyIcon className={"size-3"} />}
+      {copied ? <CheckIcon /> : <CopyIcon />}
     </Button>
   );
 }
 
 function BotAvatar() {
   return (
-    <div
-      className={
-        "flex size-8 shrink-0 items-center justify-center rounded-full " +
-        "bg-gradient-to-br from-primary/10 to-primary/5 ring-1 ring-primary/10 text-primary"
-      }
-    >
-      <BotIcon className={"size-4"} />
-    </div>
+    <Avatar>
+      <AvatarFallback>
+        <BotIcon />
+      </AvatarFallback>
+    </Avatar>
   );
 }
 
 function UserAvatar() {
   return (
-    <div
-      className={
-        "flex size-8 shrink-0 items-center justify-center rounded-full " +
-        "bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-sm"
-      }
-    >
-      <UserIcon className={"size-4"} />
-    </div>
+    <Avatar>
+      <AvatarFallback className="bg-primary text-primary-foreground">
+        <UserIcon />
+      </AvatarFallback>
+    </Avatar>
   );
 }
 
@@ -117,41 +113,25 @@ export function ChatMessageItem({ message, entryId, groupName, tableNameMap }: C
   }
 
   return (
-    <div
-      className={`group flex items-start gap-3 ${isUser ? "flex-row-reverse" : "flex-row"}`}
-      style={{ animation: "none" }}
-    >
-      {isUser ? <UserAvatar /> : <BotAvatar />}
-
-      <div className={`flex max-w-[80%] flex-col ${isUser ? "items-end" : "items-start"}`}>
-        <div
-          className={
-            "relative rounded-2xl px-4 py-3 shadow-xs " +
-            (isUser
-              ? "bg-primary text-primary-foreground rounded-br-sm shadow-primary/10"
-              : "border bg-card text-card-foreground rounded-bl-sm shadow-sm")
-          }
-        >
-          <div className={"pr-6 text-sm"}>
-            <MarkdownMessage content={text} isUser={isUser} />
-          </div>
-
-          {!isUser && <CopyButton text={text} />}
-        </div>
+    <Message align={isUser ? "end" : "start"} className="group">
+      <MessageAvatar>{isUser ? <UserAvatar /> : <BotAvatar />}</MessageAvatar>
+      <MessageContent>
+        <Bubble align={isUser ? "end" : "start"} variant={isUser ? "default" : "outline"}>
+          <BubbleContent className="relative px-4 py-3">
+            <div className={cn("text-sm", !isUser && "pr-6")}>
+              <MarkdownMessage content={text} isUser={isUser} />
+            </div>
+            {!isUser && <CopyButton text={text} />}
+          </BubbleContent>
+        </Bubble>
 
         {!isUser && toolCallCount > 0 && (
-          <Badge
-            className={
-              "mt-1.5 gap-1 rounded-full border-muted-foreground/10 bg-muted/50 px-2 py-0.5 text-[10px] " +
-              "font-normal text-muted-foreground/70"
-            }
-            variant={"outline"}
-          >
-            <WrenchIcon className={"size-2.5"} />
+          <Badge variant="outline">
+            <WrenchIcon data-icon="inline-start" />
             {toolCallCount} {toolCallCount === 1 ? "tool call" : "tool calls"}
           </Badge>
         )}
-      </div>
-    </div>
+      </MessageContent>
+    </Message>
   );
 }

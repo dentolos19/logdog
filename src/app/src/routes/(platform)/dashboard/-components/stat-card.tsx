@@ -1,4 +1,5 @@
 import type { LucideIcon } from "lucide-react";
+
 import { Card, CardContent } from "#/components/ui/card";
 import { Skeleton } from "#/components/ui/skeleton";
 import { cn } from "#/lib/utils";
@@ -19,10 +20,10 @@ export function StatCard({ title, value, description, icon: Icon, loading = fals
         <div className={"flex items-start justify-between"}>
           <div className={"flex flex-col gap-1"}>
             <span className={"text-muted-foreground text-sm"}>{title}</span>
-            {loading ? <Skeleton className={"h-8 w-20"} /> : <span className={"font-semibold text-3xl"}>{value}</span>}
+            {loading ? <Skeleton className={"h-8 w-20"} /> : <span className={"text-3xl font-semibold"}>{value}</span>}
           </div>
-          <div className={"rounded-lg bg-muted p-2"}>
-            <Icon className={"size-5 text-muted-foreground"} />
+          <div className={"bg-muted rounded-lg p-2"}>
+            <Icon className={"text-muted-foreground size-5"} />
           </div>
         </div>
         {description !== undefined && <span className={"text-muted-foreground text-xs"}>{description}</span>}

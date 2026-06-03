@@ -648,7 +648,7 @@ def delete_log_group(
     database.delete(group)
     database.commit()
 
-    # 4. Delete orphan S3 assets (no remaining LogFile references)
+    # 4. Delete orphan R2 assets (no remaining LogFile references)
     if orphan_asset_ids:
         background_tasks.add_task(_delete_orphan_assets, list(orphan_asset_ids))
 
@@ -1647,8 +1647,8 @@ def execute_group_query(
         except Exception:
             logger.debug("Could not set megabase statement timeout", exc_info=True)
         result = megabase_database.execute(sa_text(sql_text))
-        raw_columns = list(result.keys()) if result.returns_rows else []
-        raw_rows = result.fetchall() if result.returns_rows else []
+        raw_columns = list(result.keys())
+        raw_rows = result.fetchall()
         elapsed_ms = (time.monotonic() - start_time) * 1000
 
         columns = [str(col) for col in raw_columns]
@@ -1702,7 +1702,7 @@ def generate_group_report(
     document.add_paragraph(payload.title, style="Title")
 
     document.add_paragraph(f"Log group: {group.name}")
-    document.add_paragraph(f"Generated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}")
+    document.add_paragraph(f"Generated: {datetime.now(UTC).strftime('%Y-%m-%d %H:%M UTC')}")
     document.add_page_break()
 
     for section in payload.sections:
@@ -1793,13 +1793,12 @@ def generate_workbook_report(
         chart = BarChart()
         chart.type = "col"
         chart.title = "Process Status"
-        chart.y_axis.title = "Count"
-        chart.x_axis.title = "Status"
+        chart.y_axis.title = "Count"  # ty: ignore[invalid-assignment]
+        chart.x_axis.title = "Status"  # ty: ignore[invalid-assignment]
         data = Reference(summary_sheet, min_col=2, min_row=8, max_row=row_index - 1)
         categories = Reference(summary_sheet, min_col=1, min_row=9, max_row=row_index - 1)
         chart.add_data(data, titles_from_data=True)
         chart.set_categories(categories)
-        chart.shape = 4
         summary_sheet.add_chart(chart, "D3")
 
     # Data sheets

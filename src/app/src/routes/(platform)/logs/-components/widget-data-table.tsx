@@ -9,6 +9,7 @@ import {
 } from "@tanstack/react-table";
 import { ArrowDownIcon, ArrowUpIcon, ChevronLeftIcon, ChevronRightIcon, DownloadIcon } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
+
 import { Button } from "#/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "#/components/ui/table";
 
@@ -88,7 +89,7 @@ export function WidgetDataTable({ columns, rows, title }: WidgetDataTableProps) 
   return (
     <div className={"flex flex-col gap-2"}>
       <div className={"flex items-center justify-between"}>
-        {title && <span className={"font-medium text-sm"}>{title}</span>}
+        {title && <span className={"text-sm font-medium"}>{title}</span>}
         <Button className={"ml-auto"} onClick={handleDownloadCsv} size={"sm"} variant={"ghost"}>
           <DownloadIcon />
           CSV
@@ -119,7 +120,7 @@ export function WidgetDataTable({ columns, rows, title }: WidgetDataTableProps) 
           <TableBody>
             {table.getRowModel().rows.length === 0 ? (
               <TableRow>
-                <TableCell className={"text-center text-muted-foreground"} colSpan={columns.length}>
+                <TableCell className={"text-muted-foreground text-center"} colSpan={columns.length}>
                   No data.
                 </TableCell>
               </TableRow>
@@ -149,7 +150,7 @@ export function WidgetDataTable({ columns, rows, title }: WidgetDataTableProps) 
           >
             <ChevronLeftIcon />
           </Button>
-          <span className={"px-2 text-muted-foreground text-xs"}>
+          <span className={"text-muted-foreground px-2 text-xs"}>
             {table.getState().pagination.pageIndex + 1} / {table.getPageCount()}
           </span>
           <Button

@@ -270,7 +270,7 @@ def _extract_leading_timestamp(text: str) -> str:
     return ""
 
 
-def sniff_is_csv(content: str) -> tuple[csv.Dialect, bool] | None:
+def sniff_is_csv(content: str) -> tuple[type[csv.Dialect], bool] | None:
     """Try to detect if *content* is delimiter-separated with quoting.
 
     Returns *(dialect, has_header)* or *None* if not sniffable.
@@ -442,7 +442,7 @@ def normalize_records(
     return records
 
 
-def _reconstruct_csv_row(dialect: csv.Dialect, row: dict[str, str]) -> str:
+def _reconstruct_csv_row(dialect: type[csv.Dialect], row: dict[str, str]) -> str:
     """Reconstruct a raw CSV line from a dict row."""
     fieldnames = list(row.keys())
     try:
@@ -481,7 +481,7 @@ def _normalize_xml_records(content: str, filename: str) -> list[dict[str, Any]] 
 
     # ── 1. Find the row-grain element
     grain_tag, grain_parent = _find_xml_row_grain(root)
-    if grain_tag is None:
+    if grain_tag is None or grain_parent is None:
         # No repeated element found — emit a single flattened record
         return _flatten_xml_document(root, filename)
 
@@ -679,7 +679,7 @@ def _xml_tag_to_snake(tag: str) -> str:
     return result
 
 
-def _parse_embedded_payload(record: dict[str, Any]) -> dict[str, Any]:
+def _parse_embedded_payload(record: dict[str, Any]) -> dict[str, Any] | None:
     """Parse the *message* cell of a record if it contains embedded JSON.
 
     Returns a dict of fields extracted from the JSON payload, or *None*.
@@ -783,7 +783,7 @@ def _detect_delimiter(line: str) -> str:
     """Detect CSV delimiter."""
     delimiters = [",", "\t", "|", ";"]
     counts = {d: line.count(d) for d in delimiters}
-    return max(counts, key=counts.get) if max(counts.values()) > 0 else ","
+    return max(counts, key=lambda delimiter: counts[delimiter]) if max(counts.values()) > 0 else ","
 
 
 # ── Embedded content enrichment (cross-format) ──────────────────────────

@@ -3,24 +3,32 @@
 .idea/
 *.iml
 
-# Environment files
+# Build files
 .tanstack/
 .wrangler/
 node_modules/
 dist/
 build/
 out/
-*.d.ts
+coverage/
 *.tsbuildinfo
+*.d.ts
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.venv/
+*.egg-info/
+__pycache__/
 
 # User files
 .env*
 !.env*.template
 
-# Project files
+# Project-specific rules
 /src/routeTree.gen.ts
 
 # Miscellaneous files
+.tmp/
 .DS_Store
 Desktop.ini
 Thumbs.db

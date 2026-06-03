@@ -1,49 +1,46 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "logdog-development",
-  "account_id": "d910f54eba4cf3d1634aa41c3d9a93bc",
+  "name": "logdog",
+  "main": "src/server.ts",
   "compatibility_date": "2026-05-01",
   "compatibility_flags": ["nodejs_compat"],
-  "main": "src/server.ts",
-  "logpush": true,
+  "dev": {
+    "enable_containers": false
+  },
   "observability": {
-    "logs": {
-      "enabled": true
-    },
-    "traces": {
-      "enabled": true
-    }
+    "enabled": true
   },
   "route": {
     "pattern": "logdog.dennise.me",
     "custom_domain": true
   },
-  "env": {
-    "production": {
-      "name": "logdog",
-      "containers": [
-        {
-          "name": "logdog-server",
-          "class_name": "Server",
-          "image": "../server/Dockerfile",
-          "max_instances": 1,
-          "instance_type": "basic"
-        }
-      ],
-      "durable_objects": {
-        "bindings": [
-          {
-            "name": "SERVER",
-            "class_name": "Server"
-          }
-        ]
-      },
-      "migrations": [
-        {
-          "tag": "v1",
-          "new_sqlite_classes": ["Server"]
-        }
-      ]
+  "containers": [
+    {
+      "name": "logdog-server",
+      "class_name": "Server",
+      "image": "../server/Dockerfile",
+      "max_instances": 1,
+      "instance_type": "standard-1"
     }
-  }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "SERVER",
+        "class_name": "Server"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["Server"]
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "BUCKET",
+      "bucket_name": "logdog"
+    }
+  ]
 }

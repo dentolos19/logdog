@@ -12,12 +12,10 @@ from sqlalchemy import (
     Integer,
     JSON,
     LargeBinary,
-    MetaData,
     String,
     Table,
     Text,
     delete,
-    func,
     select,
     text,
     update,
@@ -28,6 +26,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from environment import MEGABASE_URL
+from lib.megabase_models import metadata, registry_table as _registry_table
 from parsers.normalization import sanitize_db_value
 
 TYPE_MAP = {
@@ -42,8 +41,6 @@ TYPE_MAP = {
     "json": JSON(),
     "bytea": LargeBinary(),
 }
-
-metadata = MetaData()
 
 _registry_locked = False
 
@@ -73,14 +70,6 @@ def _get_engine() -> Engine:
 
 _engine = _get_engine()
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
-
-_registry_table = Table(
-    "tables",
-    metadata,
-    Column("table_name", String, primary_key=True),
-    Column("schema_json", Text, nullable=False),
-    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
-)
 
 
 def _uuid7() -> uuid.UUID:
@@ -194,8 +183,6 @@ def _table_from_schema(table_name: str, schema: dict) -> Table:
 
 
 def create_table(session: Session, table_name: str, schema: dict) -> Table:
-    _registry_table.create(bind=_engine, checkfirst=True)
-
     if table_name in metadata.tables:
         raise ValueError(f"Table '{table_name}' already exists in metadata")
 
@@ -218,8 +205,6 @@ def create_table(session: Session, table_name: str, schema: dict) -> Table:
 
 
 def drop_table(session: Session, table_name: str) -> bool:
-    _registry_table.create(bind=_engine, checkfirst=True)
-
     if table_name not in metadata.tables:
         table = Table(table_name, metadata)
         table.drop(bind=_engine, checkfirst=True)
@@ -308,8 +293,6 @@ def _load_registry(session: Session):
 
     _registry_locked = True
     try:
-        _registry_table.create(bind=_engine, checkfirst=True)
-
         result = session.execute(select(_registry_table))
         for row in result.fetchall():
             schema = json.loads(row.schema_json)

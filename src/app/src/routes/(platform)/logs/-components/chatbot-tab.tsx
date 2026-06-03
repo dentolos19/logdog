@@ -1,9 +1,7 @@
 import type { UIMessage } from "@tanstack/ai-react";
-
 import { fetchServerSentEvents, useChat } from "@tanstack/ai-react";
 import {
   AlertCircleIcon,
-  ArrowDownIcon,
   BotIcon,
   ChevronDownIcon,
   ChevronUpIcon,
@@ -12,9 +10,23 @@ import {
   SparklesIcon,
 } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+import { Alert, AlertDescription } from "#/components/ui/alert";
+import { Avatar, AvatarFallback } from "#/components/ui/avatar";
+import { Bubble, BubbleContent } from "#/components/ui/bubble";
 import { Button } from "#/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "#/components/ui/collapsible";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "#/components/ui/empty";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "#/components/ui/input-group";
+import { Message, MessageAvatar, MessageContent } from "#/components/ui/message";
+import {
+  MessageScroller,
+  MessageScrollerButton,
+  MessageScrollerContent,
+  MessageScrollerItem,
+  MessageScrollerProvider,
+  MessageScrollerViewport,
+} from "#/components/ui/message-scroller";
 import { Spinner } from "#/components/ui/spinner";
 import { generateChatSuggestions, streamLogChat } from "#/lib/chat";
 import { getLogChatMessages, replaceLogChatMessages } from "#/lib/logs";
@@ -104,20 +116,16 @@ function ErrorBadge({ label, message }: { label: string; message: string }) {
   return (
     <Collapsible onOpenChange={setIsOpen} open={isOpen}>
       <CollapsibleTrigger asChild>
-        <button
-          className={
-            "inline-flex cursor-pointer items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5" +
-            "text-destructive text-xs transition-colors hover:bg-destructive/20"
-          }
-          type={"button"}
-        >
-          <AlertCircleIcon className={"size-2.5"} />
+        <Button className="rounded-full" size="xs" type="button" variant="outline">
+          <AlertCircleIcon data-icon="inline-start" />
           {label}
-          {isOpen ? <ChevronUpIcon className={"size-3"} /> : <ChevronDownIcon className={"size-3"} />}
-        </button>
+          {isOpen ? <ChevronUpIcon data-icon="inline-end" /> : <ChevronDownIcon data-icon="inline-end" />}
+        </Button>
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <p className={"mt-2 max-w-md rounded-md bg-destructive/5 px-3 py-2 text-destructive text-xs"}>{message}</p>
+        <Alert className="mt-2 max-w-md" variant="destructive">
+          <AlertDescription>{message}</AlertDescription>
+        </Alert>
       </CollapsibleContent>
     </Collapsible>
   );
@@ -140,35 +148,22 @@ function messagesEqual(a: UIMessage[], b: UIMessage[]) {
 
 function ThinkingIndicator() {
   return (
-    <div className={"flex items-start gap-3"}>
-      <div
-        className={
-          "flex size-8 shrink-0 items-center justify-center rounded-full" +
-          "bg-gradient-to-br from-primary/10 to-primary/5 text-primary ring-1 ring-primary/10"
-        }
-      >
-        <BotIcon className={"size-4"} />
-      </div>
-      <div className={"rounded-2xl rounded-bl-sm border bg-card px-4 py-3 shadow-sm"}>
-        <div className={"flex items-center gap-2.5"}>
-          <div className={"flex items-center gap-1"}>
-            <span
-              className={"size-1.5 animate-bounce rounded-full bg-muted-foreground/40"}
-              style={{ animationDelay: "0ms" }}
-            />
-            <span
-              className={"size-1.5 animate-bounce rounded-full bg-muted-foreground/40"}
-              style={{ animationDelay: "150ms" }}
-            />
-            <span
-              className={"size-1.5 animate-bounce rounded-full bg-muted-foreground/40"}
-              style={{ animationDelay: "300ms" }}
-            />
-          </div>
-          <span className={"text-muted-foreground text-xs"}>Thinking...</span>
-        </div>
-      </div>
-    </div>
+    <Message>
+      <MessageAvatar>
+        <Avatar>
+          <AvatarFallback>
+            <BotIcon />
+          </AvatarFallback>
+        </Avatar>
+      </MessageAvatar>
+      <MessageContent>
+        <Bubble variant="outline">
+          <BubbleContent className="text-muted-foreground flex items-center gap-2">
+            <Spinner /> Thinking&hellip;
+          </BubbleContent>
+        </Bubble>
+      </MessageContent>
+    </Message>
   );
 }
 
@@ -186,13 +181,10 @@ export function ChatbotTab({ entryId, groupName, tables }: ChatbotTabProps) {
   const [hydrateError, setHydrateError] = useState<string | null>(null);
   const [persistError, setPersistError] = useState<string | null>(null);
   const [isHydrating, setIsHydrating] = useState(true);
-  const [isAtBottom, setIsAtBottom] = useState(true);
   const [aiSuggestions, setAiSuggestions] = useState<Suggestion[]>([]);
   const [isGeneratingSuggestions, setIsGeneratingSuggestions] = useState(false);
   const lastAssistantMessageIdRef = useRef<string | null>(null);
 
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const hydratedMessagesRef = useRef<UIMessage[]>([]);
   const hasHydratedRef = useRef(false);
   const inputTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -221,27 +213,6 @@ export function ChatbotTab({ entryId, groupName, tables }: ChatbotTabProps) {
       },
     }),
   });
-
-  const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, []);
-
-  const handleScroll = useCallback(() => {
-    const container = scrollContainerRef.current;
-    if (!container) {
-      return;
-    }
-
-    const { scrollTop, scrollHeight, clientHeight } = container;
-    const atBottom = scrollHeight - scrollTop - clientHeight < 60;
-    setIsAtBottom(atBottom);
-  }, []);
-
-  useEffect(() => {
-    if (isAtBottom || isLoading) {
-      scrollToBottom();
-    }
-  }, [messages, isLoading, isAtBottom, scrollToBottom]);
 
   useEffect(() => {
     let cancelled = false;
@@ -418,9 +389,9 @@ export function ChatbotTab({ entryId, groupName, tables }: ChatbotTabProps) {
   }, [isLoading, hasMessages]);
 
   return (
-    <div className={"relative flex min-h-0 flex-1 flex-col"}>
+    <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
       {(hydrateError !== null || persistError !== null || error !== undefined) && (
-        <div className={"flex flex-wrap gap-2 px-4 pt-2 pb-1"}>
+        <div className="mx-auto flex w-full max-w-4xl flex-wrap gap-2 px-4 pt-3">
           {hydrateError !== null && <ErrorBadge label={"Load failed"} message={hydrateError} />}
           {persistError !== null && <ErrorBadge label={"Save failed"} message={persistError} />}
           {error !== undefined && (
@@ -429,226 +400,139 @@ export function ChatbotTab({ entryId, groupName, tables }: ChatbotTabProps) {
         </div>
       )}
 
-      <div
-        className={
-          "flex min-h-0 flex-1 flex-col overflow-y-auto" +
-          "scrollbar-thin scrollbar-thumb-muted-foreground/10 scrollbar-track-transparent hover:scrollbar-thumb-muted-foreground/20" +
-          (hasMessages ? "" : "bg-gradient-to-b from-muted/20 to-background")
-        }
-        onScroll={handleScroll}
-        ref={scrollContainerRef}
-      >
-        {isHydrating ? (
-          <div className={"flex flex-1 items-center justify-center"}>
-            <Spinner />
-          </div>
-        ) : !hasMessages ? (
-          <div className={"mx-auto mt-16 flex w-full max-w-lg flex-1 flex-col items-center justify-center px-6"}>
-            <div className={"flex flex-col items-center gap-6 text-center"}>
-              <div
-                className={
-                  "flex size-16 items-center justify-center rounded-2xl" +
-                  "bg-gradient-to-br from-primary/10 via-primary/5 to-primary/0 ring-1 ring-primary/10" +
-                  "shadow-primary/5 shadow-sm"
-                }
-              >
-                <BotIcon className={"size-8 text-primary"} />
-              </div>
-              <div className={"flex flex-col gap-2"}>
-                <h2 className={"font-semibold text-xl tracking-tight"}>Log Analysis Chatbot</h2>
-                <p className={"mx-auto max-w-sm text-balance text-muted-foreground text-sm leading-relaxed"}>
-                  Ask questions about <span className={"font-medium text-foreground"}>{groupName}</span>. I can query
-                  tables, summarize logs, find anomalies, and generate charts.
-                </p>
-              </div>
-              <div className={"mb-16 flex w-full flex-col gap-2.5"}>
-                <div className={"flex items-center gap-2 px-1"}>
-                  <span className={"h-px flex-1 bg-border/50"} />
-                  <span className={"font-medium text-[10px] text-muted-foreground/50 uppercase tracking-widest"}>
-                    Get started
-                  </span>
-                  <span className={"h-px flex-1 bg-border/50"} />
+      <MessageScrollerProvider autoScroll>
+        <MessageScroller className="flex-1">
+          <MessageScrollerViewport>
+            <MessageScrollerContent className="mx-auto w-full max-w-4xl px-4 py-6">
+              {isHydrating ? (
+                <div className="flex flex-1 items-center justify-center">
+                  <Spinner />
                 </div>
-                {STARTER_MESSAGES.map((message, i) => (
-                  <Button
-                    className={
-                      "group/start h-auto w-full justify-start gap-3 border-border/50 px-4 py-3 text-left text-sm" +
-                      "shadow-xs transition-all duration-200 hover:border-border hover:shadow-sm" +
-                      "hover:-translate-y-0.5 active:translate-y-0"
-                    }
-                    disabled={isLoading}
-                    key={message.display}
-                    onClick={() => {
-                      void sendMessage(message.prompt);
-                    }}
-                    style={{ animationDelay: `${i * 80}ms` } as React.CSSProperties}
-                    variant={"outline"}
-                  >
-                    <span
-                      className={
-                        "flex size-7 shrink-0 items-center justify-center rounded-lg" +
-                        "bg-muted/50 text-muted-foreground/60 transition-colors duration-200" +
-                        "group-hover/start:bg-primary/10 group-hover/start:text-primary"
-                      }
-                    >
-                      <SparklesIcon className={"size-3.5"} />
-                    </span>
-                    <span className={"line-clamp-2 font-normal"}>{message.display}</span>
-                  </Button>
-                ))}
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className={"mx-auto w-full max-w-4xl space-y-4 px-4 py-6"}>
-            {visibleMessages.map((message) => (
-              <div
-                className={"fade-in slide-in-from-bottom-1 animate-in duration-300"}
-                key={message.id}
-                style={{ animationDelay: "0ms", animationFillMode: "both" } as React.CSSProperties}
-              >
-                <ChatMessageItem
-                  entryId={entryId}
-                  groupName={groupName}
-                  message={message}
-                  tableNameMap={tableNameMap}
-                />
-              </div>
-            ))}
-            {isLoading && !lastMessageIsAssistant && (
-              <div className={"fade-in slide-in-from-bottom-1 animate-in duration-300"}>
-                <ThinkingIndicator />
-              </div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-        )}
-      </div>
+              ) : !hasMessages ? (
+                <Empty className="mx-auto max-w-xl border-0 py-10">
+                  <EmptyHeader>
+                    <EmptyMedia variant="icon">
+                      <BotIcon />
+                    </EmptyMedia>
+                    <EmptyTitle>Ask about {groupName}</EmptyTitle>
+                    <EmptyDescription>
+                      Query tables, summarize patterns, and investigate unusual activity in this log group.
+                    </EmptyDescription>
+                  </EmptyHeader>
+                  <EmptyContent>
+                    {STARTER_MESSAGES.map((message) => (
+                      <Button
+                        className="h-auto w-full justify-start py-3 text-left whitespace-normal"
+                        disabled={isLoading}
+                        key={message.display}
+                        onClick={() => void sendMessage(message.prompt)}
+                        variant="outline"
+                      >
+                        <SparklesIcon data-icon="inline-start" />
+                        {message.display}
+                      </Button>
+                    ))}
+                  </EmptyContent>
+                </Empty>
+              ) : (
+                <>
+                  {visibleMessages.map((message) => (
+                    <MessageScrollerItem key={message.id} scrollAnchor={message.id === visibleMessages.at(-1)?.id}>
+                      <ChatMessageItem
+                        entryId={entryId}
+                        groupName={groupName}
+                        message={message}
+                        tableNameMap={tableNameMap}
+                      />
+                    </MessageScrollerItem>
+                  ))}
+                  {isLoading && !lastMessageIsAssistant && (
+                    <MessageScrollerItem scrollAnchor>
+                      <ThinkingIndicator />
+                    </MessageScrollerItem>
+                  )}
+                </>
+              )}
+            </MessageScrollerContent>
+          </MessageScrollerViewport>
+          <MessageScrollerButton />
+        </MessageScroller>
+      </MessageScrollerProvider>
 
-      {/* Scroll to bottom button */}
-      {!isAtBottom && hasMessages && (
-        <div className={"fade-in slide-in-from-bottom-2 absolute right-6 bottom-28 z-10 animate-in duration-200"}>
-          <Button
-            className={
-              "h-9 w-9 rounded-full shadow-lg ring-1 ring-border/50" +
-              "transition-all duration-200 hover:scale-105 hover:shadow-xl active:scale-95"
-            }
-            onClick={scrollToBottom}
-            size={"icon-sm"}
-            variant={"secondary"}
-          >
-            <ArrowDownIcon className={"size-4"} />
-            <span className={"sr-only"}>Scroll to bottom</span>
-          </Button>
-        </div>
-      )}
-
-      {/* Input bar */}
-      {!isLoading && (
-        <div
-          className={
-            "shrink-0 border-t bg-background/80 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60" +
-            "z-10 shadow-[0_-1px_0_0] shadow-border/50" +
-            (hasMessages ? "" : "border-t-transparent")
-          }
-        >
-          <div className={"mx-auto max-w-4xl"}>
-            {/* AI Suggestions */}
-            {hasMessages && !isLoading && (
-              <div className={"flex flex-wrap items-center gap-2 px-4 pt-3 pb-2"}>
-                {isGeneratingSuggestions && aiSuggestions.length === 0 && (
-                  <span className={"flex items-center gap-1.5 text-muted-foreground/60 text-xs"}>
-                    <Spinner className={"size-3"} />
-                    Generating suggestions&hellip;
-                  </span>
-                )}
-                {aiSuggestions.map((suggestion) => (
+      <div className="bg-background shrink-0 px-4 pb-5">
+        <div className="mx-auto flex max-w-4xl flex-col gap-3">
+          {hasMessages && !isLoading && (isGeneratingSuggestions || aiSuggestions.length > 0) && (
+            <div className="flex flex-wrap items-center gap-2">
+              {isGeneratingSuggestions && aiSuggestions.length === 0 ? (
+                <span className="text-muted-foreground flex items-center gap-2 text-xs">
+                  <Spinner /> Generating suggestions&hellip;
+                </span>
+              ) : (
+                aiSuggestions.map((suggestion) => (
                   <Button
-                    className={
-                      "group/pill h-auto gap-1.5 rounded-full border-border/50 px-3 py-1.5 text-xs" +
-                      "shadow-xs transition-all duration-200 hover:border-border hover:shadow-sm" +
-                      "hover:bg-accent active:scale-95"
-                    }
+                    className="rounded-full"
                     key={suggestion.display}
                     onClick={() => void sendMessage(suggestion.prompt)}
-                    size={"sm"}
-                    variant={"outline"}
+                    size="sm"
+                    variant="outline"
                   >
-                    <SparklesIcon
-                      className={
-                        "size-3 shrink-0 text-muted-foreground/50 transition-colors duration-200" +
-                        "group-hover/pill:text-primary"
-                      }
-                    />
+                    <SparklesIcon data-icon="inline-start" />
                     {suggestion.display}
                   </Button>
-                ))}
-              </div>
-            )}
+                ))
+              )}
+            </div>
+          )}
 
-            {/* Input form */}
-            <form className={"flex items-center justify-center gap-2 px-4 pt-3 pb-2"} onSubmit={onSubmit}>
-              <InputGroup
-                className={
-                  "bg-background shadow-sm transition-all duration-200" +
-                  "focus-within:border-primary/30 focus-within:shadow-md focus-within:ring-0"
-                }
-              >
-                <InputGroupTextarea
-                  className={"max-h-[200px] min-h-[44px] py-3 text-sm"}
-                  disabled={isLoading}
-                  onChange={(event) => setDraftMessage(event.currentTarget.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" && !event.shiftKey) {
-                      event.preventDefault();
-                      void submitMessage();
-                    }
-                  }}
-                  placeholder={"Ask about anomalies, trends, or table insights..."}
-                  ref={inputTextareaRef}
-                  rows={1}
-                  value={draftMessage}
-                />
-                <InputGroupAddon align={"inline-end"}>
-                  <InputGroupButton
-                    className={
-                      "mr-1 size-8 rounded-full transition-all duration-200" +
-                      (draftMessage.trim() ? "shadow-sm hover:shadow-md active:scale-95" : "opacity-50")
-                    }
-                    disabled={isLoading || !draftMessage.trim()}
-                    size={"icon-sm"}
-                    type={"submit"}
-                    variant={"default"}
-                  >
-                    <SendHorizontalIcon className={"size-4"} />
-                    <span className={"sr-only"}>Send</span>
-                  </InputGroupButton>
-                </InputGroupAddon>
-              </InputGroup>
-            </form>
-
-            {/* Clear chat */}
-            {hasMessages && (
-              <div className={"flex items-center justify-end gap-2 px-4 pt-1 pb-4"}>
-                <Button
-                  className={
-                    "h-auto gap-1.5 rounded-full px-3 py-1 text-muted-foreground/60 text-xs" +
-                    "transition-all duration-200 hover:bg-muted/50 hover:text-muted-foreground active:scale-95"
+          <form onSubmit={onSubmit}>
+            <InputGroup className="bg-background shadow-sm">
+              <InputGroupTextarea
+                className="max-h-48 min-h-12"
+                disabled={isLoading}
+                onChange={(event) => setDraftMessage(event.currentTarget.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    void submitMessage();
                   }
-                  disabled={isLoading}
-                  onClick={() => void handleClearChat()}
-                  size={"sm"}
-                  type={"button"}
-                  variant={"ghost"}
-                >
-                  <EraserIcon className={"size-3 shrink-0"} />
-                  <span className={"truncate"}>Clear chat</span>
-                </Button>
-              </div>
-            )}
-          </div>
+                }}
+                placeholder="Ask about anomalies, trends, or table insights…"
+                ref={inputTextareaRef}
+                rows={1}
+                value={draftMessage}
+              />
+              <InputGroupAddon align="block-end">
+                <span className="text-xs">Enter to send · Shift+Enter for a new line</span>
+                <div className="ml-auto flex items-center gap-1">
+                  {hasMessages && (
+                    <InputGroupButton
+                      disabled={isLoading}
+                      onClick={() => void handleClearChat()}
+                      size="icon-xs"
+                      type="button"
+                      variant="ghost"
+                    >
+                      <EraserIcon />
+                      <span className="sr-only">Clear chat</span>
+                    </InputGroupButton>
+                  )}
+                  {isLoading ? (
+                    <InputGroupButton onClick={stop} size="icon-sm" type="button" variant="secondary">
+                      <Spinner />
+                      <span className="sr-only">Stop response</span>
+                    </InputGroupButton>
+                  ) : (
+                    <InputGroupButton disabled={!draftMessage.trim()} size="icon-sm" type="submit" variant="default">
+                      <SendHorizontalIcon />
+                      <span className="sr-only">Send message</span>
+                    </InputGroupButton>
+                  )}
+                </div>
+              </InputGroupAddon>
+            </InputGroup>
+          </form>
         </div>
-      )}
+      </div>
     </div>
   );
 }
