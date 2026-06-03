@@ -13,7 +13,6 @@ jobs:
     environment: Production
     runs-on: ubuntu-latest
     env:
-      CLOUDFLARE_ENV: production
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
@@ -28,27 +27,51 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
 
-      - name: Install Dependencies
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Install App Dependencies
         working-directory: src/app
         run: bun install --frozen-lockfile
+
+      - name: Install Server Dependencies
+        working-directory: src/server
+        run: uv sync --frozen --no-dev
+
+      - name: Migrate Databases
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          MEGABASE_URL: ${{ secrets.MEGABASE_URL }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL }}
+          OPENROUTER_REFERER: ${{ vars.OPENROUTER_REFERER }}
+          OPENROUTER_TITLE: ${{ vars.OPENROUTER_TITLE }}
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+        run: make migrate
 
       - name: Build Project
         working-directory: src/app
         run: bun run build
 
-      - name: Deploy to Cloudflare
-        working-directory: src/app
-        run: |
-          echo "${{ secrets.SECRET_KEY }}" | bun wrangler secret put SECRET_KEY
-          echo "${{ secrets.DATABASE_URL }}" | bun wrangler secret put DATABASE_URL
-          echo "${{ secrets.MEGABASE_URL }}" | bun wrangler secret put MEGABASE_URL
-          echo "${{ secrets.BUCKET_ENDPOINT_URL }}" | bun wrangler secret put BUCKET_ENDPOINT_URL
-          echo "${{ secrets.BUCKET_ACCESS_KEY }}" | bun wrangler secret put BUCKET_ACCESS_KEY
-          echo "${{ secrets.BUCKET_SECRET_KEY }}" | bun wrangler secret put BUCKET_SECRET_KEY
-          echo "${{ vars.BUCKET_NAME }}" | bun wrangler secret put BUCKET_NAME
-          echo "${{ vars.BUCKET_PREFIX }}" | bun wrangler secret put BUCKET_PREFIX
-          echo "${{ secrets.OPENROUTER_API_KEY }}" | bun wrangler secret put OPENROUTER_API_KEY
-          echo "${{ vars.OPENROUTER_TITLE }}" | bun wrangler secret put OPENROUTER_TITLE
-          echo "${{ vars.OPENROUTER_REFERER }}" | bun wrangler secret put OPENROUTER_REFERER
-          echo "${{ vars.OPENROUTER_MODEL }}" | bun wrangler secret put OPENROUTER_MODEL
-          bun run deploy
+      - name: Deploy Worker
+        uses: cloudflare/wrangler-action@v4
+        with:
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          workingDirectory: src/app
+          secrets: |
+            DATABASE_URL
+            MEGABASE_URL
+            OPENROUTER_API_KEY
+            OPENROUTER_MODEL
+            OPENROUTER_REFERER
+            OPENROUTER_TITLE
+            SECRET_KEY
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          MEGABASE_URL: ${{ secrets.MEGABASE_URL }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL }}
+          OPENROUTER_REFERER: ${{ vars.OPENROUTER_REFERER }}
+          OPENROUTER_TITLE: ${{ vars.OPENROUTER_TITLE }}
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}

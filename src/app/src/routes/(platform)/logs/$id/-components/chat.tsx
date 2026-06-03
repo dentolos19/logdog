@@ -1,6 +1,7 @@
 import { BotIcon, MessageCircleIcon, SendHorizontalIcon, UserIcon, XIcon } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+
 import { Button } from "#/components/ui/button";
 import { ScrollArea } from "#/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "#/components/ui/sheet";
@@ -135,7 +136,7 @@ export function LogChatPanel({ entryId, open, onOpenChange }: LogChatPanelProps)
         <SheetHeader className={"shrink-0 border-b px-4 pt-4 pb-4"}>
           <div className={"flex items-center justify-between"}>
             <SheetTitle className={"flex items-center gap-2 text-base"}>
-              <BotIcon className={"size-5 text-primary"} />
+              <BotIcon className={"text-primary size-5"} />
               Chat with Logs
             </SheetTitle>
             <Button onClick={() => onOpenChange(false)} size={"icon-sm"} variant={"ghost"}>
@@ -147,11 +148,11 @@ export function LogChatPanel({ entryId, open, onOpenChange }: LogChatPanelProps)
         <div className={"flex min-h-0 flex-1 flex-col"}>
           {messages.length === 0 ? (
             <div className={"flex flex-1 flex-col items-center justify-center gap-4 px-4 text-center"}>
-              <div className={"flex size-12 items-center justify-center rounded-2xl bg-primary/10"}>
-                <MessageCircleIcon className={"size-6 text-primary"} />
+              <div className={"bg-primary/10 flex size-12 items-center justify-center rounded-2xl"}>
+                <MessageCircleIcon className={"text-primary size-6"} />
               </div>
               <div className={"flex flex-col gap-1"}>
-                <p className={"font-medium text-sm"}>Ask about your logs</p>
+                <p className={"text-sm font-medium"}>Ask about your logs</p>
                 <p className={"text-muted-foreground text-xs"}>
                   Get insights, find anomalies, or summarize patterns in your log data.
                 </p>
@@ -164,7 +165,7 @@ export function LogChatPanel({ entryId, open, onOpenChange }: LogChatPanelProps)
                   <ChatBubble key={message.id} message={message} />
                 ))}
                 {isStreaming && messages[messages.length - 1]?.role === "assistant" && (
-                  <div className={"flex items-center gap-2 self-start rounded-lg bg-muted px-3 py-2"}>
+                  <div className={"bg-muted flex items-center gap-2 self-start rounded-lg px-3 py-2"}>
                     <Skeleton className={"h-3 w-16"} />
                   </div>
                 )}
@@ -221,7 +222,7 @@ function ChatBubble({ message }: { message: ChatMessage }) {
           isUser ? "bg-primary text-primary-foreground" : "bg-muted"
         }`}
       >
-        <div className={"whitespace-pre-wrap leading-relaxed"}>{message.content || " "}</div>
+        <div className={"leading-relaxed whitespace-pre-wrap"}>{message.content || " "}</div>
       </div>
     </div>
   );

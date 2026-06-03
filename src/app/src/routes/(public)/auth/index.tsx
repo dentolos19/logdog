@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+
 import { useAuth } from "#/components/auth-provider";
 import { Button } from "#/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "#/components/ui/card";
@@ -118,7 +119,7 @@ function LoginPage() {
           </form>
         </CardContent>
 
-        <CardFooter className={"justify-center text-muted-foreground text-sm"}>
+        <CardFooter className={"text-muted-foreground justify-center text-sm"}>
           Don't have an account?&nbsp;
           <Link className={"text-foreground underline-offset-4 hover:underline"} to={"/auth/new"}>
             Sign up

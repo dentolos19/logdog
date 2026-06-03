@@ -2,6 +2,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { ChevronRightIcon, PlusIcon, ScrollTextIcon } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+
 import { Button } from "#/components/ui/button";
 import {
   Dialog,
@@ -183,13 +184,13 @@ function LogsPage() {
           <div className={"flex flex-col gap-2"}>
             {groups.map((group) => (
               <Link
-                className={"group flex items-center gap-4 rounded-md border p-4 transition-colors hover:bg-accent/50"}
+                className={"group hover:bg-accent/50 flex items-center gap-4 rounded-md border p-4 transition-colors"}
                 key={group.id}
                 params={{ id: group.id }}
                 to={"/logs/$id"}
               >
                 <div className={"flex min-w-0 flex-col gap-0.5"}>
-                  <span className={"font-medium text-sm"}>{group.name}</span>
+                  <span className={"text-sm font-medium"}>{group.name}</span>
                   <span className={"text-muted-foreground text-xs"}>
                     {new Date(group.created_at).toLocaleDateString("en-US", {
                       month: "short",
@@ -198,7 +199,7 @@ function LogsPage() {
                     })}
                   </span>
                 </div>
-                <div className={"ml-auto flex items-center gap-3 text-muted-foreground text-xs tabular-nums"}>
+                <div className={"text-muted-foreground ml-auto flex items-center gap-3 text-xs tabular-nums"}>
                   <span>
                     {group.file_count} file{group.file_count !== 1 ? "s" : ""}
                   </span>

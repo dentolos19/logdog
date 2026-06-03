@@ -2,30 +2,16 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "App",
+      "name": "Start",
       "request": "launch",
       "type": "node-terminal",
-      "cwd": "${workspaceFolder}/src/app",
-      "command": "bun run dev",
+      "cwd": "${workspaceFolder}",
+      "command": "make start",
       "serverReadyAction": {
         "pattern": "Local:.+(https?://.+)",
         "uriFormat": "%s",
         "action": "openExternally"
       }
-    },
-    {
-      "name": "Server",
-      "request": "launch",
-      "type": "node-terminal",
-      "cwd": "${workspaceFolder}/src/server",
-      "command": "uv run main.py"
-    }
-  ],
-  "compounds": [
-    {
-      "name": "App + Server",
-      "configurations": ["App", "Server"],
-      "stopAll": true
     }
   ]
 }

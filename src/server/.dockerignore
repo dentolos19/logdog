@@ -1,21 +1,34 @@
 # Editor configurations
 .vs/
 .idea/
-*.iml
 
-# Environment files
+# Build files
+.tanstack/
+.wrangler/
+node_modules/
+dist/
+build/
+out/
+coverage/
+.venv/
+*.egg-info/
+*.tsbuildinfo
+*.d.ts
+.mypy_cache/
 .pytest_cache/
 .ruff_cache/
-.venv/
 __pycache__/
-build/
-dist/
 
 # User files
 .env*
 !.env*.template
 
+# Docker-specific rules
+/.git/
+Dockerfile
+
 # Miscellaneous files
+.tmp/
 .DS_Store
 Desktop.ini
 Thumbs.db

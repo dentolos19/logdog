@@ -3,8 +3,8 @@ name = "logdog-server"
 version = "1.0.0"
 requires-python = ">=3.12,<3.14"
 dependencies = [
+  "alembic>=1.20.0",
   "bcrypt",
-  "boto3",
   "chardet",
   "drain3",
   "fastapi[standard]",
@@ -14,15 +14,15 @@ dependencies = [
   "pydantic>=2.0.0,<2.12",
   "python-docx",
   "python-dotenv",
-  "pyyaml",
   "python-jose[cryptography]",
+  "pyyaml",
   "sqlalchemy",
   "sqlparse",
   "uvicorn",
 ]
 
 [dependency-groups]
-dev = ["ruff"]
+dev = ["ruff", "ty"]
 
 [tool.ruff]
 line-length = 120

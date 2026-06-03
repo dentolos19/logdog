@@ -3,6 +3,7 @@ import { DownloadIcon, PencilIcon, Trash2Icon } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
+
 import { Alert, AlertDescription, AlertTitle } from "#/components/ui/alert";
 import {
   AlertDialog,
@@ -429,7 +430,7 @@ function LogGroupPage() {
 
         {group !== null && (
           <Tabs className={"h-full gap-0"} onValueChange={onTabChange} value={activeTab}>
-            <TabsList className={"w-full rounded-none border-b bg-sidebar"}>
+            <TabsList className={"bg-sidebar w-full rounded-none border-b"}>
               <TabsTrigger value={"data"}>Data</TabsTrigger>
               <TabsTrigger value={"processes"}>Processes</TabsTrigger>
               <TabsTrigger value={"chat"}>Chat</TabsTrigger>
@@ -445,7 +446,7 @@ function LogGroupPage() {
 
               <section className={"flex flex-col gap-3"}>
                 <div className={"flex items-center gap-2"}>
-                  <h2 className={"font-semibold text-sm"}>Tables</h2>
+                  <h2 className={"text-sm font-semibold"}>Tables</h2>
                 </div>
                 {filesError !== null && (
                   <Alert variant={"destructive"}>
@@ -467,7 +468,7 @@ function LogGroupPage() {
 
             <TabsContent className={"flex flex-col gap-3 overflow-y-auto p-4"} value={"processes"}>
               <div className={"flex items-center gap-2"}>
-                <h2 className={"font-semibold text-sm"}>Processes</h2>
+                <h2 className={"text-sm font-semibold"}>Processes</h2>
               </div>
               <ProcessesTab
                 error={processesError}

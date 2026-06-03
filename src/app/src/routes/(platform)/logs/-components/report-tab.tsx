@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+
 import { Alert, AlertDescription, AlertTitle } from "#/components/ui/alert";
 import { Badge } from "#/components/ui/badge";
 import { Button } from "#/components/ui/button";
@@ -263,12 +264,12 @@ export function ReportTab({ logGroupId, tableNames }: ReportTabProps) {
         {/* No AI Report yet */}
         <Card className={"border-dashed"}>
           <CardContent className={"flex flex-col items-center gap-4 py-12"}>
-            <div className={"rounded-lg bg-muted p-2"}>
-              <FileTextIcon className={"size-5 text-muted-foreground"} />
+            <div className={"bg-muted rounded-lg p-2"}>
+              <FileTextIcon className={"text-muted-foreground size-5"} />
             </div>
             <div className={"text-center"}>
               <p className={"font-semibold"}>No AI Report Yet</p>
-              <p className={"mt-1 max-w-sm text-muted-foreground text-sm"}>
+              <p className={"text-muted-foreground mt-1 max-w-sm text-sm"}>
                 Generate an AI-powered insight report to see summaries, severity analysis, anomalies, and
                 recommendations for this log group.
               </p>
@@ -316,12 +317,12 @@ export function ReportTab({ logGroupId, tableNames }: ReportTabProps) {
 
       {/* AI Insight Report */}
       <div className={"flex flex-col gap-4"}>
-        <h2 className={"flex items-center gap-2 font-medium text-muted-foreground text-sm"}>
+        <h2 className={"text-muted-foreground flex items-center gap-2 text-sm font-medium"}>
           <SparklesIcon className={"size-4"} />
           AI Insight Report
         </h2>
         <div
-          className={"flex items-center gap-4 rounded-lg border bg-muted/20 p-4"}
+          className={"bg-muted/20 flex items-center gap-4 rounded-lg border p-4"}
           style={{ borderColor: `${severityAttrs.hex}25` }}
         >
           <div
@@ -332,12 +333,12 @@ export function ReportTab({ logGroupId, tableNames }: ReportTabProps) {
           </div>
           <div className={"min-w-0 flex-1"}>
             <div className={"flex items-center gap-2"}>
-              <span className={"font-semibold text-sm uppercase"} style={{ color: severityAttrs.hex }}>
+              <span className={"text-sm font-semibold uppercase"} style={{ color: severityAttrs.hex }}>
                 {report.severity}
               </span>
               <span className={"text-muted-foreground text-xs"}>Severity</span>
             </div>
-            <p className={"mt-0.5 text-muted-foreground text-sm leading-relaxed"}>{report.summary}</p>
+            <p className={"text-muted-foreground mt-0.5 text-sm leading-relaxed"}>{report.summary}</p>
           </div>
         </div>
 
@@ -379,14 +380,14 @@ export function ReportTab({ logGroupId, tableNames }: ReportTabProps) {
         {/* Log Sequence Narrative */}
         <Card>
           <CardHeader className={"pb-2"}>
-            <CardTitle className={"flex items-center gap-2 font-medium text-sm"}>
-              <FileTextIcon className={"size-4 text-muted-foreground"} />
+            <CardTitle className={"flex items-center gap-2 text-sm font-medium"}>
+              <FileTextIcon className={"text-muted-foreground size-4"} />
               Log Sequence Narrative
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div
-              className={"rounded-lg border-l-4 bg-muted/30 p-4 text-sm leading-relaxed"}
+              className={"bg-muted/30 rounded-lg border-l-4 p-4 text-sm leading-relaxed"}
               style={{ borderLeftColor: `${severityAttrs.hex}60` }}
             >
               {report.log_sequence_narrative}
@@ -398,8 +399,8 @@ export function ReportTab({ logGroupId, tableNames }: ReportTabProps) {
         <div className={"grid gap-4 md:grid-cols-2"}>
           <Card>
             <CardHeader className={"pb-2"}>
-              <CardTitle className={"flex items-center gap-2 font-medium text-sm"}>
-                <LightbulbIcon className={"size-4 text-muted-foreground"} />
+              <CardTitle className={"flex items-center gap-2 text-sm font-medium"}>
+                <LightbulbIcon className={"text-muted-foreground size-4"} />
                 Recommendations
               </CardTitle>
             </CardHeader>
@@ -412,7 +413,7 @@ export function ReportTab({ logGroupId, tableNames }: ReportTabProps) {
                     <li className={"flex items-start gap-2.5 text-sm"} key={index}>
                       <span
                         className={
-                          "flex size-5 shrink-0 items-center justify-center rounded-full font-bold text-[11px]"
+                          "flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold"
                         }
                         style={{ background: `${severityAttrs.hex}20`, color: severityAttrs.hex }}
                       >
@@ -428,8 +429,8 @@ export function ReportTab({ logGroupId, tableNames }: ReportTabProps) {
 
           <Card>
             <CardHeader className={"pb-2"}>
-              <CardTitle className={"flex items-center gap-2 font-medium text-sm"}>
-                <AlertTriangleIcon className={"size-4 text-muted-foreground"} />
+              <CardTitle className={"flex items-center gap-2 text-sm font-medium"}>
+                <AlertTriangleIcon className={"text-muted-foreground size-4"} />
                 Anomalies
               </CardTitle>
             </CardHeader>
@@ -447,8 +448,8 @@ export function ReportTab({ logGroupId, tableNames }: ReportTabProps) {
                     >
                       <ShieldAlertIcon className={"mt-0.5 size-4 shrink-0 text-rose-400"} />
                       <div>
-                        <span className={"font-medium text-rose-400 text-xs uppercase"}>Anomaly {index + 1}</span>
-                        <p className={"mt-0.5 text-muted-foreground"}>{anomaly}</p>
+                        <span className={"text-xs font-medium text-rose-400 uppercase"}>Anomaly {index + 1}</span>
+                        <p className={"text-muted-foreground mt-0.5"}>{anomaly}</p>
                       </div>
                     </li>
                   ))}
@@ -459,7 +460,7 @@ export function ReportTab({ logGroupId, tableNames }: ReportTabProps) {
         </div>
 
         {/* Action Row */}
-        <div className={"flex items-center justify-between gap-4 rounded-lg border bg-muted/20 px-4 py-3"}>
+        <div className={"bg-muted/20 flex items-center justify-between gap-4 rounded-lg border px-4 py-3"}>
           <p className={"text-muted-foreground text-xs"}>Run the analysis again with fresh data.</p>
           <Button disabled={generating} onClick={() => void handleGenerate()} size={"sm"} variant={"outline"}>
             {generating ? <Spinner className={"size-3"} /> : <RefreshCwIcon />}
@@ -470,7 +471,7 @@ export function ReportTab({ logGroupId, tableNames }: ReportTabProps) {
 
       {/* Per-Table Reports */}
       <div className={"flex flex-col gap-4"}>
-        <h2 className={"flex items-center gap-2 font-medium text-muted-foreground text-sm"}>
+        <h2 className={"text-muted-foreground flex items-center gap-2 text-sm font-medium"}>
           <TableIcon className={"size-4"} />
           Per-Table Reports
         </h2>
@@ -502,11 +503,11 @@ function PerTableReportsGrid({
     return (
       <Card className={"border-dashed"}>
         <CardContent className={"flex flex-col items-center gap-3 py-10"}>
-          <div className={"rounded-lg bg-muted p-2"}>
-            <TableIcon className={"size-5 text-muted-foreground"} />
+          <div className={"bg-muted rounded-lg p-2"}>
+            <TableIcon className={"text-muted-foreground size-5"} />
           </div>
           <div className={"text-center"}>
-            <p className={"font-medium text-sm"}>No tables available</p>
+            <p className={"text-sm font-medium"}>No tables available</p>
             <p className={"text-muted-foreground text-xs"}>Upload and parse log files to generate per-table reports.</p>
           </div>
         </CardContent>
@@ -528,8 +529,8 @@ function PerTableReportsGrid({
             <CardHeader className={"pb-3"}>
               <div className={"flex items-center justify-between gap-2"}>
                 <CardTitle className={"flex items-center gap-2 font-mono text-sm"}>
-                  <div className={"rounded-lg bg-muted p-1.5"}>
-                    <TableIcon className={"size-3.5 shrink-0 text-muted-foreground"} />
+                  <div className={"bg-muted rounded-lg p-1.5"}>
+                    <TableIcon className={"text-muted-foreground size-3.5 shrink-0"} />
                   </div>
                   <Link
                     className={"truncate underline-offset-2 hover:underline"}
@@ -565,14 +566,14 @@ function PerTableReportsGrid({
 
                   {report.key_observations.length > 0 && (
                     <div>
-                      <p className={"mb-1.5 flex items-center gap-1.5 font-medium text-muted-foreground text-xs"}>
+                      <p className={"text-muted-foreground mb-1.5 flex items-center gap-1.5 text-xs font-medium"}>
                         <BarChart3Icon className={"size-3"} />
                         Key Observations
                       </p>
                       <ul className={"space-y-1"}>
                         {report.key_observations.map((obs, i) => (
-                          <li className={"flex items-start gap-2 text-muted-foreground text-xs"} key={i}>
-                            <span className={"mt-1.5 block size-1 shrink-0 rounded-full bg-muted-foreground/40"} />
+                          <li className={"text-muted-foreground flex items-start gap-2 text-xs"} key={i}>
+                            <span className={"bg-muted-foreground/40 mt-1.5 block size-1 shrink-0 rounded-full"} />
                             <span>{obs}</span>
                           </li>
                         ))}
@@ -582,14 +583,14 @@ function PerTableReportsGrid({
 
                   {report.next_actions.length > 0 && (
                     <div>
-                      <p className={"mb-1.5 flex items-center gap-1.5 font-medium text-muted-foreground text-xs"}>
+                      <p className={"text-muted-foreground mb-1.5 flex items-center gap-1.5 text-xs font-medium"}>
                         <LightbulbIcon className={"size-3"} />
                         Next Actions
                       </p>
                       <ul className={"space-y-1"}>
                         {report.next_actions.map((action, i) => (
-                          <li className={"flex items-start gap-2 text-muted-foreground text-xs"} key={i}>
-                            <span className={"mt-1.5 block size-1 shrink-0 rounded-full bg-muted-foreground/40"} />
+                          <li className={"text-muted-foreground flex items-start gap-2 text-xs"} key={i}>
+                            <span className={"bg-muted-foreground/40 mt-1.5 block size-1 shrink-0 rounded-full"} />
                             <span>{action}</span>
                           </li>
                         ))}
@@ -599,13 +600,13 @@ function PerTableReportsGrid({
 
                   {report.errors_or_anomalies.length > 0 && (
                     <div className={"rounded-lg border border-rose-500/15 bg-rose-500/5 p-3"}>
-                      <p className={"mb-1.5 flex items-center gap-1.5 font-medium text-rose-400 text-xs"}>
+                      <p className={"mb-1.5 flex items-center gap-1.5 text-xs font-medium text-rose-400"}>
                         <AlertTriangleIcon className={"size-3"} />
                         Errors & Anomalies
                       </p>
                       <ul className={"space-y-1"}>
                         {report.errors_or_anomalies.map((err, i) => (
-                          <li className={"flex items-start gap-2 text-muted-foreground text-xs"} key={i}>
+                          <li className={"text-muted-foreground flex items-start gap-2 text-xs"} key={i}>
                             <span className={"mt-1.5 block size-1 shrink-0 rounded-full bg-rose-400/60"} />
                             <span>{err}</span>
                           </li>

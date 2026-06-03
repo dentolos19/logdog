@@ -8,14 +8,15 @@ import { defineConfig } from "vite";
 const config = defineConfig({
   server: {
     port: 3000,
-    allowedHosts: [".dennise.me"],
   },
   resolve: {
     tsconfigPaths: true,
   },
   plugins: [
     cloudflare({
-      viteEnvironment: { name: "ssr" },
+      viteEnvironment: {
+        name: "ssr",
+      },
     }),
     tanstackStart(),
     viteReact(),

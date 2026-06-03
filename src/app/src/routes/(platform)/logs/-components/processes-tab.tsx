@@ -1,6 +1,7 @@
 import { format } from "date-fns";
 import { AlertCircleIcon, CheckCircle2Icon, ClockIcon, InfoIcon, RotateCcwIcon, Table2Icon } from "lucide-react";
 import { useMemo, useState } from "react";
+
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "#/components/ui/accordion";
 import { Alert, AlertDescription, AlertTitle } from "#/components/ui/alert";
 import { Badge } from "#/components/ui/badge";
@@ -104,7 +105,7 @@ export function ProcessesTab({
         {isRefreshing && (
           <div
             className={
-              "flex items-center gap-2 rounded-md border border-dashed px-3 py-2 text-muted-foreground text-xs"
+              "text-muted-foreground flex items-center gap-2 rounded-md border border-dashed px-3 py-2 text-xs"
             }
           >
             <Spinner className={"size-3.5"} />
@@ -176,7 +177,7 @@ function ProcessRow({
       <div className={"flex items-center gap-3"}>
         <ProcessStatusIcon status={process.status} />
         <div className={"flex flex-1 flex-col gap-0.5"}>
-          <span className={"font-medium text-sm"}>{processName}</span>
+          <span className={"text-sm font-medium"}>{processName}</span>
           <span className={"text-muted-foreground text-xs"}>
             {getStatusLabel()} · {formattedDate}
           </span>
@@ -223,7 +224,7 @@ function ProcessRow({
       </div>
 
       {process.status === "completed" && (
-        <div className={"flex items-center gap-2 text-muted-foreground text-xs"}>
+        <div className={"text-muted-foreground flex items-center gap-2 text-xs"}>
           <span>{insights.tableCount} table(s) generated</span>
           <span>·</span>
           <span>{insights.totalRowCount.toLocaleString()} row(s) persisted</span>
@@ -241,7 +242,7 @@ function ProcessRow({
       {warningCount > 0 && <div className={"text-muted-foreground text-xs"}>{warningCount} warning(s)</div>}
 
       {process.status === "failed" && process.error !== null && (
-        <p className={"rounded bg-destructive/10 px-2 py-1 font-mono text-destructive text-xs"}>{process.error}</p>
+        <p className={"bg-destructive/10 text-destructive rounded px-2 py-1 font-mono text-xs"}>{process.error}</p>
       )}
     </div>
   );
@@ -252,7 +253,7 @@ function ProcessStatusIcon({ status }: { status: string }) {
     return <CheckCircle2Icon className={"size-4 shrink-0 text-green-500"} />;
   }
   if (status === "failed") {
-    return <AlertCircleIcon className={"size-4 shrink-0 text-destructive"} />;
+    return <AlertCircleIcon className={"text-destructive size-4 shrink-0"} />;
   }
   return <Spinner className={"size-4 shrink-0"} />;
 }
@@ -284,7 +285,7 @@ function ProcessDetailsDialog({ process, onClose }: { process: LogProcess; onClo
           <div className={"flex flex-col gap-4 py-1 pr-4"}>
             <div className={"rounded-md border"}>
               <div className={"flex flex-col gap-2 p-3"}>
-                <span className={"font-medium text-muted-foreground text-xs"}>Process Overview</span>
+                <span className={"text-muted-foreground text-xs font-medium"}>Process Overview</span>
                 <div className={"grid gap-2 text-xs sm:grid-cols-2"}>
                   <DetailPair label={"Process ID"} value={process.id} valueClassName={"font-mono"} />
                   <DetailPair label={"Status"} value={process.status} />
@@ -302,7 +303,7 @@ function ProcessDetailsDialog({ process, onClose }: { process: LogProcess; onClo
             {insights.classification !== null && (
               <div className={"rounded-md border"}>
                 <div className={"flex flex-col gap-3 p-3"}>
-                  <span className={"font-medium text-muted-foreground text-xs"}>Classification</span>
+                  <span className={"text-muted-foreground text-xs font-medium"}>Classification</span>
                   <div className={"flex flex-wrap items-center gap-1.5"}>
                     {insights.dominantFormat !== null && <Badge variant={"secondary"}>{insights.dominantFormat}</Badge>}
                     {insights.structuralClass !== null && <Badge variant={"outline"}>{insights.structuralClass}</Badge>}
@@ -311,8 +312,8 @@ function ProcessDetailsDialog({ process, onClose }: { process: LogProcess; onClo
                   {insights.classificationConfidence !== null && (
                     <div className={"flex flex-col gap-1.5"}>
                       <div className={"flex items-center justify-between"}>
-                        <span className={"font-medium text-muted-foreground text-xs"}>Classification confidence</span>
-                        <span className={"font-medium text-xs"}>
+                        <span className={"text-muted-foreground text-xs font-medium"}>Classification confidence</span>
+                        <span className={"text-xs font-medium"}>
                           {Math.round(insights.classificationConfidence * 100)}%
                         </span>
                       </div>
@@ -335,9 +336,9 @@ function ProcessDetailsDialog({ process, onClose }: { process: LogProcess; onClo
                             <Badge className={"text-xs"} variant={"secondary"}>
                               {formatName}
                             </Badge>
-                            <span className={"shrink-0 text-muted-foreground text-xs"}>{lineCount} lines</span>
+                            <span className={"text-muted-foreground shrink-0 text-xs"}>{lineCount} lines</span>
                             {formatConfidence !== null && (
-                              <span className={"shrink-0 text-muted-foreground text-xs"}>
+                              <span className={"text-muted-foreground shrink-0 text-xs"}>
                                 {Math.round(formatConfidence * 100)}%
                               </span>
                             )}
@@ -353,7 +354,7 @@ function ProcessDetailsDialog({ process, onClose }: { process: LogProcess; onClo
             {insights.result !== null && (
               <div className={"rounded-md border"}>
                 <div className={"flex flex-col gap-3 p-3"}>
-                  <span className={"font-medium text-muted-foreground text-xs"}>Output Summary</span>
+                  <span className={"text-muted-foreground text-xs font-medium"}>Output Summary</span>
 
                   <div className={"flex flex-wrap items-center gap-1.5"}>
                     <Badge variant={"secondary"}>{insights.tableCount} table(s)</Badge>
@@ -363,8 +364,8 @@ function ProcessDetailsDialog({ process, onClose }: { process: LogProcess; onClo
                   {insights.resultConfidence !== null && (
                     <div className={"flex flex-col gap-1.5"}>
                       <div className={"flex items-center justify-between"}>
-                        <span className={"font-medium text-muted-foreground text-xs"}>Parser confidence</span>
-                        <span className={"font-medium text-xs"}>{Math.round(insights.resultConfidence * 100)}%</span>
+                        <span className={"text-muted-foreground text-xs font-medium"}>Parser confidence</span>
+                        <span className={"text-xs font-medium"}>{Math.round(insights.resultConfidence * 100)}%</span>
                       </div>
                       <Progress className={"h-1.5"} value={Math.round(insights.resultConfidence * 100)} />
                     </div>
@@ -374,7 +375,7 @@ function ProcessDetailsDialog({ process, onClose }: { process: LogProcess; onClo
                     <div className={"flex flex-col divide-y rounded-md border"}>
                       {insights.tableSummaries.map((tableSummary) => (
                         <div className={"flex items-center gap-3 px-3 py-2"} key={tableSummary.name}>
-                          <span className={"flex-1 truncate font-medium font-mono text-xs"}>{tableSummary.name}</span>
+                          <span className={"flex-1 truncate font-mono text-xs font-medium"}>{tableSummary.name}</span>
                           <Badge className={"text-xs"} variant={"outline"}>
                             {tableSummary.columnCount} column(s)
                           </Badge>
@@ -398,7 +399,7 @@ function ProcessDetailsDialog({ process, onClose }: { process: LogProcess; onClo
                           <div className={"flex flex-col divide-y"}>
                             {insights.tableSummaries.map((tableSummary) => (
                               <div className={"flex flex-col gap-1.5 px-3 py-2"} key={`columns-${tableSummary.name}`}>
-                                <span className={"font-medium font-mono text-xs"}>{tableSummary.name}</span>
+                                <span className={"font-mono text-xs font-medium"}>{tableSummary.name}</span>
                                 <div className={"flex flex-wrap gap-1"}>
                                   {tableSummary.columns.map((column) => (
                                     <Badge

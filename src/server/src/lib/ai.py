@@ -40,7 +40,7 @@ class GenerativeModel:
         messages.append(("human", prompt))
 
         response = self.client.invoke(messages)
-        return response.content
+        return response.text()
 
     def generate_structured(
         self,
@@ -53,8 +53,8 @@ class GenerativeModel:
             messages.append(("system", system_prompt))
         messages.append(("human", prompt))
 
-        structured_client = self.client.with_structured_output(schema, method="json_schema")
-        return structured_client.invoke(messages)
+        structured_client = self.client.with_structured_output(schema, method="function_calling")
+        return schema.model_validate(structured_client.invoke(messages))
 
 
 def get_generative_model(

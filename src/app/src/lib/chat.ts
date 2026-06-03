@@ -10,7 +10,9 @@ import {
 } from "@tanstack/ai";
 import { createOpenRouterText } from "@tanstack/ai-openrouter";
 import { createServerFn } from "@tanstack/react-start";
+import { getRequest } from "@tanstack/react-start/server";
 import { z } from "zod";
+
 import { getEnv } from "#/environment";
 
 const ACCESS_TOKEN_COOKIE = "logdog-access-token";

@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+
 import { Alert, AlertDescription, AlertTitle } from "#/components/ui/alert";
 import { Badge } from "#/components/ui/badge";
 import { Button } from "#/components/ui/button";
@@ -306,9 +307,9 @@ function LogTablePage() {
           <div style={mainWidth !== null ? { maxWidth: `${mainWidth}px` } : undefined}>
             <section className={"flex flex-col gap-3 rounded-md border p-4"}>
               <div className={"flex items-start gap-3"}>
-                <FileTextIcon className={"mt-0.5 size-4 shrink-0 text-muted-foreground"} />
+                <FileTextIcon className={"text-muted-foreground mt-0.5 size-4 shrink-0"} />
                 <div className={"flex flex-1 flex-col gap-1"}>
-                  <h2 className={"font-medium font-mono text-sm"}>{getTableDisplayName(table)}</h2>
+                  <h2 className={"font-mono text-sm font-medium"}>{getTableDisplayName(table)}</h2>
                   <p className={"text-muted-foreground text-xs"}>Table: {table.name}</p>
                 </div>
                 <div className={"ml-auto flex flex-wrap items-center justify-end gap-1.5"}>
@@ -321,7 +322,7 @@ function LogTablePage() {
                 </div>
               </div>
 
-              <div className={"flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground text-xs"}>
+              <div className={"text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 text-xs"}>
                 <span>
                   Uploaded:{" "}
                   <span className={"text-foreground"}>
@@ -418,8 +419,8 @@ function AITableSummary({ entryId, tableName }: { entryId: string; tableName: st
     return (
       <div className={"mt-2 flex flex-col gap-2 rounded-md border p-4"}>
         <div className={"flex items-center gap-2"}>
-          <SparklesIcon className={"size-4 text-muted-foreground"} />
-          <span className={"font-medium text-sm"}>AI Summary</span>
+          <SparklesIcon className={"text-muted-foreground size-4"} />
+          <span className={"text-sm font-medium"}>AI Summary</span>
           <Spinner className={"ml-auto size-4"} />
         </div>
         <div className={"flex flex-col gap-2 pl-6"}>
@@ -436,8 +437,8 @@ function AITableSummary({ entryId, tableName }: { entryId: string; tableName: st
     return (
       <div className={"mt-2 flex flex-col gap-2 rounded-md border p-4"}>
         <div className={"flex items-center gap-2"}>
-          <SparklesIcon className={"size-4 text-muted-foreground"} />
-          <span className={"font-medium text-sm"}>AI Summary</span>
+          <SparklesIcon className={"text-muted-foreground size-4"} />
+          <span className={"text-sm font-medium"}>AI Summary</span>
         </div>
         <p className={"text-destructive text-xs"}>{error}</p>
         <Button disabled={isGenerating} onClick={handleRegenerate} size={"sm"} variant={"outline"}>
@@ -459,12 +460,12 @@ function AITableSummary({ entryId, tableName }: { entryId: string; tableName: st
         <CollapsibleTrigger asChild>
           <button
             className={
-              "flex flex-1 cursor-pointer items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              "focus-visible:ring-ring flex flex-1 cursor-pointer items-center gap-2 text-left focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
             }
             type={"button"}
           >
-            <SparklesIcon className={"size-4 text-muted-foreground"} />
-            <span className={"font-medium text-sm"}>AI Summary</span>
+            <SparklesIcon className={"text-muted-foreground size-4"} />
+            <span className={"text-sm font-medium"}>AI Summary</span>
             <Badge className={severityColor.className} variant={severityColor.variant}>
               {summary.severity.toUpperCase()}
             </Badge>
@@ -487,14 +488,14 @@ function AITableSummary({ entryId, tableName }: { entryId: string; tableName: st
       <CollapsibleContent>
         <div className={"flex flex-col gap-4 px-4 pt-1 pb-4"}>
           {/* Summary overview */}
-          <div className={"rounded-md bg-muted/40 px-3 py-2"}>
+          <div className={"bg-muted/40 rounded-md px-3 py-2"}>
             <p className={"text-sm leading-relaxed"}>{summary.summary}</p>
           </div>
 
           {/* Key observations */}
           {summary.key_observations.length > 0 && (
             <div className={"flex flex-col gap-1.5"}>
-              <h4 className={"flex items-center gap-1 font-medium text-muted-foreground text-xs"}>
+              <h4 className={"text-muted-foreground flex items-center gap-1 text-xs font-medium"}>
                 <SparklesIcon className={"size-3"} />
                 Key Observations
               </h4>
@@ -509,11 +510,11 @@ function AITableSummary({ entryId, tableName }: { entryId: string; tableName: st
           {/* Errors / Anomalies */}
           {summary.errors_or_anomalies.length > 0 && (
             <div className={"flex flex-col gap-1.5"}>
-              <h4 className={"flex items-center gap-1 font-medium text-muted-foreground text-xs"}>
+              <h4 className={"text-muted-foreground flex items-center gap-1 text-xs font-medium"}>
                 <AlertTriangleIcon className={"size-3"} />
                 Errors &amp; Anomalies
               </h4>
-              <ul className={"flex list-disc flex-col gap-1 pl-5 text-destructive text-sm"}>
+              <ul className={"text-destructive flex list-disc flex-col gap-1 pl-5 text-sm"}>
                 {summary.errors_or_anomalies.map((item, index) => (
                   <li key={index}>{item}</li>
                 ))}
@@ -524,7 +525,7 @@ function AITableSummary({ entryId, tableName }: { entryId: string; tableName: st
           {/* Next actions */}
           {summary.next_actions.length > 0 && (
             <div className={"flex flex-col gap-1.5"}>
-              <h4 className={"flex items-center gap-1 font-medium text-muted-foreground text-xs"}>
+              <h4 className={"text-muted-foreground flex items-center gap-1 text-xs font-medium"}>
                 <LightbulbIcon className={"size-3"} />
                 Next Actions
               </h4>
@@ -678,7 +679,7 @@ function TableRowsDataTable({ table, entryId }: { table: TableSummary; entryId: 
         setIsExportingFiltered(false);
       }
     },
-    [entryId, fieldFilters, searchText, table.name, timestampFrom, timestampTo],
+    [entryId, fieldFilters, searchText, table.id, table.name, timestampFrom, timestampTo],
   );
 
   const columns = useMemo<ColumnDef<Record<string, unknown>>[]>(() => {
@@ -694,7 +695,7 @@ function TableRowsDataTable({ table, entryId }: { table: TableSummary; entryId: 
         return (
           <button
             className={
-              "block max-w-[36ch] cursor-pointer truncate text-left font-mono text-xs hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              "focus-visible:ring-ring block max-w-[36ch] cursor-pointer truncate text-left font-mono text-xs hover:underline focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
             }
             onClick={() =>
               setCellPreview({
@@ -827,11 +828,11 @@ function CellValuePreviewDialog({ onClose, title, value }: { onClose: () => void
           <DialogDescription>{title}</DialogDescription>
         </DialogHeader>
 
-        <div className={"min-h-0 flex-1 overflow-auto rounded-md border bg-muted/20 p-3"}>
+        <div className={"bg-muted/20 min-h-0 flex-1 overflow-auto rounded-md border p-3"}>
           {previewValue !== null ? (
             <JsonTreeNode depth={0} label={null} value={previewValue} />
           ) : (
-            <pre className={"whitespace-pre-wrap break-all font-mono text-xs"}>{formatTableCellValue(value)}</pre>
+            <pre className={"font-mono text-xs break-all whitespace-pre-wrap"}>{formatTableCellValue(value)}</pre>
           )}
         </div>
       </DialogContent>
@@ -851,7 +852,7 @@ function JsonTreeNode({ label, value, depth }: { label: string | null; value: un
         </div>
 
         {value.length === 0 ? (
-          <div className={"font-mono text-muted-foreground text-xs"} style={{ paddingLeft: `${(depth + 1) * 0.9}rem` }}>
+          <div className={"text-muted-foreground font-mono text-xs"} style={{ paddingLeft: `${(depth + 1) * 0.9}rem` }}>
             Empty array.
           </div>
         ) : (
@@ -874,7 +875,7 @@ function JsonTreeNode({ label, value, depth }: { label: string | null; value: un
         </div>
 
         {entries.length === 0 ? (
-          <div className={"font-mono text-muted-foreground text-xs"} style={{ paddingLeft: `${(depth + 1) * 0.9}rem` }}>
+          <div className={"text-muted-foreground font-mono text-xs"} style={{ paddingLeft: `${(depth + 1) * 0.9}rem` }}>
             Empty object.
           </div>
         ) : (
@@ -929,7 +930,7 @@ function ColumnDetailRow({ column }: { column: TableColumn }) {
   return (
     <div className={"flex flex-col gap-1 px-3 py-2.5"}>
       <div className={"flex items-center gap-2"}>
-        <span className={"font-medium font-mono text-sm"}>{column.name}</span>
+        <span className={"font-mono text-sm font-medium"}>{column.name}</span>
         <div className={"ml-auto flex shrink-0 items-center gap-1"}>
           <Badge className={"font-mono text-xs"} variant={"outline"}>
             {column.type}
