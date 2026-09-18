@@ -4,7 +4,15 @@
     {
       "label": "Setup",
       "type": "shell",
-      "command": "just setup",
+      "command": "just setup prerun",
+      "presentation": {
+        "close": true
+      }
+    },
+    {
+      "label": "Decompose",
+      "type": "shell",
+      "command": "just decompose",
       "presentation": {
         "close": true
       }

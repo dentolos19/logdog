@@ -10,9 +10,9 @@ from pydantic import BaseModel
 from parsers.binary import extract_printable_strings, is_probably_binary
 from parsers.contracts import (
     BINARY_PARSER_KEY,
+    INGESTION_SCHEMA_VERSION,
     ClassificationResult,
     FileClassification,
-    INGESTION_SCHEMA_VERSION,
     StructuralClass,
 )
 
@@ -45,7 +45,7 @@ def _is_json_line(line: str) -> bool:
     stripped = line.strip()
     if not stripped:
         return False
-    if not (stripped.startswith("{") or stripped.startswith("[")):
+    if not (stripped.startswith(("{", "["))):
         return False
     try:
         parsed = json.loads(stripped)

@@ -3,7 +3,7 @@ from typing import TypeVar
 from langchain_openrouter import ChatOpenRouter
 from pydantic import BaseModel
 
-from environment import OPENROUTER_API_KEY, OPENROUTER_TITLE, OPENROUTER_REFERER, OPENROUTER_MODEL
+from environment import OPENROUTER_API_KEY, OPENROUTER_MODEL, OPENROUTER_REFERER, OPENROUTER_TITLE
 
 T = TypeVar("T", bound=BaseModel)
 

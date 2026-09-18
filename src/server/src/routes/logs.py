@@ -21,18 +21,19 @@ from openpyxl import Workbook
 from openpyxl.chart import BarChart, Reference
 from openpyxl.styles import Font
 from pydantic import BaseModel, Field
-from sqlalchemy import func as sa_func, text as sa_text
+from sqlalchemy import func as sa_func
+from sqlalchemy import text as sa_text
 from sqlalchemy.orm import Session
 
-from lib.database import get_database
+from lib.ai import get_generative_model
 from lib.database import SessionLocal as AppSessionLocal
+from lib.database import get_database
 from lib.megabase import SessionLocal as MegabaseSessionLocal
+from lib.megabase import describe_table as megabase_describe_table
 from lib.megabase import drop_table as megabase_drop_table
 from lib.megabase import init_megabase
-from lib.megabase import describe_table as megabase_describe_table
 from lib.megabase import query_records as megabase_query_records
-from lib.ai import get_generative_model
-from lib.models import Asset, LogGroup, LogFile, LogMessage, LogProcess, LogReport, LogTable, LogTableSummary, User
+from lib.models import Asset, LogFile, LogGroup, LogMessage, LogProcess, LogReport, LogTable, LogTableSummary, User
 from lib.storage import delete_file, download_file, upload_file
 from parsers.extra_grouping import group_rows_by_extra
 from parsers.orchestrator import create_process, enqueue_process, mark_process_failed
@@ -476,7 +477,7 @@ def _delete_orphan_assets(asset_ids: list[uuid.UUID]):
                 remaining_links = database.query(LogFile).filter(LogFile.asset_id == asset_id).count()
                 if remaining_links == 0:
                     delete_file(asset_id=asset_id, db=database)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 logger.exception("Failed to delete orphan asset %s", asset_id)
     finally:
         database.close()
@@ -521,7 +522,7 @@ def _cleanup_generated_tables_for_file(database: Session, group_id: str, file_id
         for table_name in table_names:
             try:
                 megabase_drop_table(megabase_database, table_name)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 logger.exception("Failed to drop generated table %s before reprocessing file %s", table_name, file_id)
     finally:
         megabase_database.close()
@@ -639,7 +640,7 @@ def delete_log_group(
             for table_name in table_names:
                 try:
                     megabase_drop_table(megabase_database, table_name)
-                except Exception:  # noqa: BLE001
+                except Exception:
                     logger.exception("Failed to drop generated table %s", table_name)
         finally:
             megabase_database.close()
@@ -921,7 +922,7 @@ def download_table_filtered(
     if filtered_records:
         seen_columns: dict[str, None] = {}
         for row in filtered_records:
-            for key in row.keys():
+            for key in row:
                 seen_columns.setdefault(key, None)
         columns = list(seen_columns.keys())
 
@@ -1038,7 +1039,7 @@ async def upload_log_files(
                     status="queued",
                 )
             )
-        except Exception as error:  # noqa: BLE001
+        except Exception as error:
             logger.exception("Failed to enqueue process for file %s", file_id)
             if process_id is not None:
                 mark_process_failed(
@@ -1137,7 +1138,7 @@ def create_entry_process(
                 file_ids_json=json.dumps([file_id], ensure_ascii=True),
             )
             process_ids.append(process_id)
-        except Exception as error:  # noqa: BLE001
+        except Exception as error:
             logger.exception("Failed to enqueue process for file %s", file_id)
             if process_id is not None:
                 mark_process_failed(
@@ -1234,7 +1235,7 @@ def _fetch_group_table_context(group_id: str, database: Session) -> str:
             lines.append(f"Schema: {table.schema}")
             try:
                 result = megabase_database.execute(sa_text(f"SELECT * FROM {_quote_identifier(table.table)} LIMIT 20"))
-                columns = [str(col) for col in result.keys()]
+                columns = [str(col) for col in result]
                 rows = result.fetchall()
                 lines.append(f"Columns: {', '.join(columns)}")
                 lines.append(f"Sample rows ({len(rows)}):")
@@ -1243,6 +1244,7 @@ def _fetch_group_table_context(group_id: str, database: Session) -> str:
                     lines.append(json.dumps(row_dict, ensure_ascii=True, default=str))
                 lines.append("")
             except Exception as error:
+                logger.exception("logs operation failed")
                 lines.append(f"Could not sample rows: {error}")
                 lines.append("")
     finally:
@@ -1316,7 +1318,7 @@ def _fetch_group_rows_for_report(group_id: str, database: Session) -> str:
                 result = megabase_database.execute(
                     sa_text(f"SELECT * FROM {_quote_identifier(table.table)} LIMIT {MAX_REPORT_ROWS}")
                 )
-                columns = [str(col) for col in result.keys()]
+                columns = [str(col) for col in result]
                 rows = result.fetchall()
                 lines.append(f"Columns: {', '.join(columns)}")
                 lines.append(f"Row count in sample: {len(rows)}")
@@ -1325,6 +1327,7 @@ def _fetch_group_rows_for_report(group_id: str, database: Session) -> str:
                     lines.append(json.dumps(row_dict, ensure_ascii=True, default=str))
                 lines.append("")
             except Exception as error:
+                logger.exception("logs operation failed")
                 lines.append(f"Could not read table: {error}")
                 lines.append("")
     finally:
@@ -1400,6 +1403,7 @@ def get_group_stats(
                     table_row_counts[table.table] = row_count
                     total_rows += row_count
                 except Exception:
+                    logger.exception("logs operation failed")
                     table_row_counts[table.table] = 0
         finally:
             megabase_database.close()
@@ -1509,7 +1513,7 @@ def _fetch_table_rows_for_summary(table_name: str) -> str:
             result = database.execute(
                 sa_text(f"SELECT * FROM {_quote_identifier(table_name)} LIMIT {SUMMARY_ROWS_LIMIT}")
             )
-            raw_columns = [str(col) for col in result.keys()]
+            raw_columns = [str(col) for col in result]
             rows = result.fetchall()
             lines.append(f"Sample rows ({len(rows)} of up to {SUMMARY_ROWS_LIMIT}):")
             for row in rows[:20]:
@@ -1520,6 +1524,7 @@ def _fetch_table_rows_for_summary(table_name: str) -> str:
                 }
                 lines.append(json.dumps(serialized, ensure_ascii=True, default=str))
         except Exception as e:
+            logger.exception("logs operation failed")
             lines.append(f"Could not read rows: {e}")
 
         return "\n".join(lines)
@@ -1817,7 +1822,7 @@ def generate_workbook_report(
                         f"SELECT * FROM {_quote_identifier(table.table)} LIMIT {_MAX_WORKBOOK_EXPORT_ROWS_PER_TABLE}"
                     )
                 )
-                columns = [str(col) for col in result.keys()]
+                columns = [str(col) for col in result]
                 rows = result.fetchall()
 
                 worksheet.append(columns)
@@ -1837,6 +1842,7 @@ def generate_workbook_report(
                             row_values.append(value)
                     worksheet.append(row_values)
             except Exception as error:
+                logger.exception("logs operation failed")
                 worksheet.append(["Error loading data", str(error)])
     finally:
         megabase_database.close()

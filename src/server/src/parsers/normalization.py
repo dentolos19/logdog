@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 _TSTYPE = datetime | None
@@ -124,7 +124,7 @@ def normalize_iso_timestamp(value: str) -> str | None:
     if stripped.isdigit() and len(stripped) == 13:
         try:
             ms_val = int(stripped) / 1000.0
-            dt = datetime.fromtimestamp(ms_val, tz=timezone.utc)
+            dt = datetime.fromtimestamp(ms_val, tz=UTC)
             return dt.isoformat()
         except (ValueError, OSError):
             pass
@@ -134,16 +134,16 @@ def normalize_iso_timestamp(value: str) -> str | None:
         try:
             sec_val = int(stripped)
             if 946_684_800 <= sec_val <= 4_102_444_800:  # 2000-2100
-                dt = datetime.fromtimestamp(sec_val, tz=timezone.utc)
+                dt = datetime.fromtimestamp(sec_val, tz=UTC)
                 return dt.isoformat()
         except (ValueError, OSError):
             pass
 
     for fmt in _TIMESTAMP_FORMATS:
         try:
-            dt = datetime.strptime(stripped, fmt)
+            dt = datetime.strptime(stripped, fmt)  # noqa: DTZ007 - Unzoned log timestamps are assigned UTC below.
             if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
+                dt = dt.replace(tzinfo=UTC)
             return dt.isoformat()
         except ValueError:
             continue
@@ -162,17 +162,17 @@ def parse_timestamp(value: Any) -> datetime | None:
         return None
     if isinstance(value, datetime):
         if value.tzinfo is None:
-            return value.replace(tzinfo=timezone.utc)
-        return value.astimezone(timezone.utc)
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
     if isinstance(value, (int, float)):
         # Unix milliseconds (13 digits, roughly post-2001)
         if value > 10_000_000_000:  # > 1000 seconds from epoch
             # Treat as milliseconds
-            dt = datetime.fromtimestamp(value / 1000.0, tz=timezone.utc)
+            dt = datetime.fromtimestamp(value / 1000.0, tz=UTC)
             return dt
         # Unix seconds
         if 946_684_800 <= value <= 4_102_444_800:  # 2000-2100
-            dt = datetime.fromtimestamp(value, tz=timezone.utc)
+            dt = datetime.fromtimestamp(value, tz=UTC)
             return dt
         return None
     if isinstance(value, str):
@@ -183,7 +183,7 @@ def parse_timestamp(value: Any) -> datetime | None:
         if stripped.isdigit() and len(stripped) == 13:
             try:
                 ms_val = int(stripped) / 1000.0
-                dt = datetime.fromtimestamp(ms_val, tz=timezone.utc)
+                dt = datetime.fromtimestamp(ms_val, tz=UTC)
                 return dt
             except (ValueError, OSError):
                 pass
@@ -192,16 +192,16 @@ def parse_timestamp(value: Any) -> datetime | None:
             try:
                 sec_val = int(stripped)
                 if 946_684_800 <= sec_val <= 4_102_444_800:
-                    dt = datetime.fromtimestamp(sec_val, tz=timezone.utc)
+                    dt = datetime.fromtimestamp(sec_val, tz=UTC)
                     return dt
             except (ValueError, OSError):
                 pass
         # Common timestamp formats
         for fmt in _TIMESTAMP_FORMATS:
             try:
-                dt = datetime.strptime(stripped, fmt)
+                dt = datetime.strptime(stripped, fmt)  # noqa: DTZ007 - Unzoned log timestamps are assigned UTC below.
                 if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=timezone.utc)
+                    dt = dt.replace(tzinfo=UTC)
                 return dt
             except ValueError:
                 continue

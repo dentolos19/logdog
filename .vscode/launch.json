@@ -8,6 +8,7 @@
       "cwd": "${workspaceFolder}",
       "command": "just start",
       "preLaunchTask": "Setup",
+      "postDebugTask": "Decompose",
       "serverReadyAction": {
         "pattern": "Local:.+(https?://.+)",
         "uriFormat": "%s",

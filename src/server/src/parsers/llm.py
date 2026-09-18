@@ -64,6 +64,7 @@ class LlmEngine:
             plan = model.generate_structured(prompt, AiSchemaPlan)
             return plan
         except Exception as e:
+            logger.exception("llm operation failed")
             logger.warning("AI schema discovery failed: %s", e)
             return None
 
@@ -106,6 +107,7 @@ class LlmEngine:
             result = model.generate_structured(prompt, AiExtractionBatch)
             return result
         except Exception as e:
+            logger.exception("llm operation failed")
             logger.warning("AI batch extraction failed: %s", e)
             return None
 
@@ -143,6 +145,7 @@ class LlmEngine:
                 return invalid_rows
             return repaired
         except Exception as e:
+            logger.exception("llm operation failed")
             logger.warning("AI row repair failed: %s", e)
             return invalid_rows
 
@@ -197,6 +200,7 @@ class LlmEngine:
             plan = model.generate_structured(prompt, AiSchemaPlan)
             return plan
         except Exception as e:
+            logger.exception("llm operation failed")
             logger.warning("AI schema from records failed: %s", e)
             return None
 
@@ -249,6 +253,7 @@ class LlmEngine:
             result = model.generate_structured(prompt, AiExtractionBatch)
             return result
         except Exception as e:
+            logger.exception("llm operation failed")
             logger.warning("AI record extraction failed: %s", e)
             return None
 
@@ -273,6 +278,7 @@ class LlmEngine:
                 return result
             return None
         except Exception as e:
+            logger.exception("llm operation failed")
             logger.warning("LLM format detection failed: %s", e)
             return None
 
@@ -299,6 +305,7 @@ class LlmEngine:
                 return result
             return None
         except Exception as e:
+            logger.exception("llm operation failed")
             logger.warning("LLM parsing failed: %s", e)
             return None
 
@@ -335,6 +342,7 @@ class LlmEngine:
                 return result
             return None
         except Exception as e:
+            logger.exception("llm operation failed")
             logger.warning("LLM schema advisor failed: %s", e)
             return None
 

@@ -1,16 +1,17 @@
 import json
+import logging
 import secrets
 import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import (
+    JSON,
     BigInteger,
     Boolean,
     Column,
     DateTime,
     Float,
     Integer,
-    JSON,
     LargeBinary,
     String,
     Table,
@@ -26,8 +27,11 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from environment import MEGABASE_URL
-from lib.megabase_models import metadata, registry_table as _registry_table
+from lib.megabase_models import metadata
+from lib.megabase_models import registry_table as _registry_table
 from parsers.normalization import sanitize_db_value
+
+logger = logging.getLogger(__name__)
 
 TYPE_MAP = {
     "uuid": UUID(as_uuid=True),
@@ -245,7 +249,7 @@ def add_column(session: Session, table_name: str, column_def: dict) -> Table:
             )
         )
     except Exception:
-        pass
+        logger.exception("megabase operation failed")
 
     result = session.execute(select(_registry_table).where(_registry_table.c.table_name == table_name)).first()
     schema = json.loads(result.schema_json)  # type: ignore
@@ -269,7 +273,7 @@ def remove_column(session: Session, table_name: str, column_name: str) -> Table:
     try:
         session.execute(text(f"ALTER TABLE {table_name} DROP COLUMN {column_name}"))
     except Exception:
-        pass
+        logger.exception("megabase operation failed")
 
     result = session.execute(select(_registry_table).where(_registry_table.c.table_name == table_name)).first()
     schema = json.loads(result.schema_json)  # type: ignore

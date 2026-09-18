@@ -2,15 +2,15 @@ from __future__ import annotations
 
 import json
 import os
-
 from collections import Counter
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from lib.database import get_database
-from lib.models import Asset, LogGroup, LogFile, LogProcess, User
+from lib.models import Asset, LogFile, LogGroup, LogProcess, User
 from routes.auth import get_current_user
 
 router = APIRouter(prefix="/stats", tags=["stats"])

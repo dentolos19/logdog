@@ -10,7 +10,7 @@ dependencies = [
   "fastapi[standard]",
   "langchain-openrouter",
   "openpyxl",
-  "psycopg2-binary",
+  "psycopg[binary]",
   "pydantic>=2.0.0,<2.12",
   "python-docx",
   "python-dotenv",
@@ -26,3 +26,6 @@ dev = ["ruff", "ty"]
 
 [tool.ruff]
 line-length = 120
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends", "fastapi.File", "fastapi.Query", "fastapi.Form"]

@@ -25,18 +25,18 @@ class ParserPipeline(ABC):
     @abstractmethod
     def parse(
         self,
-        file_inputs: list["FileInput"],
-        classification: "ClassificationResult",
-    ) -> "ParserPipelineResult": ...
+        file_inputs: list[FileInput],
+        classification: ClassificationResult,
+    ) -> ParserPipelineResult: ...
 
     @abstractmethod
-    def supports(self, request: "ParserSupportRequest") -> "ParserSupportResult": ...
+    def supports(self, request: ParserSupportRequest) -> ParserSupportResult: ...
 
     def ingest(
         self,
-        file_inputs: list["FileInput"],
-        classification: "ClassificationResult",
-    ) -> "ParserPipelineResult":
+        file_inputs: list[FileInput],
+        classification: ClassificationResult,
+    ) -> ParserPipelineResult:
         return self.parse(file_inputs, classification)
 
 
@@ -77,9 +77,9 @@ class _ParserRegistry:
 
     def support_for_file(
         self,
-        file_input: "FileInput",
+        file_input: FileInput,
         mime_type: str | None = None,
-    ) -> list["ParserSupportResult"]:
+    ) -> list[ParserSupportResult]:
         self.discover()
         from parsers.contracts import ParserSupportRequest, ParserSupportResult
 
@@ -117,10 +117,10 @@ class _ParserRegistry:
 
     def resolve_for_files(
         self,
-        file_inputs: list["FileInput"],
+        file_inputs: list[FileInput],
         mime_types_by_file_id: dict[str, str] | None = None,
         preferred_keys: list[str] | None = None,
-    ) -> tuple[dict[str, list["FileInput"]], list["FileParserSelection"], list[str]]:
+    ) -> tuple[dict[str, list[FileInput]], list[FileParserSelection], list[str]]:
         self.discover()
         from parsers.contracts import FileParserSelection
 
@@ -139,7 +139,7 @@ class _ParserRegistry:
                 warnings.append(f"No parsers registered for '{file_input.filename}'.")
                 continue
 
-            def _sort_key(item: "ParserSupportResult") -> tuple[int, float, int, int]:
+            def _sort_key(item: ParserSupportResult) -> tuple[int, float, int, int]:
                 preferred_pos = preferred_rank.get(item.parser_key, 999)
                 fallback_pos = self._fallback_order.get(item.parser_key, 99)
                 return (
@@ -149,7 +149,7 @@ class _ParserRegistry:
                     -fallback_pos,
                 )
 
-            best = sorted(ranked, key=_sort_key, reverse=True)[0]
+            best = max(ranked, key=_sort_key)
 
             if not best.supported:
                 warnings.append(

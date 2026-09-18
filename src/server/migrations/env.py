@@ -9,8 +9,8 @@ config = context.config
 if config.config_file_name:
     load_dotenv(Path(config.config_file_name).parent / ".env")
 
-from lib.megabase_models import metadata as swarm_metadata  # noqa: E402
-from lib.models import Base  # noqa: E402
+from lib.megabase_models import metadata as swarm_metadata
+from lib.models import Base
 
 
 def get_url(key: str) -> str:

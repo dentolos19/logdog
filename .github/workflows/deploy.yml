@@ -1,4 +1,4 @@
-name: Web Deployment
+name: Cloudflare Deployment
 on:
   push:
     branches:
@@ -9,9 +9,10 @@ concurrency:
   cancel-in-progress: true
 jobs:
   deploy:
-    name: Deploy
+    name: Deploy Worker
     environment: Production
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     env:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -33,13 +34,16 @@ jobs:
       - name: Setup Just
         uses: extractions/setup-just@v4
 
-      - name: Install App Dependencies
-        working-directory: src/app
-        run: bun install --frozen-lockfile
-
-      - name: Install Server Dependencies
-        working-directory: src/server
-        run: uv sync --frozen --no-dev
+      - name: Deploy Worker
+        run: just deploy
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          MEGABASE_URL: ${{ secrets.MEGABASE_URL }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL }}
+          OPENROUTER_REFERER: ${{ vars.OPENROUTER_REFERER }}
+          OPENROUTER_TITLE: ${{ vars.OPENROUTER_TITLE }}
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
 
       - name: Migrate Databases
         env:
@@ -51,30 +55,3 @@ jobs:
           OPENROUTER_TITLE: ${{ vars.OPENROUTER_TITLE }}
           SECRET_KEY: ${{ secrets.SECRET_KEY }}
         run: just migrate
-
-      - name: Build Project
-        working-directory: src/app
-        run: bun run build
-
-      - name: Deploy Worker
-        uses: cloudflare/wrangler-action@v4
-        with:
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          workingDirectory: src/app
-          secrets: |
-            DATABASE_URL
-            MEGABASE_URL
-            OPENROUTER_API_KEY
-            OPENROUTER_MODEL
-            OPENROUTER_REFERER
-            OPENROUTER_TITLE
-            SECRET_KEY
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          MEGABASE_URL: ${{ secrets.MEGABASE_URL }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL }}
-          OPENROUTER_REFERER: ${{ vars.OPENROUTER_REFERER }}
-          OPENROUTER_TITLE: ${{ vars.OPENROUTER_TITLE }}
-          SECRET_KEY: ${{ secrets.SECRET_KEY }}

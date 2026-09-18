@@ -18,11 +18,17 @@ from sqlalchemy.orm import Session
 from lib.database import SessionLocal
 from lib.megabase import (
     SessionLocal as MegabaseSessionLocal,
+)
+from lib.megabase import (
     create_table as megabase_create_table,
+)
+from lib.megabase import (
     init_megabase,
+)
+from lib.megabase import (
     insert_record as megabase_insert_record,
 )
-from lib.models import Asset, LogGroup, LogFile, LogProcess, LogTable
+from lib.models import Asset, LogFile, LogGroup, LogProcess, LogTable
 from lib.storage import download_file
 from parsers.binary import (
     binary_metadata,
@@ -216,7 +222,7 @@ def run_parse_job(
         process.error = None
         db.commit()
         logger.info("run_parse_job: process=%s completed", process_id)
-    except Exception as error:  # noqa: BLE001
+    except Exception as error:
         logger.exception("run_parse_job: unhandled error for process %s", process_id)
         process = db.query(LogProcess).filter_by(id=_uuid_or_raw(process_id)).first()
         _fail(db, process, str(error))
@@ -328,6 +334,7 @@ def _is_hex_dump(raw_bytes: bytes) -> bool:
                 hex_lines += 1
         return hex_lines >= 3
     except Exception:
+        logger.exception("orchestrator operation failed")
         return False
 
 
@@ -350,6 +357,7 @@ def _decode_hex_dump(raw_bytes: bytes) -> str:
                     pass
         return "\n".join(result) if result else text
     except Exception:
+        logger.exception("orchestrator operation failed")
         return raw_bytes.decode("utf-8", errors="ignore")
 
 
@@ -475,9 +483,7 @@ def _trim_empty_xlsx_rows(rows: list[tuple[Any, ...]]) -> list[list[Any]]:
 def _xlsx_cell_has_value(value: Any) -> bool:
     if value is None:
         return False
-    if isinstance(value, str) and not value.strip():
-        return False
-    return True
+    return not (isinstance(value, str) and not value.strip())
 
 
 def _xlsx_rows_to_csv(rows: list[list[Any]]) -> str:
@@ -673,7 +679,7 @@ def _parse_and_merge(
                 binary_result,
                 source_filename=", ".join(file_input.filename for file_input in binary_inputs),
             )
-        except Exception as error:  # noqa: BLE001
+        except Exception as error:
             logger.exception("Binary file parser failed")
             merged_warnings.append(f"Binary file parser failed: {error}")
             merged_diagnostics["fallbacks"].append(
@@ -700,7 +706,7 @@ def _parse_and_merge(
 
             try:
                 ai_result = ai_pipeline.ingest([text_input], classification)
-            except Exception as error:  # noqa: BLE001
+            except Exception as error:
                 ai_error = error
                 logger.exception("Universal AI parser failed for %s", text_input.filename)
                 merged_warnings.append(f"Universal AI parser failed for {text_input.filename}: {error}")
@@ -733,16 +739,14 @@ def _parse_and_merge(
                     source_filename=text_input.filename,
                     fallback=True,
                 )
-            except Exception as fallback_error:  # noqa: BLE001
+            except Exception as fallback_error:
                 logger.exception("Raw ingest fallback also failed for %s", text_input.filename)
                 merged_warnings.append(f"Raw ingest fallback also failed for {text_input.filename}: {fallback_error}")
 
     # ── Conservative confidence aggregation ──────────────────────────
     total_rows = sum(parser_row_counts)
 
-    if total_rows == 0:
-        final_confidence = 0.0
-    elif not parser_confidences:
+    if total_rows == 0 or not parser_confidences:
         final_confidence = 0.0
     else:
         # Row-weighted average of parser confidences
@@ -956,7 +960,7 @@ def _fail(db: Session, process: LogProcess | None, message: str) -> None:
         process.status = "failed"
         process.error = message
         db.commit()
-    except Exception:  # noqa: BLE001
+    except Exception:
         logger.exception("Could not persist failure for process %s", getattr(process, "id", "?"))
 
 

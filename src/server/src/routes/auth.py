@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
 import uuid
+from datetime import UTC, datetime, timedelta
 
 import bcrypt
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -82,7 +82,7 @@ def verify_password(plain_password: str, hashed_password: str):
 
 
 def _create_token(subject: str, token_type: str, expires_delta: timedelta):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     payload = {
         "sub": subject,
         "type": token_type,

@@ -6,7 +6,7 @@ import json
 import logging
 import re
 import xml.etree.ElementTree as ET
-from typing import Any
+from typing import Any, ClassVar
 
 from parsers.binary import (
     detect_magic,
@@ -15,10 +15,10 @@ from parsers.binary import (
     sha256_bytes,
 )
 from parsers.contracts import (
+    BASELINE_COLUMN_NAMES,
+    BASELINE_COLUMNS,
     BINARY_OVERFLOW_COLUMN,
     BINARY_PARSER_KEY,
-    BASELINE_COLUMNS,
-    BASELINE_COLUMN_NAMES,
     AiExtractionDiagnostics,
     AiSchemaPlan,
     ClassificationResult,
@@ -32,6 +32,7 @@ from parsers.contracts import (
     make_display_name,
     make_megabase_table_name,
 )
+from parsers.extra_grouping import group_rows_by_extra
 from parsers.normalization import (
     coerce_scalar,
     infer_log_level,
@@ -40,7 +41,6 @@ from parsers.normalization import (
     sanitize_identifier,
     unique_identifier,
 )
-from parsers.extra_grouping import group_rows_by_extra
 from parsers.preprocessor import FileInput
 from parsers.registry import ParserPipeline
 
@@ -147,7 +147,7 @@ def _looks_like_json_lines(lines: list[str]) -> bool:
     json_count = 0
     for ln in non_empty[:100]:
         stripped = ln.strip()
-        if stripped.startswith("{") or stripped.startswith("["):
+        if stripped.startswith(("{", "[")):
             try:
                 import json
 
@@ -294,7 +294,7 @@ def _normalize_json_records(content: str, filename: str) -> list[dict[str, Any]]
     ``_flatten_json_object``).
     """
     stripped = content.strip()
-    if not (stripped.startswith("{") or stripped.startswith("[")):
+    if not (stripped.startswith(("{", "["))):
         return None
 
     try:
@@ -375,7 +375,7 @@ def normalize_records(
         sniffed = sniff_is_csv(content)
 
     if sniffed:
-        dialect, has_header = sniffed
+        dialect, _has_header = sniffed
         reader = csv.DictReader(io.StringIO(content), dialect=dialect)
         records: list[dict[str, Any]] = []
         for idx, row in enumerate(reader):
@@ -453,6 +453,7 @@ def _reconstruct_csv_row(dialect: type[csv.Dialect], row: dict[str, str]) -> str
         writer.writerow([row.get(f, "") for f in fieldnames])
         return buf.getvalue().rstrip("\r\n")
     except Exception:
+        logger.exception("engine operation failed")
         return str(row)
 
 
@@ -710,7 +711,7 @@ def _try_json_parse(text: str) -> dict[str, Any] | None:
     t = text.strip()
     if (t.startswith('"') and t.endswith('"')) or (t.startswith("'") and t.endswith("'")):
         t = t[1:-1]
-    if not (t.startswith("{") or t.startswith("[")):
+    if not (t.startswith(("{", "["))):
         return None
     try:
         data = json.loads(t, strict=False)
@@ -887,7 +888,7 @@ def _parse_embedded_json(cell: str) -> dict[str, Any] | None:
         cell = cell[1:-1]
     cell = cell.replace('""', '"')
     cell = cell.strip()
-    if not (cell.startswith("{") or cell.startswith("[")):
+    if not (cell.startswith(("{", "["))):
         return None
     try:
         data = json.loads(cell, strict=False)
@@ -1191,11 +1192,10 @@ def _promote_common_fields_from_extra(row: dict[str, Any]) -> None:
 
     promoted = False
     for key in list(extra_dict.keys()):
-        if key in COMMON_COLUMNS:
-            # Only promote if the row doesn't already carry a meaningful value
-            if key not in row or row[key] is None or row[key] == "" or row[key] == "null":
-                row[key] = extra_dict.pop(key)
-                promoted = True
+        # Only promote if the row doesn't already carry a meaningful value.
+        if key in COMMON_COLUMNS and (key not in row or row[key] is None or row[key] == "" or row[key] == "null"):
+            row[key] = extra_dict.pop(key)
+            promoted = True
 
     if promoted:
         if extra_dict:
@@ -1549,6 +1549,7 @@ class UniversalAIParser(ParserPipeline):
 
             schema_plan = llm.discover_schema_from_records(sample_records, filename=filename)
         except Exception as e:
+            logger.exception("engine operation failed")
             logger.debug("AI schema discovery failed: %s", e)
 
         if schema_plan and schema_plan.confidence >= 0.3:
@@ -1604,6 +1605,7 @@ class UniversalAIParser(ParserPipeline):
                         filename=filename,
                     )
                 except Exception as e:
+                    logger.exception("engine operation failed")
                     logger.debug("AI extraction failed for batch %d: %s", batch_count, e)
                     batch = None
 
@@ -1912,7 +1914,7 @@ class BinaryFileParser(ParserPipeline):
     MAX_BINARY_OVERFLOW_BYTES = 10 * 1024 * 1024  # 10 MB
 
     # Binary metadata columns (fixed schema)
-    BINARY_COLUMNS: list[ColumnDefinition] = [
+    BINARY_COLUMNS: ClassVar[list[ColumnDefinition]] = [
         BINARY_OVERFLOW_COLUMN,
         ColumnDefinition(
             name="source",

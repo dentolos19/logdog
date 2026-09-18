@@ -198,10 +198,7 @@ def is_probably_binary(
         return True
 
     # High-bit ratio
-    if length > 10 and high_bit_count / length > HIGH_BIT_RATIO_THRESHOLD:
-        return True
-
-    return False
+    return bool(length > 10 and high_bit_count / length > HIGH_BIT_RATIO_THRESHOLD)
 
 
 def _get_extension(filename: str) -> str:
