@@ -42,7 +42,7 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "^1.60.0",
+    "@cloudflare/vite-plugin": "^1.62.5",
     "@tanstack/router-cli": "^1.167.38",
     "@types/node": "latest",
     "@types/react": "^19.3.0",
@@ -53,6 +53,6 @@
     "shadcn": "^4.21.0",
     "typescript": "^6.0.3",
     "vite": "^8.3.1",
-    "wrangler": "^4.140.0"
+    "wrangler": "^4.147.0"
   }
 }

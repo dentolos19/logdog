@@ -44,10 +44,4 @@
       "new_sqlite_classes": ["Server"],
     },
   ],
-  "r2_buckets": [
-    {
-      "binding": "BUCKET",
-      "bucket_name": "logdog",
-    },
-  ],
 }

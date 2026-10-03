@@ -16,7 +16,8 @@ start: compose
     just decompose
 
 compose:
-    docker compose up --detach --wait
+    docker compose up --detach --wait database storage
+    docker compose run --rm storage-setup
     docker compose exec -T database psql -U logdog -d postgres -f /docker-entrypoint-initdb.d/init.sql
 
 decompose:
@@ -37,6 +38,10 @@ deploy: install build
     set -euo pipefail
     cd src/app
     names=(
+        AWS_ACCESS_KEY_ID
+        AWS_ENDPOINT_URL_S3
+        AWS_REGION
+        AWS_SECRET_ACCESS_KEY
         DATABASE_URL
         MEGABASE_URL
         OPENROUTER_API_KEY

@@ -15,5 +15,38 @@ services:
     volumes:
       - database:/var/lib/postgresql
       - ./src/server/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+  storage:
+    image: rustfs/rustfs:latest
+    environment:
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: 0.0.0.0:9000
+      RUSTFS_CONSOLE_ADDRESS: 0.0.0.0:9001
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_ACCESS_KEY: logdog
+      RUSTFS_SECRET_KEY: logdog
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9000/health/ready"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    volumes:
+      - storage:/data
+  storage-setup:
+    image: amazon/aws-cli:latest
+    depends_on:
+      storage:
+        condition: service_healthy
+    environment:
+      AWS_ACCESS_KEY_ID: logdog
+      AWS_SECRET_ACCESS_KEY: logdog
+      AWS_REGION: us-east-2
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["aws --endpoint-url http://storage:9000 s3api head-bucket --bucket main >/dev/null 2>&1 || aws --endpoint-url http://storage:9000 s3api create-bucket --bucket main --create-bucket-configuration LocationConstraint=us-east-2"]
+
 volumes:
+  storage:
   database:

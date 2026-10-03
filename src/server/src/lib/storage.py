@@ -1,27 +1,41 @@
 import hashlib
 import uuid
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from functools import cache
 
+import boto3
+from botocore.config import Config
+from botocore.exceptions import ClientError
 from fastapi import Depends
 from sqlalchemy.orm import Session
 
-from environment import STORAGE_URL
+from environment import AWS_ACCESS_KEY_ID, AWS_ENDPOINT_URL_S3, AWS_REGION, AWS_SECRET_ACCESS_KEY
 from lib.database import get_database
 from lib.models import Asset
 
+BUCKET = "main"
 
-def _request(method: str, asset_id: uuid.UUID, data: bytes | None = None, content_type: str | None = None) -> bytes:
-    headers = {"Content-Type": content_type} if content_type else {}
-    request = Request(f"{STORAGE_URL.get_secret_value()}/{asset_id}", data=data, headers=headers, method=method)
-    with urlopen(request, timeout=30) as response:
-        return response.read()
+
+@cache
+def _get_storage():
+    return boto3.client(
+        "s3",
+        aws_access_key_id=AWS_ACCESS_KEY_ID.get_secret_value(),
+        aws_secret_access_key=AWS_SECRET_ACCESS_KEY.get_secret_value(),
+        endpoint_url=AWS_ENDPOINT_URL_S3.get_secret_value(),
+        region_name=AWS_REGION.get_secret_value(),
+        config=Config(
+            signature_version="s3v4",
+            s3={"addressing_style": "path"},
+            request_checksum_calculation="when_required",
+            response_checksum_validation="when_required",
+        ),
+    )
 
 
 def upload_file(file_data: bytes, filename: str, content_type: str, db: Session = Depends(get_database)) -> Asset:
     asset_id = uuid.uuid4()
     file_hash = hashlib.sha256(file_data).hexdigest()
-    _request("PUT", asset_id, file_data, content_type)
+    _get_storage().put_object(Bucket=BUCKET, Key=str(asset_id), Body=file_data, ContentType=content_type)
 
     asset = Asset(
         id=asset_id,
@@ -41,9 +55,13 @@ def download_file(asset_id: uuid.UUID, db: Session = Depends(get_database)) -> b
         return None
 
     try:
-        return _request("GET", asset_id)
-    except (HTTPError, URLError):
-        return None
+        response = _get_storage().get_object(Bucket=BUCKET, Key=str(asset_id))
+        with response["Body"] as body:
+            return body.read()
+    except ClientError as error:
+        if error.response["ResponseMetadata"]["HTTPStatusCode"] == 404:
+            return None
+        raise
 
 
 def get_file(asset_id: uuid.UUID, db: Session = Depends(get_database)) -> Asset | None:
@@ -55,10 +73,7 @@ def delete_file(asset_id: uuid.UUID, db: Session = Depends(get_database)) -> boo
     if asset is None:
         return False
 
-    try:
-        _request("DELETE", asset_id)
-    except (HTTPError, URLError):
-        pass
+    _get_storage().delete_object(Bucket=BUCKET, Key=str(asset_id))
 
     db.delete(asset)
     db.commit()

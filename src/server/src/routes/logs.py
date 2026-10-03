@@ -649,7 +649,7 @@ def delete_log_group(
     database.delete(group)
     database.commit()
 
-    # 4. Delete orphan R2 assets (no remaining LogFile references)
+    # 4. Delete orphan storage assets (no remaining LogFile references)
     if orphan_asset_ids:
         background_tasks.add_task(_delete_orphan_assets, list(orphan_asset_ids))
 
