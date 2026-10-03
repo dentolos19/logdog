@@ -1,16 +1,9 @@
-import {
-  type ColumnDef,
-  flexRender,
-  getCoreRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  type SortingState,
-  useReactTable,
-} from "@tanstack/react-table";
+import { type ColumnDef, flexRender, type SortingState, useTable } from "@tanstack/react-table";
 import { ArrowDownIcon, ArrowUpIcon, ChevronLeftIcon, ChevronRightIcon, DownloadIcon } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 
 import { Button } from "#/components/ui/button";
+import { dataTableFeatures, type DataTableFeatures } from "#/components/ui/data-table";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "#/components/ui/table";
 
 type WidgetDataTableProps = {
@@ -30,7 +23,7 @@ function escapeCsvValue(value: unknown): string {
 export function WidgetDataTable({ columns, rows, title }: WidgetDataTableProps) {
   const [sorting, setSorting] = useState<SortingState>([]);
 
-  const columnDefs = useMemo<ColumnDef<Record<string, unknown>>[]>(
+  const columnDefs = useMemo<ColumnDef<DataTableFeatures, Record<string, unknown>>[]>(
     () =>
       columns.map((col) => ({
         accessorKey: col,
@@ -58,15 +51,14 @@ export function WidgetDataTable({ columns, rows, title }: WidgetDataTableProps) 
     [columns, rows],
   );
 
-  const table = useReactTable({
+  const table = useTable({
+    features: dataTableFeatures,
     data,
     columns: columnDefs,
-    getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    getSortedRowModel: getSortedRowModel(),
+
     onSortingChange: setSorting,
     state: { sorting },
-    initialState: { pagination: { pageSize: 10 } },
+    initialState: { pagination: { pageIndex: 0, pageSize: 10 } },
   });
 
   const handleDownloadCsv = useCallback(() => {
@@ -151,7 +143,7 @@ export function WidgetDataTable({ columns, rows, title }: WidgetDataTableProps) 
             <ChevronLeftIcon />
           </Button>
           <span className={"text-muted-foreground px-2 text-xs"}>
-            {table.getState().pagination.pageIndex + 1} / {table.getPageCount()}
+            {table.store.state.pagination.pageIndex + 1} / {table.getPageCount()}
           </span>
           <Button
             disabled={!table.getCanNextPage()}

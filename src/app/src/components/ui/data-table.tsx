@@ -3,19 +3,23 @@ import {
   type ColumnDef,
   type ColumnFiltersState,
   flexRender,
-  getCoreRowModel,
-  getFacetedRowModel,
-  getFacetedUniqueValues,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
   type PaginationState,
   type Row,
+  type RowData,
   type RowSelectionState,
   type SortingState,
   type Table as TanstackTable,
-  useReactTable,
-  type VisibilityState,
+  stockFeatures,
+  tableFeatures,
+  createFacetedRowModel,
+  createFacetedUniqueValues,
+  createFilteredRowModel,
+  createPaginatedRowModel,
+  createSortedRowModel,
+  filterFns,
+  sortFns,
+  useTable,
+  type ColumnVisibilityState,
 } from "@tanstack/react-table";
 import {
   ArrowDownIcon,
@@ -39,42 +43,54 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "#
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "#/components/ui/table";
 import { cn } from "#/lib/utils";
 
+export const dataTableFeatures = tableFeatures({
+  ...stockFeatures,
+  facetedRowModel: createFacetedRowModel(),
+  facetedUniqueValues: createFacetedUniqueValues(),
+  filteredRowModel: createFilteredRowModel(),
+  paginatedRowModel: createPaginatedRowModel(),
+  sortedRowModel: createSortedRowModel(),
+  filterFns,
+  sortFns,
+});
+export type DataTableFeatures = typeof dataTableFeatures;
+
 declare module "@tanstack/react-table" {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  interface ColumnMeta<TData, TValue> {
+  interface ColumnMeta<in out TFeatures extends import("@tanstack/react-table").TableFeatures, in out TData extends RowData, TValue extends import("@tanstack/react-table").CellData = import("@tanstack/react-table").CellData> {
     label?: string;
   }
 }
 
-interface DataTableProps<TData> {
-  columns: ColumnDef<TData>[];
+interface DataTableProps<TData extends RowData> {
+  columns: ColumnDef<DataTableFeatures, TData>[];
   data: TData[];
   pageCount?: number;
-  toolbar?: (table: TanstackTable<TData>) => React.ReactNode;
+  toolbar?: (table: TanstackTable<DataTableFeatures, TData>) => React.ReactNode;
   state?: {
     sorting?: SortingState;
     columnFilters?: ColumnFiltersState;
-    columnVisibility?: VisibilityState;
+    columnVisibility?: ColumnVisibilityState;
     rowSelection?: RowSelectionState;
     pagination?: PaginationState;
   };
   onPaginationChange?: (updater: PaginationState | ((prev: PaginationState) => PaginationState)) => void;
   onSortingChange?: (updater: SortingState | ((prev: SortingState) => SortingState)) => void;
   onColumnFiltersChange?: (updater: ColumnFiltersState | ((prev: ColumnFiltersState) => ColumnFiltersState)) => void;
-  onColumnVisibilityChange?: (updater: VisibilityState | ((prev: VisibilityState) => VisibilityState)) => void;
+  onColumnVisibilityChange?: (updater: ColumnVisibilityState | ((prev: ColumnVisibilityState) => ColumnVisibilityState)) => void;
   onRowSelectionChange?: (updater: RowSelectionState | ((prev: RowSelectionState) => RowSelectionState)) => void;
   manualPagination?: boolean;
   manualSorting?: boolean;
   manualFiltering?: boolean;
-  enableRowSelection?: boolean | ((row: Row<TData>) => boolean);
+  enableRowSelection?: boolean | ((row: Row<DataTableFeatures, TData>) => boolean);
   enableSorting?: boolean;
   enableColumnFilters?: boolean;
   enableHiding?: boolean;
-  getRowId?: (row: TData, index: number, parent?: Row<TData>) => string;
+  getRowId?: (row: TData, index: number, parent?: Row<DataTableFeatures, TData>) => string;
   className?: string;
 }
 
-function DataTable<TData>({
+function DataTable<TData extends RowData>({
   columns,
   data,
   pageCount,
@@ -95,7 +111,8 @@ function DataTable<TData>({
   getRowId,
   className,
 }: DataTableProps<TData>) {
-  const table = useReactTable({
+  const table = useTable({
+    features: dataTableFeatures,
     data,
     columns,
     pageCount,
@@ -113,12 +130,7 @@ function DataTable<TData>({
     enableColumnFilters,
     enableHiding,
     getRowId,
-    getCoreRowModel: getCoreRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFacetedRowModel: getFacetedRowModel(),
-    getFacetedUniqueValues: getFacetedUniqueValues(),
+
   });
 
   return (
@@ -160,12 +172,12 @@ function DataTable<TData>({
   );
 }
 
-function DataTableColumnHeader<TData>({
+function DataTableColumnHeader<TData extends RowData>({
   column,
   title,
   className,
 }: {
-  column: Column<TData>;
+  column: Column<DataTableFeatures, TData>;
   title: string;
   className?: string;
 }) {
@@ -215,7 +227,7 @@ function DataTableColumnHeader<TData>({
   );
 }
 
-function DataTablePagination<TData>({ table, children }: { table: TanstackTable<TData>; children?: React.ReactNode }) {
+function DataTablePagination<TData extends RowData>({ table, children }: { table: TanstackTable<DataTableFeatures, TData>; children?: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between px-2">
       {children}
@@ -226,10 +238,10 @@ function DataTablePagination<TData>({ table, children }: { table: TanstackTable<
             onValueChange={(value) => {
               table.setPageSize(Number(value));
             }}
-            value={`${table.getState().pagination.pageSize}`}
+            value={`${table.store.state.pagination.pageSize}`}
           >
             <SelectTrigger className="h-8 w-[70px]">
-              <SelectValue placeholder={table.getState().pagination.pageSize} />
+              <SelectValue placeholder={table.store.state.pagination.pageSize} />
             </SelectTrigger>
             <SelectContent side="top">
               {[10, 20, 30, 40, 50].map((pageSize) => (
@@ -241,7 +253,7 @@ function DataTablePagination<TData>({ table, children }: { table: TanstackTable<
           </Select>
         </div>
         <div className="flex w-[100px] items-center justify-center font-medium text-sm">
-          Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
+          Page {table.store.state.pagination.pageIndex + 1} of {table.getPageCount()}
         </div>
         <div className="flex items-center space-x-2">
           <Button
@@ -290,12 +302,12 @@ function DataTablePagination<TData>({ table, children }: { table: TanstackTable<
   );
 }
 
-function DataTableViewOptions<TData>({
+function DataTableViewOptions<TData extends RowData>({
   table,
   label = "View",
   className,
 }: {
-  table: TanstackTable<TData>;
+  table: TanstackTable<DataTableFeatures, TData>;
   label?: string;
   className?: string;
 }) {

@@ -141,7 +141,7 @@ def normalize_iso_timestamp(value: str) -> str | None:
 
     for fmt in _TIMESTAMP_FORMATS:
         try:
-            dt = datetime.strptime(stripped, fmt)  # noqa: DTZ007 - Unzoned log timestamps are assigned UTC below.
+            dt = datetime.strptime(stripped, fmt)
             if dt.tzinfo is None:
                 dt = dt.replace(tzinfo=UTC)
             return dt.isoformat()
@@ -199,7 +199,7 @@ def parse_timestamp(value: Any) -> datetime | None:
         # Common timestamp formats
         for fmt in _TIMESTAMP_FORMATS:
             try:
-                dt = datetime.strptime(stripped, fmt)  # noqa: DTZ007 - Unzoned log timestamps are assigned UTC below.
+                dt = datetime.strptime(stripped, fmt)
                 if dt.tzinfo is None:
                     dt = dt.replace(tzinfo=UTC)
                 return dt

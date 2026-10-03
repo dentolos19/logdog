@@ -1,5 +1,5 @@
 import type { UIMessage } from "@tanstack/ai-react";
-import { fetchServerSentEvents, useChat } from "@tanstack/ai-react";
+import { useChat } from "@tanstack/ai-react";
 import {
   AlertCircleIcon,
   BotIcon,
@@ -190,28 +190,12 @@ export function ChatbotTab({ entryId, groupName, tables }: ChatbotTabProps) {
   const inputTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   const { messages, sendMessage, setMessages, stop, isLoading, status, error } = useChat({
-    id: `log-group-${entryId}`,
-    connection: fetchServerSentEvents("/", {
-      fetchClient: async (_url, init) => {
-        const bodyText = typeof init?.body === "string" ? init.body : "";
-        let parsedBody: { messages?: unknown[] } = {};
-        if (bodyText.length > 0) {
-          try {
-            parsedBody = JSON.parse(bodyText) as { messages?: unknown[] };
-          } catch {
-            parsedBody = {};
-          }
-        }
-
-        return streamLogChat({
-          data: {
-            entryId,
-            messages: Array.isArray(parsedBody.messages) ? trimChatMessages(parsedBody.messages) : [],
-          },
-          signal: init?.signal ?? undefined,
-        });
-      },
-    }),
+    threadId: `log-group-${entryId}`,
+    fetcher: ({ messages, threadId, runId }, { signal }) =>
+      streamLogChat({
+        data: { entryId, messages: trimChatMessages(messages), threadId, runId },
+        signal,
+      }),
   });
 
   useEffect(() => {

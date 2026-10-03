@@ -4,9 +4,10 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import bcrypt
+import jwt
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError, jwt
+from jwt import PyJWTError
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -112,7 +113,7 @@ def create_refresh_token(subject: str):
 def decode_token_payload(token: str, expected_type: str):
     try:
         payload = jwt.decode(token, SECRET_KEY.get_secret_value(), algorithms=[JWT_ALGORITHM])
-    except JWTError as error:
+    except PyJWTError as error:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token.") from error
 
     token_type = str(payload.get("type") or "")

@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import type { ColumnDef, PaginationState, SortingState, VisibilityState } from "@tanstack/react-table";
+import type { ColumnDef, PaginationState, SortingState, ColumnVisibilityState } from "@tanstack/react-table";
 import { format } from "date-fns";
 import {
   AlertTriangleIcon,
@@ -21,6 +21,7 @@ import { Alert, AlertDescription, AlertTitle } from "#/components/ui/alert";
 import { Badge } from "#/components/ui/badge";
 import { Button } from "#/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "#/components/ui/collapsible";
+import { type DataTableFeatures } from "#/components/ui/data-table";
 import { DataTable, DataTableColumnHeader, DataTableViewOptions } from "#/components/ui/data-table";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "#/components/ui/dialog";
 import {
@@ -573,7 +574,7 @@ function TableRowsDataTable({ table, entryId }: { table: TableSummary; entryId: 
     () => getDefaultColumnVisibility(columnKeys, table.rows),
     [columnKeys, table.rows],
   );
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(defaultColumnVisibility);
+  const [columnVisibility, setColumnVisibility] = useState<ColumnVisibilityState>(defaultColumnVisibility);
   const [cellPreview, setCellPreview] = useState<{ title: string; value: unknown } | null>(null);
   const [searchText, setSearchText] = useState("");
   const [timestampFrom, setTimestampFrom] = useState("");
@@ -682,7 +683,7 @@ function TableRowsDataTable({ table, entryId }: { table: TableSummary; entryId: 
     [entryId, fieldFilters, searchText, table.id, table.name, timestampFrom, timestampTo],
   );
 
-  const columns = useMemo<ColumnDef<Record<string, unknown>>[]>(() => {
+  const columns = useMemo<ColumnDef<DataTableFeatures, Record<string, unknown>>[]>(() => {
     return columnKeys.map((key) => ({
       id: key,
       accessorKey: key,
@@ -985,7 +986,7 @@ function getRowTimestamp(row: Record<string, unknown>) {
 }
 
 function getDefaultColumnVisibility(columnKeys: string[], rows: Record<string, unknown>[]) {
-  const visibility: VisibilityState = {};
+  const visibility: ColumnVisibilityState = {};
 
   for (const key of columnKeys) {
     if (isDefaultHiddenColumn(key) || isAllNullColumn(key, rows)) {

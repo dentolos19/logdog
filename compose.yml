@@ -15,5 +15,22 @@ services:
     volumes:
       - database:/var/lib/postgresql
       - ./src/server/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+  storage:
+    image: adobe/s3mock:5.1.0
+    environment:
+      COM_ADOBE_TESTING_S3MOCK_STORE_INITIAL_BUCKETS: main
+      COM_ADOBE_TESTING_S3MOCK_STORE_RETAIN_FILES_ON_EXIT: "true"
+      COM_ADOBE_TESTING_S3MOCK_STORE_ROOT: /data
+    healthcheck:
+      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:9090/favicon.ico" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "9090:9090"
+    volumes:
+      - storage-s3mock:/data
+
 volumes:
+  storage-s3mock:
   database:

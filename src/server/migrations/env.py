@@ -17,7 +17,7 @@ def get_url(key: str) -> str:
     value = os.environ.get(key, "").strip().strip("'\"").strip()
     if not value:
         raise ValueError(f"Environment variable '{key}' is not defined.")
-    return value
+    return value.replace("postgres://", "postgresql+psycopg://", 1).replace("postgresql://", "postgresql+psycopg://", 1)
 
 
 databases = {

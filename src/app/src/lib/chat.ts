@@ -49,6 +49,8 @@ const MAX_PERSISTED_MESSAGES = 500;
 const MAX_MESSAGE_CONTENT_LENGTH = 100000;
 
 const streamLogChatInputSchema = z.object({
+  threadId: z.string().min(1).max(128),
+  runId: z.string().min(1).max(128),
   entryId: z.string().min(1),
   messages: z.array(z.unknown()).min(1).max(MAX_PERSISTED_MESSAGES),
 });
@@ -384,12 +386,10 @@ function toModelMessages(messages: unknown[]) {
   const incomingMessages = normalizeIncomingMessages(messages);
 
   return convertMessagesToModelMessages(incomingMessages)
-    .map(
-      (message): TextModelMessage => ({
-        ...message,
-        content: truncateModelContent(message.content),
-      }),
-    )
+    .map((message): TextModelMessage => ({
+      ...message,
+      content: truncateModelContent(message.content),
+    }))
     .filter(hasModelMessageContent);
 }
 
@@ -699,7 +699,7 @@ function createLogChatServerTools(options: { entryId: string; origin: string; au
 }
 
 export const streamLogChat = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown) => streamLogChatInputSchema.parse(data))
+  .validator((data: unknown) => streamLogChatInputSchema.parse(data))
   .handler(async ({ data }) => {
     const modelMessages = toModelMessages(data.messages);
     if (!hasUserTextMessage(modelMessages)) {
@@ -751,6 +751,8 @@ export const streamLogChat = createServerFn({ method: "POST" })
     } = getEnv();
 
     const chatStream = chat({
+      threadId: data.threadId,
+      runId: data.runId,
       adapter: createOpenRouterText(orModel as Parameters<typeof createOpenRouterText>[0], orApiKey, {
         xTitle: orTitle,
         httpReferer: orReferer,
@@ -776,7 +778,7 @@ const generateChatSuggestionsInputSchema = z.object({
 });
 
 export const generateChatSuggestions = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown) => generateChatSuggestionsInputSchema.parse(data))
+  .validator((data: unknown) => generateChatSuggestionsInputSchema.parse(data))
   .handler(async ({ data }) => {
     const request = getRequest();
     const requestUrl = new URL(request.url);
